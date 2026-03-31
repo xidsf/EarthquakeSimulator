@@ -20,7 +20,7 @@ public class RoomBuilder : MonoBehaviour
 
     [Header("시각적 피드백 & 프리뷰")]
     public GameObject cornerMarkerPrefab;
-    public Material previewMeshMaterial; // 반투명한 프리뷰용 재질 (새로 추가됨)
+    public Material previewMeshMaterial; 
     private LineRenderer lineRenderer;
     private GameObject previewMeshObj;
     private MeshFilter previewMeshFilter;
@@ -52,10 +52,8 @@ public class RoomBuilder : MonoBehaviour
     private float currentCeilingY = 0f;
     private bool isCeilingDetected = false;
     private bool isManualMode = false; // 사용자가 직접 점을 찍기 시작했는지 여부
-    private GameObject anchoredObbObj;
-    private MeshFilter anchoredObbFilter;
 
-    public bool IsScanning { get { return !isRoomFinished;  }  }
+    public bool IsScanning { get { return !isRoomFinished; } }
     public float currentFloorHeight { get { return currentFloorY; } }
 
     void Awake()
@@ -82,14 +80,8 @@ public class RoomBuilder : MonoBehaviour
         MeshRenderer mr = previewMeshObj.AddComponent<MeshRenderer>();
         if (previewMeshMaterial != null) mr.material = previewMeshMaterial;
 
-        // 1점 앵커링용 전용 프리뷰 메쉬 초기화
-        anchoredObbObj = new GameObject("AnchoredOBBMesh");
-        anchoredObbFilter = anchoredObbObj.AddComponent<MeshFilter>();
-        MeshRenderer anchoredMr = anchoredObbObj.AddComponent<MeshRenderer>();
-        if (previewMeshMaterial != null) anchoredMr.material = previewMeshMaterial;
-        anchoredObbObj.SetActive(false);
 
-        if(SnappingToggle != null) SnappingToggle.onValueChanged.AddListener((value) => { enableSnapping = value; });
+        if (SnappingToggle != null) SnappingToggle.onValueChanged.AddListener((value) => { enableSnapping = value; });
         if (MagneticSnapToggle != null) MagneticSnapToggle.onValueChanged.AddListener((value) => { enableMagneticSnap = value; });
     }
 
@@ -101,136 +93,18 @@ public class RoomBuilder : MonoBehaviour
 
         if (isFloorDetected)
         {
-            if (!isManualMode && cornerPoints.Count == 0)
-            {
-                UpdateOBBPreview();
-            }
-            else if (cornerPoints.Count >= 1)
+            if (cornerPoints.Count >= 1)
             {
                 Vector3 crosshairPos = GetCrosshairPosition(out bool success);
                 if (success)
                 {
                     crosshairPos = ApplySnappingLogic(crosshairPos);
                     UpdateRealtimePreview(crosshairPos);
-
-                    // [추가됨] 점이 정확히 1개일 때만 앵커링된 OBB를 보여줌
-                    if (cornerPoints.Count == 1)
-                    {
-                        DrawAnchoredOBB(cornerPoints[0]);
-                    }
-                    else
-                    {
-                        // 점이 2개 이상이 되면 앵커링 OBB를 숨김
-                        if (anchoredObbObj != null) anchoredObbObj.SetActive(false);
-                    }
                 }
             }
         }
     }
 
-    // 0점(전체 프리뷰) 및 1점(앵커링 프리뷰) 처리 로직
-    private void UpdateOBBPreview()
-    {
-        // 1점 이상이면 OBB 계산 자체를 멈춥니다.
-        if (cornerPoints.Count >= 1) return;
-
-        Vector3 bestForward = Vector3.forward;
-        float maxArea = 0f;
-        ARPlane mainPlane = null;
-
-        foreach (var plane in planeManager.trackables)
-        {
-            if (plane.alignment == UnityEngine.XR.ARSubsystems.PlaneAlignment.HorizontalUp)
-            {
-                float area = plane.extents.x * plane.extents.y;
-                if (area > maxArea) { maxArea = area; mainPlane = plane; }
-            }
-        }
-
-        if (mainPlane == null) return;
-
-        // --- Pass 1: 경계 엣지 가중 평균으로 벽 방향 추출 ---
-        // plane.transform.forward/right는 AR 세션 시작 시 디바이스 방향에 고정되므로 사용 불가.
-        // 대신 boundary 폴리곤 엣지의 실제 방향을 길이 가중 평균하여 벽 방향을 추정한다.
-        // (1) 가장 긴 엣지를 fold 기준으로 삼아 180° 대칭 문제를 해결
-        // (2) 모든 엣지를 같은 반공간으로 fold한 뒤 길이 가중 평균 → 지배적 벽 방향
-        float maxEdgeLen = 0f;
-        Vector3 refDir = Vector3.zero;
-        foreach (var plane in planeManager.trackables)
-        {
-            if (plane.alignment != UnityEngine.XR.ARSubsystems.PlaneAlignment.HorizontalUp) continue;
-            if (Mathf.Abs(plane.transform.position.y - currentFloorY) > 0.5f) continue;
-            var boundary = plane.boundary;
-            int cnt = boundary.Length;
-            for (int i = 0; i < cnt; i++)
-            {
-                Vector3 wA = plane.transform.TransformPoint(new Vector3(boundary[i].x, 0, boundary[i].y));
-                Vector3 wB = plane.transform.TransformPoint(new Vector3(boundary[(i + 1) % cnt].x, 0, boundary[(i + 1) % cnt].y));
-                Vector3 edge = wB - wA; edge.y = 0f;
-                float len = edge.magnitude;
-                if (len > maxEdgeLen) { maxEdgeLen = len; refDir = edge.normalized; }
-            }
-        }
-        if (maxEdgeLen > 0.1f)
-        {
-            Vector3 weightedDir = Vector3.zero;
-            foreach (var plane in planeManager.trackables)
-            {
-                if (plane.alignment != UnityEngine.XR.ARSubsystems.PlaneAlignment.HorizontalUp) continue;
-                if (Mathf.Abs(plane.transform.position.y - currentFloorY) > 0.5f) continue;
-                var boundary = plane.boundary;
-                int cnt = boundary.Length;
-                for (int i = 0; i < cnt; i++)
-                {
-                    Vector3 wA = plane.transform.TransformPoint(new Vector3(boundary[i].x, 0, boundary[i].y));
-                    Vector3 wB = plane.transform.TransformPoint(new Vector3(boundary[(i + 1) % cnt].x, 0, boundary[(i + 1) % cnt].y));
-                    Vector3 edge = wB - wA; edge.y = 0f;
-                    float len = edge.magnitude;
-                    if (len < 0.05f) continue;
-                    Vector3 d = edge.normalized;
-                    if (Vector3.Dot(d, refDir) < 0f) d = -d; // fold to same half-space
-                    weightedDir += d * len;
-                }
-            }
-            if (weightedDir.sqrMagnitude > 0.001f)
-                bestForward = weightedDir.normalized;
-        }
-
-        // --- Pass 2: bestForward OBB 기준으로 모든 바닥 경계점 범위 계산 ---
-        Quaternion obbRot = Quaternion.LookRotation(bestForward);
-        float minX = float.MaxValue, maxX = float.MinValue;
-        float minZ = float.MaxValue, maxZ = float.MinValue;
-        bool anyPoint = false;
-        foreach (var plane in planeManager.trackables)
-        {
-            if (plane.alignment != UnityEngine.XR.ARSubsystems.PlaneAlignment.HorizontalUp) continue;
-            if (Mathf.Abs(plane.transform.position.y - currentFloorY) > 0.5f) continue;
-            foreach (Vector2 pt in plane.boundary)
-            {
-                Vector3 wPt = plane.transform.TransformPoint(new Vector3(pt.x, 0, pt.y));
-                Vector3 localPt = Quaternion.Inverse(obbRot) * wPt;
-                if (localPt.x < minX) minX = localPt.x;
-                if (localPt.x > maxX) maxX = localPt.x;
-                if (localPt.z < minZ) minZ = localPt.z;
-                if (localPt.z > maxZ) maxZ = localPt.z;
-                anyPoint = true;
-            }
-        }
-        if (!anyPoint) return;
-
-        Vector3[] corners = new Vector3[4];
-        corners[0] = obbRot * new Vector3(minX, 0, maxZ);
-        corners[1] = obbRot * new Vector3(maxX, 0, maxZ);
-        corners[2] = obbRot * new Vector3(maxX, 0, minZ);
-        corners[3] = obbRot * new Vector3(minX, 0, minZ);
-
-        for (int i = 0; i < 4; i++) corners[i].y = currentFloorY;
-
-        lineRenderer.positionCount = 0;
-
-        if (previewMeshObj != null) previewMeshObj.SetActive(true);
-        UpdatePreviewMesh(new List<Vector3>(corners));
-    }
 
     // 바닥과 천장을 동시에 추적하는 로직
     private void UpdateFloorDetection()
@@ -528,7 +402,7 @@ public class RoomBuilder : MonoBehaviour
             return;
         }
 
-        if(isRoomFinished)
+        if (isRoomFinished)
         {
             Debug.Log("이미 방이 완성되었습니다.");
             return;
@@ -558,19 +432,21 @@ public class RoomBuilder : MonoBehaviour
     // 사용자가 찍은 점들을 바탕으로 다각형 바닥을 생성하는 함수
     private void CreateCustomFloorMesh()
     {
+        if (cornerPoints.Count < 3) return;
+
         // 1. 바닥 오브젝트 생성
         GameObject floorObj = new GameObject("CustomFloor");
         floorObj.layer = LayerMask.NameToLayer("Floor");
         floorObj.transform.SetParent(roomContainer.transform);
 
-        // [핵심 수정] 바닥 점들의 실제 중심점(Center) 계산 후 오브젝트 이동
+        // 바닥 점들의 실제 중심점(Center) 계산 후 오브젝트 이동
         Vector3 centerPos = Vector3.zero;
         for (int i = 0; i < cornerPoints.Count; i++)
         {
             centerPos += cornerPoints[i];
         }
         centerPos /= cornerPoints.Count;
-        floorObj.transform.position = centerPos; // 허공(0,0,0)에서 바닥 중심으로 이동!
+        floorObj.transform.position = centerPos;
 
         MeshFilter meshFilter = floorObj.AddComponent<MeshFilter>();
         MeshRenderer meshRenderer = floorObj.AddComponent<MeshRenderer>();
@@ -580,33 +456,52 @@ public class RoomBuilder : MonoBehaviour
             meshRenderer.material = floorMaterial;
         }
 
-        // 2. Mesh 데이터 준비
+        // 2. Mesh 데이터 준비 — 양면 렌더링을 위해 정면/뒷면 버텍스를 분리
+        //    (같은 버텍스를 공유하면 RecalculateNormals에서 법선이 상쇄되어 Mesh가 빈 것처럼 보임)
+        int vertCount = cornerPoints.Count;
         Mesh floorMesh = new Mesh();
-        Vector3[] vertices = new Vector3[cornerPoints.Count];
-        Vector2[] uvs = new Vector2[cornerPoints.Count];
+        floorMesh.name = "CustomFloorMesh";
 
-        for (int i = 0; i < cornerPoints.Count; i++)
+        Vector3[] vertices = new Vector3[vertCount * 2];
+        Vector3[] normals = new Vector3[vertCount * 2];
+        Vector2[] uvs = new Vector2[vertCount * 2];
+
+        for (int i = 0; i < vertCount; i++)
         {
-            // [핵심 수정] 월드 좌표에서 중심점을 빼서 순수 '로컬 좌표'로 변환
-            vertices[i] = cornerPoints[i] - centerPos;
+            Vector3 localPos = cornerPoints[i] - centerPos;
 
-            // UV 설정 (바닥 텍스처가 깨지지 않게 기존 월드 X, Z 좌표를 UV로 사용)
+            // 정면 (위에서 볼 때)
+            vertices[i] = localPos;
+            normals[i] = Vector3.up;
             uvs[i] = new Vector2(cornerPoints[i].x, cornerPoints[i].z);
+
+            // 뒷면 (아래에서 볼 때) — 동일 위치, 반대 법선
+            vertices[i + vertCount] = localPos;
+            normals[i + vertCount] = Vector3.down;
+            uvs[i + vertCount] = uvs[i];
         }
 
-        // 3. 다각형 삼각분할 (Triangulation)
+        // 3. 다각형 삼각분할 (Fan Triangulation)
         List<int> triangles = new List<int>();
-        for (int i = 1; i < vertices.Length - 1; i++)
+        for (int i = 1; i < vertCount - 1; i++)
         {
-            triangles.Add(0); triangles.Add(i); triangles.Add(i + 1);
-            triangles.Add(0); triangles.Add(i + 1); triangles.Add(i); // 양면
+            // 정면 (CCW → 법선 위)
+            triangles.Add(0);
+            triangles.Add(i);
+            triangles.Add(i + 1);
+
+            // 뒷면 (CW → 법선 아래)
+            triangles.Add(vertCount);
+            triangles.Add(vertCount + i + 1);
+            triangles.Add(vertCount + i);
         }
 
-        // 4. Mesh에 데이터 적용
+        // 4. Mesh에 데이터 적용 (vertices → normals/uvs → triangles 순서 필수)
         floorMesh.vertices = vertices;
-        floorMesh.triangles = triangles.ToArray();
+        floorMesh.normals = normals;
         floorMesh.uv = uvs;
-        floorMesh.RecalculateNormals();
+        floorMesh.triangles = triangles.ToArray();
+        floorMesh.RecalculateBounds();
 
         meshFilter.mesh = floorMesh;
 
@@ -643,12 +538,7 @@ public class RoomBuilder : MonoBehaviour
         Destroy(lastMarker);
 
         UpdateLineRenderer();
-        if (cornerPoints.Count == 0)
-        {
-            isManualMode = false; 
-            if (anchoredObbObj != null) anchoredObbObj.SetActive(false); // 1점 앵커링 OBB 숨기기
-        }
-        else if (cornerPoints.Count == 1)
+        if (cornerPoints.Count == 1)
         {
             if (previewMeshObj != null) previewMeshObj.SetActive(false); // 다각형 메쉬 숨기기
         }
@@ -658,7 +548,7 @@ public class RoomBuilder : MonoBehaviour
     {
         if (vertices == null || vertices.Count < 3) return;
 
-        // [핵심 수정] 프리뷰의 중심점 계산 후 이동
+        // 프리뷰의 중심점 계산 후 이동
         Vector3 centerPos = Vector3.zero;
         for (int i = 0; i < vertices.Count; i++)
         {
@@ -667,168 +557,41 @@ public class RoomBuilder : MonoBehaviour
         centerPos /= vertices.Count;
         previewMeshObj.transform.position = centerPos;
 
+        int vertCount = vertices.Count;
         Mesh mesh = new Mesh();
-        Vector3[] verts = new Vector3[vertices.Count];
+        mesh.name = "PreviewFloorMesh";
+
+        Vector3[] verts = new Vector3[vertCount * 2];
+        Vector3[] normals = new Vector3[vertCount * 2];
         List<int> triangles = new List<int>();
 
-        for (int i = 0; i < vertices.Count; i++)
+        for (int i = 0; i < vertCount; i++)
         {
-            // 월드 좌표 -> 로컬 좌표 변환
-            verts[i] = vertices[i] - centerPos;
+            Vector3 localPos = vertices[i] - centerPos;
+            verts[i] = localPos;
+            verts[i + vertCount] = localPos;
+            normals[i] = Vector3.up;
+            normals[i + vertCount] = Vector3.down;
         }
 
-        for (int i = 1; i < verts.Length - 1; i++)
+        for (int i = 1; i < vertCount - 1; i++)
         {
-            triangles.Add(0); triangles.Add(i); triangles.Add(i + 1);
-            triangles.Add(0); triangles.Add(i + 1); triangles.Add(i); // 양면
+            triangles.Add(0);
+            triangles.Add(i);
+            triangles.Add(i + 1);
+
+            triangles.Add(vertCount);
+            triangles.Add(vertCount + i + 1);
+            triangles.Add(vertCount + i);
         }
 
         mesh.vertices = verts;
+        mesh.normals = normals;
         mesh.triangles = triangles.ToArray();
-        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
         previewMeshFilter.mesh = mesh;
     }
 
-    // 1점 앵커링: 첫 점을 기준으로 예상 방 모양(OBB)을 끌어다 보여줌
-    private void DrawAnchoredOBB(Vector3 anchorPoint)
-    {
-        Vector3 bestForward = Vector3.forward;
-        float maxArea = 0f;
-        ARPlane mainPlane = null;
-
-        // 1. 기준 평면 및 방향 계산
-        foreach (var plane in planeManager.trackables)
-        {
-            if (plane.alignment == UnityEngine.XR.ARSubsystems.PlaneAlignment.HorizontalUp)
-            {
-                float area = plane.extents.x * plane.extents.y;
-                if (area > maxArea) { maxArea = area; mainPlane = plane; }
-            }
-        }
-
-        if (mainPlane == null)
-        {
-            if (anchoredObbObj != null) anchoredObbObj.SetActive(false);
-            return;
-        }
-
-        // --- Pass 1: 경계 엣지 가중 평균으로 벽 방향 추출 (UpdateOBBPreview와 동일) ---
-        float maxEdgeLen = 0f;
-        Vector3 refDir = Vector3.zero;
-        foreach (var plane in planeManager.trackables)
-        {
-            if (plane.alignment != UnityEngine.XR.ARSubsystems.PlaneAlignment.HorizontalUp) continue;
-            if (Mathf.Abs(plane.transform.position.y - currentFloorY) > 0.5f) continue;
-            var boundary = plane.boundary;
-            int cnt = boundary.Length;
-            for (int i = 0; i < cnt; i++)
-            {
-                Vector3 wA = plane.transform.TransformPoint(new Vector3(boundary[i].x, 0, boundary[i].y));
-                Vector3 wB = plane.transform.TransformPoint(new Vector3(boundary[(i + 1) % cnt].x, 0, boundary[(i + 1) % cnt].y));
-                Vector3 edge = wB - wA; edge.y = 0f;
-                float len = edge.magnitude;
-                if (len > maxEdgeLen) { maxEdgeLen = len; refDir = edge.normalized; }
-            }
-        }
-        if (maxEdgeLen > 0.1f)
-        {
-            Vector3 weightedDir = Vector3.zero;
-            foreach (var plane in planeManager.trackables)
-            {
-                if (plane.alignment != UnityEngine.XR.ARSubsystems.PlaneAlignment.HorizontalUp) continue;
-                if (Mathf.Abs(plane.transform.position.y - currentFloorY) > 0.5f) continue;
-                var boundary = plane.boundary;
-                int cnt = boundary.Length;
-                for (int i = 0; i < cnt; i++)
-                {
-                    Vector3 wA = plane.transform.TransformPoint(new Vector3(boundary[i].x, 0, boundary[i].y));
-                    Vector3 wB = plane.transform.TransformPoint(new Vector3(boundary[(i + 1) % cnt].x, 0, boundary[(i + 1) % cnt].y));
-                    Vector3 edge = wB - wA; edge.y = 0f;
-                    float len = edge.magnitude;
-                    if (len < 0.05f) continue;
-                    Vector3 d = edge.normalized;
-                    if (Vector3.Dot(d, refDir) < 0f) d = -d;
-                    weightedDir += d * len;
-                }
-            }
-            if (weightedDir.sqrMagnitude > 0.001f)
-                bestForward = weightedDir.normalized;
-        }
-
-        // 2. 전체 방(OBB) 4개 모서리 도출
-        Quaternion obbRot = Quaternion.LookRotation(bestForward);
-        float minX = float.MaxValue, maxX = float.MinValue;
-        float minZ = float.MaxValue, maxZ = float.MinValue;
-        foreach (var plane in planeManager.trackables)
-        {
-            if (plane.alignment != UnityEngine.XR.ARSubsystems.PlaneAlignment.HorizontalUp) continue;
-            if (Mathf.Abs(plane.transform.position.y - currentFloorY) > 0.5f) continue;
-            foreach (Vector2 pt in plane.boundary)
-            {
-                Vector3 wPt = plane.transform.TransformPoint(new Vector3(pt.x, 0, pt.y));
-                Vector3 localPt = Quaternion.Inverse(obbRot) * wPt;
-                if (localPt.x < minX) minX = localPt.x;
-                if (localPt.x > maxX) maxX = localPt.x;
-                if (localPt.z < minZ) minZ = localPt.z;
-                if (localPt.z > maxZ) maxZ = localPt.z;
-            }
-        }
-
-        Vector3[] corners = new Vector3[4];
-        corners[0] = obbRot * new Vector3(minX, 0, maxZ);
-        corners[1] = obbRot * new Vector3(maxX, 0, maxZ);
-        corners[2] = obbRot * new Vector3(maxX, 0, minZ);
-        corners[3] = obbRot * new Vector3(minX, 0, minZ);
-
-        for (int i = 0; i < 4; i++) corners[i].y = currentFloorY;
-
-        // 3. [핵심 로직] 내가 찍은 1번 점(앵커)에 OBB를 자석처럼 착! 붙이기
-        int closestIdx = 0;
-        float minDist = float.MaxValue;
-        for (int i = 0; i < 4; i++)
-        {
-            float dist = Vector3.Distance(corners[i], anchorPoint);
-            if (dist < minDist) { minDist = dist; closestIdx = i; }
-        }
-
-        // 가장 가까운 모서리가 앵커 포인트와 일치하도록 OBB 전체를 밀어줌(Offset)
-        Vector3 offset = anchorPoint - corners[closestIdx];
-        for (int i = 0; i < 4; i++) corners[i] += offset;
-
-        // 4. 면(Mesh) 렌더링
-        if (anchoredObbObj != null)
-        {
-            anchoredObbObj.SetActive(true);
-
-            // [핵심 수정] 앵커링 OBB의 중심점 계산 후 이동
-            Vector3 centerPos = Vector3.zero;
-            for (int i = 0; i < 4; i++)
-            {
-                centerPos += corners[i];
-            }
-            centerPos /= 4f;
-            anchoredObbObj.transform.position = centerPos;
-
-            // 월드 좌표 -> 로컬 좌표 변환
-            Vector3[] localCorners = new Vector3[4];
-            for (int i = 0; i < 4; i++)
-            {
-                localCorners[i] = corners[i] - centerPos;
-            }
-
-            Mesh mesh = new Mesh();
-            List<int> triangles = new List<int>();
-            for (int i = 1; i < 3; i++)
-            {
-                triangles.Add(0); triangles.Add(i); triangles.Add(i + 1);
-                triangles.Add(0); triangles.Add(i + 1); triangles.Add(i); // 양면
-            }
-            mesh.vertices = localCorners;
-            mesh.triangles = triangles.ToArray();
-            mesh.RecalculateNormals();
-            anchoredObbFilter.mesh = mesh;
-        }
-    }
 
     private void ShowUI(bool isSuccess)
     {

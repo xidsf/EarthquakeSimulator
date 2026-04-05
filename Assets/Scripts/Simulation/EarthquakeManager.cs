@@ -5,6 +5,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
 using Newtonsoft.Json.Linq;
 
 public enum BuildingType
@@ -32,6 +34,11 @@ public class EarthquakeManager : MonoBehaviour
     [Range(3, 9)] public int targetMMI = 6;
     public bool isLongPeriod = false;
 
+    [Header("UI")]
+    public RoomBuildUIManager uiManager;
+    public Slider mmiSlider;
+    public TextMeshProUGUI mmiText;
+
     [Header("Room Objects")]
     public Rigidbody roomRigidbody;
 
@@ -39,6 +46,8 @@ public class EarthquakeManager : MonoBehaviour
     private bool isSimulating = false;
     private bool isReturning = false;
     private bool dataComplete = false;
+
+    public bool IsSimulating => isSimulating;
 
     private Vector3 initialPosition;
     private ConcurrentQueue<SeismicFrame> frameQueue = new ConcurrentQueue<SeismicFrame>();
@@ -49,6 +58,44 @@ public class EarthquakeManager : MonoBehaviour
     private CancellationTokenSource cts;
 
     public float highestVelocity = 0;
+
+    void OnEnable()
+    {
+        Physics.defaultContactOffset = 0.00001f;
+
+        if (uiManager != null)
+            floor = uiManager.RoomFloor;
+
+        if (mmiSlider != null)
+        {
+            mmiSlider.value = targetMMI;
+            UpdateMMIText(targetMMI);
+            mmiSlider.onValueChanged.AddListener(OnMMIChanged);
+        }
+    }
+
+    void OnDisable()
+    {
+        if (mmiSlider != null)
+            mmiSlider.onValueChanged.RemoveListener(OnMMIChanged);
+    }
+
+    public void SetFloorValue(int value)
+    {
+        floor = value;
+    }
+
+    private void OnMMIChanged(float value)
+    {
+        targetMMI = Mathf.RoundToInt(value);
+        UpdateMMIText(targetMMI);
+    }
+
+    private void UpdateMMIText(int value)
+    {
+        if (mmiText != null)
+            mmiText.text = $"진도: {value}";
+    }
 
     void Start()
     {

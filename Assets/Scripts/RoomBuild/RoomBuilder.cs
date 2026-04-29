@@ -15,7 +15,7 @@ public class RoomBuilder : MonoBehaviour
     public GameObject wallPrefab;
     public GameObject roomContainer;
     public Material floorMaterial;
-    public float ceilingHeight = 24f;
+    public float ceilingHeight = 2.5f;
     public float wallThickness = 0.1f;
 
     [Header("시각적 피드백 & 프리뷰")]
@@ -42,14 +42,13 @@ public class RoomBuilder : MonoBehaviour
     [Tooltip("AutoComplete에서 사각형 대신 L자형 등을 만들 때 사용할 형태")]
     public RoomShape autoCompleteShape = RoomShape.Rectangle;
 
-    // 지원하는 방 형태 열거형
     public enum RoomShape
     {
-        Rectangle,  // 기본 사각형
-        LShape,     // L자형
-        TShape,     // T자형
-        UShape,     // U자형
-        Custom      // 사용자가 직접 모든 점을 찍음
+        Rectangle,
+        LShape,
+        TShape,
+        UShape,
+        Custom
     }
 
     // AR Raycast 결과 버퍼
@@ -59,7 +58,11 @@ public class RoomBuilder : MonoBehaviour
     public GameObject roomFrameObject;
     public GameObject furnitureObject;
 
-    // 상태 ��리
+    // HoloLens 2: 시선 커서 (선택적 할당)
+    [Header("HoloLens 2 Gaze 커서 (선택)")]
+    public Transform gazeCursor;
+
+    // 상태 관리
     private List<Vector3> cornerPoints = new List<Vector3>();
     private List<GameObject> cornerMarkers = new List<GameObject>();
     private bool isRoomFinished = false;
@@ -76,6 +79,26 @@ public class RoomBuilder : MonoBehaviour
     {
         ceilingHeight = value * 0.1f;
         UpdateCeilingHeightText(value * 0.1f);
+        if (isRoomFinished) UpdateWallHeights();
+    }
+
+    private void UpdateWallHeights()
+    {
+        if (roomFrameObject == null) return;
+        for (int i = 0; i < roomFrameObject.transform.childCount; i++)
+        {
+            Transform child = roomFrameObject.transform.GetChild(i);
+            if (child.name.StartsWith("Wall_"))
+            {
+                Vector3 newScale = child.localScale;
+                newScale.y = ceilingHeight;
+                child.localScale = newScale;
+
+                Vector3 newPos = child.position;
+                newPos.y = currentFloorY + (ceilingHeight / 2f);
+                child.position = newPos;
+            }
+        }
     }
 
     private void UpdateCeilingHeightText(float value)
@@ -92,6 +115,14 @@ public class RoomBuilder : MonoBehaviour
         lineRenderer.positionCount = 0;
         lineRenderer.loop = false;
 
+        // MRTK XR Rig 교체 후 Inspector 참조가 끊어진 경우 씬 전체에서 자동 탐색
+        if (planeManager == null)
+            planeManager = FindAnyObjectByType<ARPlaneManager>();
+        if (raycastManager == null)
+            raycastManager = FindAnyObjectByType<ARRaycastManager>();
+        if (anchorManager == null)
+            anchorManager = FindAnyObjectByType<ARAnchorManager>();
+
         if (roomContainer == null)
         {
             roomContainer = new GameObject("RoomContainer");
@@ -105,13 +136,13 @@ public class RoomBuilder : MonoBehaviour
 
         if (ceilingHeightSlider != null)
         {
-            ceilingHeightSlider.value = ceilingHeight / 0.1f;
+            ceilingHeightSlider.value = ceilingHeight * 0.1f;
             UpdateCeilingHeightText(ceilingHeight);
             ceilingHeightSlider.onValueChanged.AddListener(OnCeilingHeightChanged);
         }
 
-        if (SnappingToggle != null) SnappingToggle.onValueChanged.AddListener((value) => { enableSnapping = value; });
-        if (MagneticSnapToggle != null) MagneticSnapToggle.onValueChanged.AddListener((value) => { enableMagneticSnap = value; });
+        if (SnappingToggle != null) SnappingToggle.onValueChanged.AddListener((v) => { enableSnapping = v; });
+        if (MagneticSnapToggle != null) MagneticSnapToggle.onValueChanged.AddListener((v) => { enableMagneticSnap = v; });
     }
 
     void Update()
@@ -120,22 +151,25 @@ public class RoomBuilder : MonoBehaviour
 
         UpdateFloorDetection();
 
-        if (isFloorDetected)
+        if (isFloorDetected && cornerPoints.Count >= 1)
         {
-            if (cornerPoints.Count >= 1)
+            // HoloLens 2: 시선 기반 히트 위치 계산
+            Vector3 gazeHit = GetGazeHitPosition(out bool success);
+            if (success)
             {
-                Vector3 crosshairPos = GetCrosshairPosition(out bool success);
-                if (success)
-                {
-                    crosshairPos = ApplySnappingLogic(crosshairPos);
-                    UpdateRealtimePreview(crosshairPos);
-                }
+                gazeHit = ApplySnappingLogic(gazeHit);
+                UpdateRealtimePreview(gazeHit);
+
+                // 시선 커서 위치 갱신 (할당된 경우)
+                if (gazeCursor != null)
+                    gazeCursor.position = gazeHit + Vector3.up * 0.01f;
             }
         }
     }
 
     // ─────────────────────────────────────────────
-    //  바닥/천장 감지 (기존 로직 유지)
+    //  바닥/천장 감지
+    //  HoloLens 2: ARRaycastManager.Raycast(Ray, ...) 오버로드 사용
     // ─────────────────────────────────────────────
     private void UpdateFloorDetection()
     {
@@ -143,15 +177,18 @@ public class RoomBuilder : MonoBehaviour
         float ceilingY = float.MinValue;
         bool foundFloor = false, foundCeiling = false;
 
-        foreach (var plane in planeManager.trackables)
+        if (planeManager != null)
         {
-            if (plane.alignment == UnityEngine.XR.ARSubsystems.PlaneAlignment.HorizontalUp)
+            foreach (var plane in planeManager.trackables)
             {
-                if (plane.transform.position.y < planeFloorY) { planeFloorY = plane.transform.position.y; foundFloor = true; }
-            }
-            else if (plane.alignment == UnityEngine.XR.ARSubsystems.PlaneAlignment.HorizontalDown)
-            {
-                if (plane.transform.position.y > ceilingY) { ceilingY = plane.transform.position.y; foundCeiling = true; }
+                if (plane.alignment == UnityEngine.XR.ARSubsystems.PlaneAlignment.HorizontalUp)
+                {
+                    if (plane.transform.position.y < planeFloorY) { planeFloorY = plane.transform.position.y; foundFloor = true; }
+                }
+                else if (plane.alignment == UnityEngine.XR.ARSubsystems.PlaneAlignment.HorizontalDown)
+                {
+                    if (plane.transform.position.y > ceilingY) { ceilingY = plane.transform.position.y; foundCeiling = true; }
+                }
             }
         }
 
@@ -159,8 +196,9 @@ public class RoomBuilder : MonoBehaviour
 
         if (Camera.main != null && raycastManager != null)
         {
-            Vector2 sc = new Vector2(Screen.width / 2f, Screen.height / 2f);
-            if (raycastManager.Raycast(sc, arHits,
+            // HoloLens 2: 시선 방향 Ray 사용 (스크린 픽셀 좌표 미사용)
+            Ray gazeRay = GetGazeRay();
+            if (raycastManager.Raycast(gazeRay, arHits,
                     UnityEngine.XR.ARSubsystems.TrackableType.PlaneWithinPolygon |
                     UnityEngine.XR.ARSubsystems.TrackableType.PlaneWithinInfinity))
             {
@@ -182,18 +220,27 @@ public class RoomBuilder : MonoBehaviour
         }
     }
 
-    private Vector3 GetCrosshairPosition(out bool success)
+    // HoloLens 2 시선(Gaze) Ray: Camera.main.transform.forward 기반
+    private Ray GetGazeRay()
+    {
+        if (Camera.main != null)
+            return new Ray(Camera.main.transform.position, Camera.main.transform.forward);
+        return new Ray(Vector3.zero, Vector3.forward);
+    }
+
+    // 시선 Ray로 바닥 히트 위치 계산 (기존 GetCrosshairPosition 대체)
+    private Vector3 GetGazeHitPosition(out bool success)
     {
         success = false;
         if (!isFloorDetected) return Vector3.zero;
 
-        Vector2 screenCenter = new Vector2(Screen.width / 2f, Screen.height / 2f);
-        Ray ray = Camera.main.ScreenPointToRay(screenCenter);
+        Ray ray = GetGazeRay();
 
         if (ray.direction.y < 0)
         {
+            // HoloLens 2: Ray 오버로드로 ARRaycast
             if (raycastManager != null &&
-                raycastManager.Raycast(screenCenter, arHits, UnityEngine.XR.ARSubsystems.TrackableType.PlaneWithinPolygon))
+                raycastManager.Raycast(ray, arHits, UnityEngine.XR.ARSubsystems.TrackableType.PlaneWithinPolygon))
             {
                 Vector3 hitPos = arHits[0].pose.position;
                 if (!isFloorDetected || hitPos.y <= currentFloorY + 0.15f)
@@ -204,21 +251,23 @@ public class RoomBuilder : MonoBehaviour
                 }
             }
 
+            // AR 감지 실패 시 수학적 바닥 평면과 교차
             Plane mathFloor = new Plane(Vector3.up, new Vector3(0, currentFloorY, 0));
-            if (mathFloor.Raycast(ray, out float enterDistance))
+            if (mathFloor.Raycast(ray, out float enterDist))
             {
                 success = true;
-                return ray.GetPoint(enterDistance);
+                return ray.GetPoint(enterDist);
             }
         }
         else
         {
+            // 시선이 위를 향할 때: 천장 평면 투영 후 바닥 Y로 내림
             float targetCeilingY = isCeilingDetected ? currentCeilingY : (currentFloorY + ceilingHeight);
             Plane mathCeiling = new Plane(Vector3.down, new Vector3(0, targetCeilingY, 0));
 
-            if (mathCeiling.Raycast(ray, out float enterDistance))
+            if (mathCeiling.Raycast(ray, out float enterDist))
             {
-                Vector3 ceilingHit = ray.GetPoint(enterDistance);
+                Vector3 ceilingHit = ray.GetPoint(enterDist);
                 success = true;
                 return new Vector3(ceilingHit.x, currentFloorY, ceilingHit.z);
             }
@@ -235,17 +284,15 @@ public class RoomBuilder : MonoBehaviour
         lineRenderer.positionCount = cornerPoints.Count + 1;
         lineRenderer.loop = false;
         for (int i = 0; i < cornerPoints.Count; i++)
-        {
             lineRenderer.SetPosition(i, cornerPoints[i]);
-        }
         lineRenderer.SetPosition(cornerPoints.Count, currentAimPos);
 
         if (cornerPoints.Count >= 2)
         {
             if (previewMeshObj != null) previewMeshObj.SetActive(true);
-            List<Vector3> previewVertices = new List<Vector3>(cornerPoints);
-            previewVertices.Add(currentAimPos);
-            UpdatePreviewMesh(previewVertices);
+            List<Vector3> previewVerts = new List<Vector3>(cornerPoints);
+            previewVerts.Add(currentAimPos);
+            UpdatePreviewMesh(previewVerts);
         }
         else
         {
@@ -255,6 +302,7 @@ public class RoomBuilder : MonoBehaviour
 
     // ─────────────────────────────────────────────
     //  점 추가 / 실행취소
+    //  HoloLens 2: UI 버튼 → MRTK 에어탭으로 호출 (추가 처리 불필요)
     // ─────────────────────────────────────────────
     public void AddCornerPoint()
     {
@@ -276,7 +324,7 @@ public class RoomBuilder : MonoBehaviour
             yield return null;
         }
 
-        Vector3 hitPos = GetCrosshairPosition(out bool hitSuccess);
+        Vector3 hitPos = GetGazeHitPosition(out bool hitSuccess);
 
         if (hitSuccess)
         {
@@ -328,7 +376,7 @@ public class RoomBuilder : MonoBehaviour
                 else if (Mathf.Abs(angle - 90f) <= snapAngleThreshold)
                 {
                     Vector3 right = new Vector3(prevDir.z, 0, -prevDir.x);
-                    Vector3 left = new Vector3(-prevDir.z, 0, prevDir.x);
+                    Vector3 left  = new Vector3(-prevDir.z, 0, prevDir.x);
                     snappedDir = Vector3.Dot(currentDir, right) > 0 ? right : left;
                     shouldSnap = true;
                 }
@@ -366,13 +414,8 @@ public class RoomBuilder : MonoBehaviour
     }
 
     // ─────────────────────────────────────────────
-    //  자동 완성: 다양한 방 형태 지원
+    //  자동 완성
     // ─────────────────────────────────────────────
-
-    /// <summary>
-    /// 2개의 점(벽 한 면)으로 다양한 형태의 방을 자동 완성합니다.
-    /// autoCompleteShape 설정에 따라 사각형, L자형, T자형, U자형을 생성합니다.
-    /// </summary>
     public void AutoCompleteRoom()
     {
         if (cornerPoints.Count < 2)
@@ -380,30 +423,16 @@ public class RoomBuilder : MonoBehaviour
             Debug.LogWarning("자동 완성은 최소 2개의 점이 필요합니다.");
             return;
         }
-
         switch (autoCompleteShape)
         {
-            case RoomShape.Rectangle:
-                AutoCompleteRectangle();
-                break;
-            case RoomShape.LShape:
-                AutoCompleteLShape();
-                break;
-            case RoomShape.TShape:
-                AutoCompleteTShape();
-                break;
-            case RoomShape.UShape:
-                AutoCompleteUShape();
-                break;
-            case RoomShape.Custom:
-                Debug.Log("Custom 모드에서는 모든 점을 수동으로 찍어주세요.");
-                break;
+            case RoomShape.Rectangle: AutoCompleteRectangle(); break;
+            case RoomShape.LShape:    AutoCompleteLShape();    break;
+            case RoomShape.TShape:    AutoCompleteTShape();    break;
+            case RoomShape.UShape:    AutoCompleteUShape();    break;
+            case RoomShape.Custom:    Debug.Log("Custom: 점을 수동으로 찍어주세요."); break;
         }
     }
 
-    /// <summary>
-    /// 기존 사각형 자동 완성 (2점 → 4점)
-    /// </summary>
     public void AutoCompleteRectangle()
     {
         if (cornerPoints.Count != 2)
@@ -414,211 +443,109 @@ public class RoomBuilder : MonoBehaviour
 
         Vector3 p0 = cornerPoints[0];
         Vector3 p1 = cornerPoints[1];
+        Vector3 dir  = (p1 - p0).normalized;
+        Vector3 perp = Vector3.Cross(dir, Vector3.up).normalized;
+        float depth  = EstimateRoomDepth(p0, perp);
 
-        Vector3 dir = (p1 - p0).normalized;
-        Vector3 perpendicular = Vector3.Cross(dir, Vector3.up).normalized;
-
-        float depth = EstimateRoomDepth(p0, perpendicular);
-
-        Vector3 p2 = p1 + (perpendicular * depth);
-        Vector3 p3 = p0 + (perpendicular * depth);
-
-        cornerPoints.Add(p2);
-        cornerPoints.Add(p3);
-
+        cornerPoints.Add(p1 + perp * depth);
+        cornerPoints.Add(p0 + perp * depth);
         FinishRoom();
     }
 
-    /// <summary>
-    /// L자형 방 자동 완성 (2점 → 6점)
-    /// 
-    ///  p0 ──── p1
-    ///  |        |
-    ///  |   p4 ─ p3
-    ///  |   |
-    ///  p5 ─┘  (= p4에서 아래로)
-    ///  
-    /// 전체 깊이의 60% 지점에서 폭의 50%만큼 잘라낸 형태
-    /// </summary>
     private void AutoCompleteLShape()
     {
-        if (cornerPoints.Count != 2)
-        {
-            Debug.LogWarning("L자형 자동 완성은 점이 정확히 2개일 때만 가능합니다.");
-            return;
-        }
+        if (cornerPoints.Count != 2) return;
 
         Vector3 p0 = cornerPoints[0];
         Vector3 p1 = cornerPoints[1];
-
-        Vector3 dir = (p1 - p0).normalized;
+        Vector3 dir  = (p1 - p0).normalized;
         Vector3 perp = Vector3.Cross(dir, Vector3.up).normalized;
-
         float width = Vector3.Distance(p0, p1);
         float depth = EstimateRoomDepth(p0, perp);
         if (Mathf.Abs(depth) < 1.5f) depth = Mathf.Sign(depth) * 3.0f;
 
-        // L자형 비율: 깊이 60% 지점에서 폭 50% 잘라냄
-        float cutDepthRatio = 0.6f;
-        float cutWidthRatio = 0.5f;
-
-        Vector3 p2 = p1 + perp * (depth * cutDepthRatio);
-        Vector3 p3 = p1 + perp * (depth * cutDepthRatio) - dir * (width * cutWidthRatio);
-        Vector3 p4 = p3 + perp * (depth * (1f - cutDepthRatio));
+        float cutD = 0.6f, cutW = 0.5f;
+        Vector3 p2 = p1 + perp * (depth * cutD);
+        Vector3 p3 = p1 + perp * (depth * cutD) - dir * (width * cutW);
+        Vector3 p4 = p3 + perp * (depth * (1f - cutD));
         Vector3 p5 = p0 + perp * depth;
-
-        // 모든 점의 Y를 바닥 높이로 고정
         p2.y = p3.y = p4.y = p5.y = currentFloorY;
 
         cornerPoints.Clear();
         cornerPoints.AddRange(new Vector3[] { p0, p1, p2, p3, p4, p5 });
-
         FinishRoom();
     }
 
-    /// <summary>
-    /// T자형 방 자동 완성 (2점 → 8점)
-    ///
-    ///  p0 ─────────── p1
-    ///  |               |
-    ///  p7  p2 ─── p3  (양쪽에서 안으로 들어옴)
-    ///      |       |
-    ///      p5 ─── p4
-    ///      
-    /// 상단 가로 바 + 중앙 세로 줄기
-    /// </summary>
     private void AutoCompleteTShape()
     {
-        if (cornerPoints.Count != 2)
-        {
-            Debug.LogWarning("T자형 자동 완성은 점이 정확히 2개일 때만 가능합니다.");
-            return;
-        }
+        if (cornerPoints.Count != 2) return;
 
         Vector3 p0 = cornerPoints[0];
         Vector3 p1 = cornerPoints[1];
-
-        Vector3 dir = (p1 - p0).normalized;
+        Vector3 dir  = (p1 - p0).normalized;
         Vector3 perp = Vector3.Cross(dir, Vector3.up).normalized;
-
         float width = Vector3.Distance(p0, p1);
         float depth = EstimateRoomDepth(p0, perp);
         if (Mathf.Abs(depth) < 1.5f) depth = Mathf.Sign(depth) * 4.0f;
 
-        // T자형: 상단 바 깊이 40%, 줄기 폭 40% (양쪽 30%씩 잘라냄)
-        float barDepthRatio = 0.35f;
-        float stemWidthRatio = 0.4f;
-        float sideMargin = (1f - stemWidthRatio) / 2f;
-
-        Vector3 barBottom_right = p1 + perp * (depth * barDepthRatio);
-        Vector3 stem_topRight = p0 + dir * (width * (1f - sideMargin)) + perp * (depth * barDepthRatio);
-        Vector3 stem_bottomRight = p0 + dir * (width * (1f - sideMargin)) + perp * depth;
-        Vector3 stem_bottomLeft = p0 + dir * (width * sideMargin) + perp * depth;
-        Vector3 stem_topLeft = p0 + dir * (width * sideMargin) + perp * (depth * barDepthRatio);
-        Vector3 barBottom_left = p0 + perp * (depth * barDepthRatio);
-
-        // Y 고정
-        barBottom_right.y = stem_topRight.y = stem_bottomRight.y =
-        stem_bottomLeft.y = stem_topLeft.y = barBottom_left.y = currentFloorY;
+        float barD = 0.35f, stemW = 0.4f, sideM = (1f - stemW) / 2f;
+        Vector3 v1 = p1 + perp * (depth * barD);
+        Vector3 v2 = p0 + dir * (width * (1f - sideM)) + perp * (depth * barD);
+        Vector3 v3 = p0 + dir * (width * (1f - sideM)) + perp * depth;
+        Vector3 v4 = p0 + dir * (width * sideM) + perp * depth;
+        Vector3 v5 = p0 + dir * (width * sideM) + perp * (depth * barD);
+        Vector3 v6 = p0 + perp * (depth * barD);
+        v1.y = v2.y = v3.y = v4.y = v5.y = v6.y = currentFloorY;
 
         cornerPoints.Clear();
-        cornerPoints.AddRange(new Vector3[] {
-            p0, p1,
-            barBottom_right, stem_topRight,
-            stem_bottomRight, stem_bottomLeft,
-            stem_topLeft, barBottom_left
-        });
-
+        cornerPoints.AddRange(new Vector3[] { p0, p1, v1, v2, v3, v4, v5, v6 });
         FinishRoom();
     }
 
-    /// <summary>
-    /// U자형 방 자동 완성 (2점 → 8점)
-    ///
-    ///  p0 ── p7    p2 ── p1
-    ///  |      |    |      |
-    ///  |      p6 ─ p3     |
-    ///  |                  |
-    ///  p5 ────────── p4
-    ///  
-    /// 안쪽 중앙에 사각형 홈이 파인 형태
-    /// </summary>
     private void AutoCompleteUShape()
     {
-        if (cornerPoints.Count != 2)
-        {
-            Debug.LogWarning("U자형 자동 완성은 점이 정확히 2개일 때만 가능합니다.");
-            return;
-        }
+        if (cornerPoints.Count != 2) return;
 
         Vector3 p0 = cornerPoints[0];
         Vector3 p1 = cornerPoints[1];
-
-        Vector3 dir = (p1 - p0).normalized;
+        Vector3 dir  = (p1 - p0).normalized;
         Vector3 perp = Vector3.Cross(dir, Vector3.up).normalized;
-
         float width = Vector3.Distance(p0, p1);
         float depth = EstimateRoomDepth(p0, perp);
         if (Mathf.Abs(depth) < 1.5f) depth = Mathf.Sign(depth) * 4.0f;
 
-        // U자형: 양쪽 벽 폭 25%, 홈 깊이 55%
-        float armWidthRatio = 0.25f;
-        float notchDepthRatio = 0.55f;
-
-        Vector3 pt1 = p1;  // 오른쪽 상단
-        Vector3 pt2 = p1 + perp * (depth * notchDepthRatio);  // 오른쪽 팔 안쪽 상단
-        Vector3 pt3 = p0 + dir * (width * (1f - armWidthRatio)) + perp * (depth * notchDepthRatio);
-        Vector3 pt4 = p0 + dir * (width * armWidthRatio) + perp * (depth * notchDepthRatio);
-        Vector3 pt5 = p0 + perp * (depth * notchDepthRatio);  // 왼쪽 팔 안쪽 상단
-        Vector3 pt6 = p0 + dir * (width * armWidthRatio) + perp * depth;
-        Vector3 pt7 = p0 + dir * (width * (1f - armWidthRatio)) + perp * depth;
-        Vector3 pt8 = p1 + perp * depth;
-
-        // 올바른 U자 순서로 정렬
-        // 외곽을 시계방향(또는 반시계)으로 한바퀴 도는 순서
+        float armW = 0.25f, notchD = 0.55f;
         Vector3 v0 = p0;
-        Vector3 v1 = pt1;
-        Vector3 v2 = pt8;                  // 오른쪽 하단
-        Vector3 v3 = pt7;                  // 오른쪽 팔 안쪽 하단
-        Vector3 v4 = pt3;                  // 홈 오른쪽 상단
-        Vector3 v5 = pt4;                  // 홈 왼쪽 상단
-        Vector3 v6 = pt6;                  // 왼쪽 팔 안쪽 하단
-        Vector3 v7 = p0 + perp * depth;    // 왼쪽 하단
-
+        Vector3 v1 = p1;
+        Vector3 v2 = p1 + perp * depth;
+        Vector3 v3 = p0 + dir * (width * (1f - armW)) + perp * depth;
+        Vector3 v4 = p0 + dir * (width * (1f - armW)) + perp * (depth * notchD);
+        Vector3 v5 = p0 + dir * (width * armW) + perp * (depth * notchD);
+        Vector3 v6 = p0 + dir * (width * armW) + perp * depth;
+        Vector3 v7 = p0 + perp * depth;
         v0.y = v1.y = v2.y = v3.y = v4.y = v5.y = v6.y = v7.y = currentFloorY;
 
         cornerPoints.Clear();
         cornerPoints.AddRange(new Vector3[] { v0, v1, v2, v3, v4, v5, v6, v7 });
-
         FinishRoom();
     }
 
-    /// <summary>
-    /// AR 바닥 평면 데이터를 분석하여 방의 깊이를 추정합니다.
-    /// </summary>
     private float EstimateRoomDepth(Vector3 origin, Vector3 direction)
     {
-        float maxDepth = 2.0f;
-        float maxDot = 0f;
+        float maxDepth = 2.0f, maxDot = 0f;
+        if (planeManager == null) return maxDepth;
 
         foreach (var plane in planeManager.trackables)
         {
             if (plane.alignment != UnityEngine.XR.ARSubsystems.PlaneAlignment.HorizontalUp) continue;
-
             foreach (Vector2 bound in plane.boundary)
             {
                 Vector3 worldBound = plane.transform.TransformPoint(new Vector3(bound.x, 0, bound.y));
                 worldBound.y = currentFloorY;
-
                 float dot = Vector3.Dot(worldBound - origin, direction);
-                if (Mathf.Abs(dot) > maxDot)
-                {
-                    maxDot = Mathf.Abs(dot);
-                    maxDepth = dot;
-                }
+                if (Mathf.Abs(dot) > maxDot) { maxDot = Mathf.Abs(dot); maxDepth = dot; }
             }
         }
-
         return maxDepth;
     }
 
@@ -633,30 +560,15 @@ public class RoomBuilder : MonoBehaviour
 
     public void FinishRoom()
     {
-        if (cornerPoints.Count < 3)
-        {
-            Debug.Log("방을 만들려면 최소 3개의 점이 필요합니다.");
-            return;
-        }
-
-        if (isRoomFinished)
-        {
-            Debug.Log("이미 방이 완성되었습니다.");
-            return;
-        }
+        if (cornerPoints.Count < 3) { Debug.Log("최소 3개의 점이 필요합니다."); return; }
+        if (isRoomFinished)         { Debug.Log("이미 방이 완성되었습니다.");    return; }
 
         isRoomFinished = true;
         lineRenderer.loop = true;
 
-        // 벽 생성 (N각형의 모든 변에 대해)
         for (int i = 0; i < cornerPoints.Count; i++)
-        {
-            Vector3 p1 = cornerPoints[i];
-            Vector3 p2 = cornerPoints[(i + 1) % cornerPoints.Count];
-            CreateWallSegment(p1, p2, i);
-        }
+            CreateWallSegment(cornerPoints[i], cornerPoints[(i + 1) % cornerPoints.Count], i);
 
-        // 바닥 생성 (Ear Clipping으로 오목 다각형도 지원)
         CreateCustomFloorMesh();
 
         lineRenderer.enabled = false;
@@ -667,14 +579,8 @@ public class RoomBuilder : MonoBehaviour
     }
 
     // ─────────────────────────────────────────────
-    //  바닥 메쉬 생성 (Ear Clipping 삼각분할)
+    //  바닥 메쉬 생성 (Ear Clipping)
     // ─────────────────────────────────────────────
-
-    /// <summary>
-    /// Ear Clipping 알고리즘으로 임의의 단순 다각형(볼록/오목 모두)을 삼각분할합니다.
-    /// 기존 Fan Triangulation은 볼록 다각형에서만 정확했으나,
-    /// Ear Clipping은 L자형, T자형, U자형 등 오목 다각형에서도 올바르게 작동합니다.
-    /// </summary>
     private void CreateCustomFloorMesh()
     {
         if (cornerPoints.Count < 3) return;
@@ -684,273 +590,139 @@ public class RoomBuilder : MonoBehaviour
         floorObj.transform.SetParent(roomFrameObject.transform);
 
         Vector3 centerPos = Vector3.zero;
-        for (int i = 0; i < cornerPoints.Count; i++)
-            centerPos += cornerPoints[i];
+        foreach (var p in cornerPoints) centerPos += p;
         centerPos /= cornerPoints.Count;
         floorObj.transform.position = centerPos;
 
-        MeshFilter meshFilter = floorObj.AddComponent<MeshFilter>();
-        MeshRenderer meshRenderer = floorObj.AddComponent<MeshRenderer>();
-        if (floorMaterial != null)
-            meshRenderer.material = floorMaterial;
+        MeshFilter   mf  = floorObj.AddComponent<MeshFilter>();
+        MeshRenderer mr  = floorObj.AddComponent<MeshRenderer>();
+        if (floorMaterial != null) mr.material = floorMaterial;
 
-        // ── Ear Clipping 삼각분할 ──
-        List<int> earTriangles = EarClipTriangulate(cornerPoints);
+        List<int> earTris = EarClipTriangulate(cornerPoints);
+        int n = cornerPoints.Count;
+        Mesh mesh = new Mesh { name = "CustomFloorMesh" };
 
-        int vertCount = cornerPoints.Count;
-        Mesh floorMesh = new Mesh();
-        floorMesh.name = "CustomFloorMesh";
+        Vector3[] verts   = new Vector3[n * 2];
+        Vector3[] normals = new Vector3[n * 2];
+        Vector2[] uvs     = new Vector2[n * 2];
 
-        // 양면 렌더링용 버텍스 (정면 + 뒷면)
-        Vector3[] vertices = new Vector3[vertCount * 2];
-        Vector3[] normals = new Vector3[vertCount * 2];
-        Vector2[] uvs = new Vector2[vertCount * 2];
-
-        for (int i = 0; i < vertCount; i++)
+        for (int i = 0; i < n; i++)
         {
-            Vector3 localPos = cornerPoints[i] - centerPos;
-
-            vertices[i] = localPos;
-            normals[i] = Vector3.up;
-            uvs[i] = new Vector2(cornerPoints[i].x, cornerPoints[i].z);
-
-            vertices[i + vertCount] = localPos;
-            normals[i + vertCount] = Vector3.down;
-            uvs[i + vertCount] = uvs[i];
+            Vector3 lp = cornerPoints[i] - centerPos;
+            verts[i] = verts[i + n] = lp;
+            normals[i] = Vector3.up; normals[i + n] = Vector3.down;
+            uvs[i] = uvs[i + n] = new Vector2(cornerPoints[i].x, cornerPoints[i].z);
         }
 
-        // Ear Clipping 결과를 양면으로 확장
-        // EarClipTriangulate는 CW 순서로 출력 → Unity에서 법선 Vector3.up (정면)
-        List<int> allTriangles = new List<int>();
-        for (int i = 0; i < earTriangles.Count; i += 3)
+        List<int> tris = new List<int>();
+        for (int i = 0; i < earTris.Count; i += 3)
         {
-            // 정면 (위에서 볼 때, CW → 법선 up)
-            allTriangles.Add(earTriangles[i]);
-            allTriangles.Add(earTriangles[i + 1]);
-            allTriangles.Add(earTriangles[i + 2]);
-
-            // 뒷면 (아래에서 볼 때, 순서 반전 → 법선 down)
-            allTriangles.Add(earTriangles[i] + vertCount);
-            allTriangles.Add(earTriangles[i + 2] + vertCount);
-            allTriangles.Add(earTriangles[i + 1] + vertCount);
+            tris.Add(earTris[i]); tris.Add(earTris[i+1]); tris.Add(earTris[i+2]);
+            tris.Add(earTris[i]+n); tris.Add(earTris[i+2]+n); tris.Add(earTris[i+1]+n);
         }
 
-        floorMesh.vertices = vertices;
-        floorMesh.normals = normals;
-        floorMesh.uv = uvs;
-        floorMesh.triangles = allTriangles.ToArray();
-        floorMesh.RecalculateBounds();
+        mesh.vertices = verts; mesh.normals = normals; mesh.uv = uvs;
+        mesh.triangles = tris.ToArray();
+        mesh.RecalculateBounds();
+        mf.mesh = mesh;
 
-        meshFilter.mesh = floorMesh;
-
-        // ── Compound Convex Collider ──
-        // 오목 MeshCollider는 동적 Rigidbody와 함께 사용할 수 없으므로,
-        // Ear Clipping 결과의 각 삼각형을 삼각 프리즘(바닥~약간의 두께)으로 만들어
-        // 개별 convex MeshCollider로 붙입니다.
-        // Unity는 자식 오브젝트의 Collider들을 Compound Collider로 자동 합쳐줍니다.
-        float floorThickness = 0.05f;
-        for (int i = 0; i < earTriangles.Count; i += 3)
+        // Compound Convex Collider
+        float thickness = 0.05f;
+        for (int i = 0; i < earTris.Count; i += 3)
         {
-            Vector3 a = cornerPoints[earTriangles[i]] - centerPos;
-            Vector3 b = cornerPoints[earTriangles[i + 1]] - centerPos;
-            Vector3 c = cornerPoints[earTriangles[i + 2]] - centerPos;
+            Vector3 a = cornerPoints[earTris[i]]   - centerPos;
+            Vector3 b = cornerPoints[earTris[i+1]] - centerPos;
+            Vector3 c = cornerPoints[earTris[i+2]] - centerPos;
+            Vector3 d = Vector3.down * thickness;
 
-            // 삼각 프리즘: 상단 3개 + 하단 3개 = 6개 꼭짓점
-            Vector3 downOffset = Vector3.down * floorThickness;
-            Vector3[] prismVerts = new Vector3[]
-            {
-                a, b, c,                               // 상단 면
-                a + downOffset, b + downOffset, c + downOffset  // 하단 면
-            };
+            Mesh pm = new Mesh { name = $"FloorCollider_{i/3}" };
+            pm.vertices  = new Vector3[] { a, b, c, a+d, b+d, c+d };
+            pm.triangles = new int[] { 0,1,2, 3,5,4, 0,3,1,1,3,4, 1,4,2,2,4,5, 2,5,0,0,5,3 };
+            pm.RecalculateNormals(); pm.RecalculateBounds();
 
-            // 프리즘의 5개 면 (상단, 하단, 측면 3개)을 삼각형으로 구성
-            int[] prismTris = new int[]
-            {
-                // 상단 (CW)
-                0, 1, 2,
-                // 하단 (반전)
-                3, 5, 4,
-                // 측면 1
-                0, 3, 1, 1, 3, 4,
-                // 측면 2
-                1, 4, 2, 2, 4, 5,
-                // 측면 3
-                2, 5, 0, 0, 5, 3
-            };
-
-            Mesh prismMesh = new Mesh();
-            prismMesh.name = $"FloorCollider_{i / 3}";
-            prismMesh.vertices = prismVerts;
-            prismMesh.triangles = prismTris;
-            prismMesh.RecalculateNormals();
-            prismMesh.RecalculateBounds();
-
-            GameObject colliderChild = new GameObject($"FloorCollider_{i / 3}");
-            colliderChild.transform.SetParent(floorObj.transform, false);
-            colliderChild.transform.localPosition = Vector3.zero;
-
-            MeshCollider mc = colliderChild.AddComponent<MeshCollider>();
-            mc.sharedMesh = prismMesh;
-            mc.convex = true;
+            GameObject cc = new GameObject($"FloorCollider_{i/3}");
+            cc.transform.SetParent(floorObj.transform, false);
+            var mc = cc.AddComponent<MeshCollider>();
+            mc.sharedMesh = pm; mc.convex = true;
         }
     }
 
     // ─────────────────────────────────────────────
-    //  Ear Clipping 삼각분할 알고리즘
+    //  Ear Clipping 삼각분할
     // ─────────────────────────────────────────────
-
-    /// <summary>
-    /// 2D(XZ 평면) Ear Clipping 삼각분할.
-    /// 입력: 3D 점 리스트 (Y는 무시하고 XZ만 사용)
-    /// 출력: 삼각형 인덱스 리스트 (원본 cornerPoints 기준 인덱스)
-    /// </summary>
-    /// <summary>
-    /// 2D(XZ 평면) Ear Clipping 삼각분할.
-    /// 
-    /// Unity는 좌수(left-handed) 좌표계를 사용하므로, 위에서 내려다볼 때
-    /// 삼각형 인덱스가 시계방향(CW)이면 법선이 Vector3.up을 향합니다.
-    /// 
-    /// 이 함수는 다각형의 winding을 판별한 뒤, 최종 출력 삼각형이
-    /// 항상 CW(= Unity에서 법선 up)가 되도록 보장합니다.
-    /// </summary>
     private List<int> EarClipTriangulate(List<Vector3> polygon)
     {
         List<int> triangles = new List<int>();
         int n = polygon.Count;
         if (n < 3) return triangles;
 
-        // 1. Shoelace formula로 다각형 감김 방향 판별 (XZ 평면)
         float signedArea = 0f;
         for (int i = 0; i < n; i++)
         {
-            Vector3 current = polygon[i];
+            Vector3 cur  = polygon[i];
             Vector3 next = polygon[(i + 1) % n];
-            signedArea += (current.x * next.z - next.x * current.z);
+            signedArea += (cur.x * next.z - next.x * cur.z);
         }
+        if (Mathf.Approximately(signedArea, 0f)) { Debug.LogWarning("면적이 0입니다."); return triangles; }
 
-        if (Mathf.Approximately(signedArea, 0f))
-        {
-            Debug.LogWarning("다각형의 면적이 0입니다. 점들이 일직선 위에 있습니다.");
-            return triangles;
-        }
-
-        // signedArea > 0 → XZ 평면에서 CCW (2D 수학 기준)
-        // signedArea < 0 → XZ 평면에서 CW  (2D 수학 기준)
-        // Unity 좌수 좌표계에서 위에서 봤을 때:
-        //   CW 삼각형 → 법선 up (우리가 원하는 방향)
-        // 따라서 Ear Clipping은 입력 순서 그대로 처리하되,
-        // "볼록" 판별 기준만 winding에 맞추면 됩니다.
         bool isInputCCW = signedArea > 0f;
-
-        // 2. 인덱스 리스트 (항상 원본 순서)
         List<int> indices = new List<int>();
-        for (int i = 0; i < n; i++)
-            indices.Add(i);
+        for (int i = 0; i < n; i++) indices.Add(i);
 
-        int count = indices.Count;
-        int maxIterations = count * count;
-        int iteration = 0;
-        int i_idx = 0;
+        int count = n, maxIter = n * n, iter = 0, idx = 0;
 
-        while (count > 2 && iteration < maxIterations)
+        while (count > 2 && iter < maxIter)
         {
-            iteration++;
+            iter++;
+            int iPrev = ((idx - 1) % count + count) % count;
+            int iCurr = idx % count;
+            int iNext = (idx + 1) % count;
 
-            int idxPrev = ((i_idx - 1) % count + count) % count;
-            int idxCurr = i_idx % count;
-            int idxNext = (i_idx + 1) % count;
+            int pi = indices[iPrev], ci = indices[iCurr], ni = indices[iNext];
 
-            int prevIdx = indices[idxPrev];
-            int currIdx = indices[idxCurr];
-            int nextIdx = indices[idxNext];
+            Vector2 A = new Vector2(polygon[pi].x, polygon[pi].z);
+            Vector2 B = new Vector2(polygon[ci].x, polygon[ci].z);
+            Vector2 C = new Vector2(polygon[ni].x, polygon[ni].z);
 
-            Vector2 A = new Vector2(polygon[prevIdx].x, polygon[prevIdx].z);
-            Vector2 B = new Vector2(polygon[currIdx].x, polygon[currIdx].z);
-            Vector2 C = new Vector2(polygon[nextIdx].x, polygon[nextIdx].z);
-
-            // 볼록 판별: cross의 부호가 winding에 따라 달라짐
-            // CCW 입력 → cross > 0 이 볼록
-            // CW 입력  → cross < 0 이 볼록
-            float cross = Cross2D(A, B, C);
+            float cross   = Cross2D(A, B, C);
             bool isConvex = isInputCCW ? (cross > 0f) : (cross < 0f);
 
             if (isConvex)
             {
-                // "귀"인지 확인: 삼각형 ABC 안에 다른 꼭짓점이 없어야 함
                 bool isEar = true;
                 for (int j = 0; j < count; j++)
                 {
-                    int testIdx = indices[j];
-                    if (testIdx == prevIdx || testIdx == currIdx || testIdx == nextIdx) continue;
-
-                    Vector2 P = new Vector2(polygon[testIdx].x, polygon[testIdx].z);
-                    if (IsPointInTriangle(P, A, B, C))
-                    {
-                        isEar = false;
-                        break;
-                    }
+                    int t = indices[j];
+                    if (t == pi || t == ci || t == ni) continue;
+                    if (IsPointInTriangle(new Vector2(polygon[t].x, polygon[t].z), A, B, C)) { isEar = false; break; }
                 }
 
                 if (isEar)
                 {
-                    // 삼각형 추가
-                    // CCW 입력이면 그대로 넣으면 CCW 삼각형 → Unity에서 법선 down
-                    // → CW로 뒤집어야 법선 up이 됨
-                    // CW 입력이면 그대로 넣으면 CW 삼각형 → Unity에서 법선 up (정상)
-                    if (isInputCCW)
-                    {
-                        // 순서 뒤집기: prev, next, curr (CW로 변환)
-                        triangles.Add(prevIdx);
-                        triangles.Add(nextIdx);
-                        triangles.Add(currIdx);
-                    }
-                    else
-                    {
-                        // 이미 CW → 그대로
-                        triangles.Add(prevIdx);
-                        triangles.Add(currIdx);
-                        triangles.Add(nextIdx);
-                    }
+                    if (isInputCCW) { triangles.Add(pi); triangles.Add(ni); triangles.Add(ci); }
+                    else            { triangles.Add(pi); triangles.Add(ci); triangles.Add(ni); }
 
-                    // 현재 꼭짓점 제거
-                    indices.RemoveAt(idxCurr);
+                    indices.RemoveAt(iCurr);
                     count--;
-
                     if (count <= 2) break;
-                    i_idx = 0;
+                    idx = 0;
                     continue;
                 }
             }
 
-            i_idx++;
-            if (i_idx >= count) i_idx = 0;
+            idx++;
+            if (idx >= count) idx = 0;
         }
-
         return triangles;
     }
 
-    /// <summary>
-    /// 2D 외적 (A→B × A→C).
-    /// </summary>
     private float Cross2D(Vector2 A, Vector2 B, Vector2 C)
-    {
-        return (B.x - A.x) * (C.y - A.y) - (B.y - A.y) * (C.x - A.x);
-    }
+        => (B.x - A.x) * (C.y - A.y) - (B.y - A.y) * (C.x - A.x);
 
-    /// <summary>
-    /// 점 P가 삼각형 ABC 내부에 있는지 판별 (부호 일관성 방식).
-    /// 삼각형의 winding에 관계없이 작동합니다.
-    /// </summary>
     private bool IsPointInTriangle(Vector2 P, Vector2 A, Vector2 B, Vector2 C)
     {
-        float d1 = Cross2D(A, B, P);
-        float d2 = Cross2D(B, C, P);
-        float d3 = Cross2D(C, A, P);
-
-        bool hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
-        bool hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
-
-        return !(hasNeg && hasPos);
+        float d1 = Cross2D(A, B, P), d2 = Cross2D(B, C, P), d3 = Cross2D(C, A, P);
+        return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
     }
 
     // ─────────────────────────────────────────────
@@ -959,65 +731,48 @@ public class RoomBuilder : MonoBehaviour
     private void CreateWallSegment(Vector3 start, Vector3 end, int index)
     {
         Vector3 center = (start + end) / 2f;
-        center.y += (ceilingHeight / 2f);
+        center.y += ceilingHeight / 2f;
 
-        float length = Vector3.Distance(start, end);
-
-        Vector3 direction = (end - start).normalized;
-        Quaternion rotation = Quaternion.LookRotation(direction);
-
-        GameObject wall = Instantiate(wallPrefab, center, rotation, roomFrameObject.transform);
-        wall.name = "Wall_" + index;
+        float      length    = Vector3.Distance(start, end);
+        Quaternion rotation  = Quaternion.LookRotation((end - start).normalized);
+        GameObject wall      = Instantiate(wallPrefab, center, rotation, roomFrameObject.transform);
+        wall.name            = "Wall_" + index;
         wall.transform.localScale = new Vector3(wallThickness, ceilingHeight, length);
     }
 
     // ─────────────────────────────────────────────
-    //  프리뷰 메쉬 (Ear Clipping 적용)
+    //  프리뷰 메쉬
     // ─────────────────────────────────────────────
     private void UpdatePreviewMesh(List<Vector3> vertices)
     {
         if (vertices == null || vertices.Count < 3) return;
 
         Vector3 centerPos = Vector3.zero;
-        for (int i = 0; i < vertices.Count; i++)
-            centerPos += vertices[i];
+        foreach (var v in vertices) centerPos += v;
         centerPos /= vertices.Count;
         previewMeshObj.transform.position = centerPos;
 
-        // Ear Clipping으로 프리뷰도 정확하게 삼각분할
-        List<int> earTriangles = EarClipTriangulate(vertices);
+        List<int> earTris = EarClipTriangulate(vertices);
+        int n = vertices.Count;
+        Mesh mesh = new Mesh { name = "PreviewFloorMesh" };
 
-        int vertCount = vertices.Count;
-        Mesh mesh = new Mesh();
-        mesh.name = "PreviewFloorMesh";
-
-        Vector3[] verts = new Vector3[vertCount * 2];
-        Vector3[] normals = new Vector3[vertCount * 2];
-
-        for (int i = 0; i < vertCount; i++)
+        Vector3[] verts   = new Vector3[n * 2];
+        Vector3[] normals = new Vector3[n * 2];
+        for (int i = 0; i < n; i++)
         {
-            Vector3 localPos = vertices[i] - centerPos;
-            verts[i] = localPos;
-            verts[i + vertCount] = localPos;
-            normals[i] = Vector3.up;
-            normals[i + vertCount] = Vector3.down;
+            verts[i] = verts[i + n] = vertices[i] - centerPos;
+            normals[i] = Vector3.up; normals[i + n] = Vector3.down;
         }
 
-        List<int> allTriangles = new List<int>();
-        for (int i = 0; i < earTriangles.Count; i += 3)
+        List<int> tris = new List<int>();
+        for (int i = 0; i < earTris.Count; i += 3)
         {
-            allTriangles.Add(earTriangles[i]);
-            allTriangles.Add(earTriangles[i + 1]);
-            allTriangles.Add(earTriangles[i + 2]);
-
-            allTriangles.Add(earTriangles[i] + vertCount);
-            allTriangles.Add(earTriangles[i + 2] + vertCount);
-            allTriangles.Add(earTriangles[i + 1] + vertCount);
+            tris.Add(earTris[i]); tris.Add(earTris[i+1]); tris.Add(earTris[i+2]);
+            tris.Add(earTris[i]+n); tris.Add(earTris[i+2]+n); tris.Add(earTris[i+1]+n);
         }
 
-        mesh.vertices = verts;
-        mesh.normals = normals;
-        mesh.triangles = allTriangles.ToArray();
+        mesh.vertices = verts; mesh.normals = normals;
+        mesh.triangles = tris.ToArray();
         mesh.RecalculateBounds();
         previewMeshFilter.mesh = mesh;
     }

@@ -26,7 +26,7 @@ public struct SeismicFrame
 public class EarthquakeManager : MonoBehaviour
 {
     [Header("Server Settings")]
-    public string serverUrl = "ws://localhost:8000";
+    public string serverUrl = "wss://api.earquake.xyz:8000";
 
     [Header("Simulation Parameters")]
     public int floor = 1;

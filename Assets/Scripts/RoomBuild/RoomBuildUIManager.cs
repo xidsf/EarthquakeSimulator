@@ -7,6 +7,13 @@ public enum RoomUIState { RoomSizeState, RoomSimulationState }
 
 public class RoomBuildUIManager : MonoBehaviour
 {
+    [Header("폰트")]
+    [Tooltip("모든 TMP 텍스트에 공통으로 적용할 폰트 에셋")]
+    [SerializeField] private TMP_FontAsset uiFont;
+
+    /// <summary>외부(RoomBuilder 등)에서 동일 폰트를 사용할 때 참조</summary>
+    public TMP_FontAsset UIFont => uiFont;
+
     [Header("Floor Setting")]
     [SerializeField] private GameObject floorSettingBasePanel;
     [SerializeField] private TMP_InputField inputFieldRoomFloor;
@@ -24,26 +31,22 @@ public class RoomBuildUIManager : MonoBehaviour
 
     [SerializeField] EarthquakeManager EarthquakeManager;
 
-    // ─────────────────────────────────────────────
-    //  HoloLens 2 World Space UI 설정
-    // ─────────────────────────────────────────────
     [Header("HoloLens 2 World Space UI")]
+    [SerializeField] private Canvas mainCanvas;
+    
     [Tooltip("Canvas를 사용자 앞 몇 미터에 배치할지")]
     [SerializeField] private float uiDistance = 1.2f;
 
     [Tooltip("Canvas 아래 오프셋 (눈 높이 기준 내림)")]
     [SerializeField] private float uiVerticalOffset = -0.1f;
 
-    [Tooltip("태그어롱 이동 속도")]
-    [SerializeField] private float followSpeed = 2f;
+    [Tooltip("Canvas 추종 속도")]
+    [SerializeField] private float followSpeed = 5f;
 
-    [Tooltip("이 각도를 벗어나면 Canvas가 따라옴 (수평)")]
-    [SerializeField] private float followAngleThreshold = 35f;
-
-    private Canvas mainCanvas;
+    private CanvasGroup mainCanvasGroup;
     private Transform cameraTransform;
     private bool canvasInitialized = false;
-
+    
     // ─────────────────────────────────────────────
 
     private int roomFloor;
@@ -56,12 +59,24 @@ public class RoomBuildUIManager : MonoBehaviour
 
     void Start()
     {
-        floorSettingBasePanel.SetActive(true);
-        checkPanel.SetActive(false);
-        settingBasePanel.SetActive(false);
+        if (floorSettingBasePanel != null) floorSettingBasePanel.SetActive(true);
+        if (checkPanel           != null) checkPanel.SetActive(false);
+        if (settingBasePanel     != null) settingBasePanel.SetActive(false);
 
         if (EarthquakeManager == null)
             EarthquakeManager = FindAnyObjectByType<EarthquakeManager>();
+
+        if (mainCanvas != null)
+        {
+            mainCanvasGroup = mainCanvas.GetComponent<CanvasGroup>();
+            // 캔버스 초기화 (카메라 할당 및 추종 활성화)
+            if (Camera.main != null)
+            {
+                mainCanvas.worldCamera = Camera.main;
+                cameraTransform = Camera.main.transform;
+                canvasInitialized = true;
+            }
+        }
 
         if (alertUI != null)
         {
@@ -74,8 +89,8 @@ public class RoomBuildUIManager : MonoBehaviour
 
         SetUIState(RoomUIState.RoomSizeState);
 
-        // HoloLens 2: World Space Canvas 설정
-        SetupHoloLensCanvas();
+        // 설정된 폰트를 Canvas 하위 모든 TMP에 적용
+        ApplyFontToCanvas();
     }
 
     void Update()
@@ -85,88 +100,24 @@ public class RoomBuildUIManager : MonoBehaviour
             UpdateCanvasFollowBehavior();
     }
 
-    // ─────────────────────────────────────────────
-    //  HoloLens 2: Canvas를 World Space로 전환
-    // ─────────────────────────────────────────────
-    private void SetupHoloLensCanvas()
-    {
-        // floorSettingBasePanel → 부모 Canvas 탐색
-        mainCanvas = floorSettingBasePanel?.GetComponentInParent<Canvas>();
-        if (mainCanvas == null)
-        {
-            Debug.LogWarning("[RoomBuildUIManager] Canvas를 찾을 수 없습니다.");
-            return;
-        }
-
-        // Screen Space → World Space 전환
-        mainCanvas.renderMode  = RenderMode.WorldSpace;
-        mainCanvas.worldCamera = Camera.main;
-
-        // 1픽셀 = 0.001미터 (1920px Canvas → 약 1.9m 폭)
-        mainCanvas.transform.localScale = Vector3.one * 0.001f;
-
-        // MRTK3 손 추적 호환: GraphicRaycaster → TrackedDeviceGraphicRaycaster
-        ReplaceGraphicRaycaster(mainCanvas);
-
-        if (Camera.main != null)
-        {
-            cameraTransform = Camera.main.transform;
-            PlaceCanvasInFrontOfUser();
-            canvasInitialized = true;
-        }
-    }
-
-    // GraphicRaycaster → TrackedDeviceGraphicRaycaster 교체
-    // MRTK3 손 추적 Ray가 Canvas UI를 인식하려면 TrackedDeviceGraphicRaycaster 필요
-    private void ReplaceGraphicRaycaster(Canvas canvas)
-    {
-        var legacy = canvas.GetComponent<UnityEngine.UI.GraphicRaycaster>();
-        if (legacy != null)
-            Destroy(legacy);
-
-        if (canvas.GetComponent<TrackedDeviceGraphicRaycaster>() == null)
-            canvas.gameObject.AddComponent<TrackedDeviceGraphicRaycaster>();
-    }
-
-    // Canvas를 사용자 정면에 배치
-    private void PlaceCanvasInFrontOfUser()
-    {
-        Vector3 fwd = GetFlatForward();
-        Vector3 targetPos = cameraTransform.position
-                            + fwd * uiDistance
-                            + Vector3.up * uiVerticalOffset;
-
-        mainCanvas.transform.position = targetPos;
-        mainCanvas.transform.rotation = Quaternion.LookRotation(fwd, Vector3.up);
-    }
-
-    // 태그어롱: 사용자가 일정 각도 이상 벗어나면 Canvas가 따라옴
+    // Canvas 시야 추종 (매 프레임 Lerp)
     private void UpdateCanvasFollowBehavior()
     {
         if (mainCanvas == null || cameraTransform == null) return;
 
-        Vector3 fwd    = GetFlatForward();
-        Vector3 toUI   = mainCanvas.transform.position - cameraTransform.position;
-        toUI.y = 0;
+        Vector3 fwd = GetFlatForward();
 
-        if (toUI.sqrMagnitude < 0.001f) return;
+        Vector3 targetPos = cameraTransform.position
+                          + fwd * uiDistance
+                          + Vector3.up * uiVerticalOffset;
+        Quaternion targetRot = Quaternion.LookRotation(fwd, Vector3.up);
 
-        float angle = Vector3.Angle(fwd, toUI.normalized);
-        if (angle > followAngleThreshold)
-        {
-            Vector3 targetPos = cameraTransform.position
-                                + fwd * uiDistance
-                                + Vector3.up * uiVerticalOffset;
-
-            mainCanvas.transform.position = Vector3.Lerp(
-                mainCanvas.transform.position, targetPos,
-                Time.deltaTime * followSpeed);
-
-            Quaternion targetRot = Quaternion.LookRotation(fwd, Vector3.up);
-            mainCanvas.transform.rotation = Quaternion.Slerp(
-                mainCanvas.transform.rotation, targetRot,
-                Time.deltaTime * followSpeed);
-        }
+        // 매 프레임 Lerp → 부드러운 추종
+        float t = Time.deltaTime * followSpeed;
+        mainCanvas.transform.position = Vector3.Lerp(
+            mainCanvas.transform.position, targetPos, t);
+        mainCanvas.transform.rotation = Quaternion.Slerp(
+            mainCanvas.transform.rotation, targetRot, t);
     }
 
     // 수평 방향 Forward (Y 제거)
@@ -183,6 +134,8 @@ public class RoomBuildUIManager : MonoBehaviour
     // ─────────────────────────────────────────────
     public void OnConfirmFloorSetting()
     {
+        if (inputFieldRoomFloor == null) return;
+
         string input = inputFieldRoomFloor.text;
 
         if (!int.TryParse(input, out int floor) || floor < 1)
@@ -192,7 +145,7 @@ public class RoomBuildUIManager : MonoBehaviour
         }
 
         roomFloor = floor;
-        floorSettingBasePanel.SetActive(false);
+        if (floorSettingBasePanel != null) floorSettingBasePanel.SetActive(false);
         if (EarthquakeManager != null)
             EarthquakeManager.SetFloorValue(floor);
     }
@@ -200,8 +153,8 @@ public class RoomBuildUIManager : MonoBehaviour
     // ─────────────────────────────────────────────
     //  Check Panel
     // ─────────────────────────────────────────────
-    public void ShowCheckPanel() => checkPanel.SetActive(true);
-    public void HideCheckPanel() => checkPanel.SetActive(false);
+    public void ShowCheckPanel() { if (checkPanel != null) checkPanel.SetActive(true); }
+    public void HideCheckPanel() { if (checkPanel != null) checkPanel.SetActive(false); }
 
     // ─────────────────────────────────────────────
     //  UI State
@@ -212,12 +165,12 @@ public class RoomBuildUIManager : MonoBehaviour
         switch (state)
         {
             case RoomUIState.RoomSizeState:
-                bottomPanel.SetActive(true);
-                simulationPanel.SetActive(false);
+                if (bottomPanel      != null) bottomPanel.SetActive(true);
+                if (simulationPanel  != null) simulationPanel.SetActive(false);
                 break;
             case RoomUIState.RoomSimulationState:
-                bottomPanel.SetActive(false);
-                simulationPanel.SetActive(true);
+                if (bottomPanel      != null) bottomPanel.SetActive(false);
+                if (simulationPanel  != null) simulationPanel.SetActive(true);
                 break;
         }
     }
@@ -227,8 +180,29 @@ public class RoomBuildUIManager : MonoBehaviour
     // ─────────────────────────────────────────────
     //  Setting Panel
     // ─────────────────────────────────────────────
-    public void ShowSettingBasePanel() => settingBasePanel.SetActive(true);
-    public void HideSettingBasePanel() => settingBasePanel.SetActive(false);
+    public void ShowSettingBasePanel() { if (settingBasePanel != null) settingBasePanel.SetActive(true); }
+    public void HideSettingBasePanel() { if (settingBasePanel != null) settingBasePanel.SetActive(false); }
+
+    // ─────────────────────────────────────────────
+    //  폰트 일괄 적용
+    // ─────────────────────────────────────────────
+    private void ApplyFontToCanvas()
+    {
+        if (uiFont == null || mainCanvas == null) return;
+
+        // 일반 TMP 텍스트
+        foreach (var tmp in mainCanvas.GetComponentsInChildren<TextMeshProUGUI>(true))
+            tmp.font = uiFont;
+
+        // InputField 내부 텍스트 / 플레이스홀더
+        foreach (var input in mainCanvas.GetComponentsInChildren<TMP_InputField>(true))
+        {
+            if (input.textComponent != null)
+                input.textComponent.font = uiFont;
+            if (input.placeholder is TextMeshProUGUI ph)
+                ph.font = uiFont;
+        }
+    }
 
     // ─────────────────────────────────────────────
     //  Alert UI

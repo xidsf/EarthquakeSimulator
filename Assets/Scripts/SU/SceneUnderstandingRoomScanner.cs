@@ -64,6 +64,8 @@ public partial class SceneUnderstandingRoomScanner : MonoBehaviour
     private GameObject rawRoot;
     private GameObject roomRoot;
 
+    public Transform RawMeshRootTransform => rawRoot != null ? rawRoot.transform : null;
+
     private readonly List<ExtractedSceneMesh> extractedSceneMeshes = new List<ExtractedSceneMesh>();
 
     private class ExtractedSceneMesh
@@ -295,9 +297,15 @@ public partial class SceneUnderstandingRoomScanner : MonoBehaviour
     {
         foreach (SceneObject sceneObject in scene.SceneObjects)
         {
-            if (sceneObject.Kind != SceneObjectKind.Wall &&
-                sceneObject.Kind != SceneObjectKind.Floor &&
-                sceneObject.Kind != SceneObjectKind.Ceiling)
+            bool exportableKind =
+                sceneObject.Kind == SceneObjectKind.Wall ||
+                sceneObject.Kind == SceneObjectKind.Floor ||
+                sceneObject.Kind == SceneObjectKind.Ceiling ||
+                sceneObject.Kind == SceneObjectKind.World ||
+                sceneObject.Kind == SceneObjectKind.Platform ||
+                sceneObject.Kind == SceneObjectKind.Unknown;
+
+            if (!exportableKind)
             {
                 continue;
             }

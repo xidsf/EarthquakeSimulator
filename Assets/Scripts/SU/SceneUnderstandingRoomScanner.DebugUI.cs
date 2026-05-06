@@ -16,13 +16,10 @@ public partial class SceneUnderstandingRoomScanner
 
     [Header("Simple Debug UI - MRTK Buttons")]
     public PressableButton forceUpdateButton;
-    public PressableButton startScanButton;
-    public PressableButton stopScanButton;
-    public PressableButton lockRoomButton;
-    public PressableButton unlockRoomButton;
+    public PressableButton autoUpdateToggleButton;
+    public PressableButton lockToggleButton;
     public PressableButton toggleRawMeshButton;
     public PressableButton toggleWallSegmentButton;
-    public PressableButton clearButton;
     public PressableButton resetButton;
 
     [Header("Simple Debug UI - Options")]
@@ -36,10 +33,8 @@ public partial class SceneUnderstandingRoomScanner
     private Coroutine debugRefreshCoroutine;
 
     private UnityAction forceUpdateAction;
-    private UnityAction startScanAction;
-    private UnityAction stopScanAction;
-    private UnityAction lockRoomAction;
-    private UnityAction unlockRoomAction;
+    private UnityAction autoUpdateToggleAction;
+    private UnityAction lockToggleAction;
     private UnityAction toggleRawMeshAction;
     private UnityAction toggleWallSegmentAction;
     private UnityAction clearAction;
@@ -83,10 +78,8 @@ public partial class SceneUnderstandingRoomScanner
     private void CreateDebugUiActions()
     {
         forceUpdateAction ??= DebugForceUpdate;
-        startScanAction ??= DebugStartScan;
-        stopScanAction ??= DebugStopScan;
-        lockRoomAction ??= DebugLockRoom;
-        unlockRoomAction ??= DebugUnlockRoom;
+        autoUpdateToggleAction ??= DebugToggleAutoUpdate;
+        lockToggleAction ??= DebugToggleLock;
         toggleRawMeshAction ??= DebugToggleRawMesh;
         toggleWallSegmentAction ??= DebugToggleWallSegment;
         clearAction ??= DebugClearVisuals;
@@ -96,26 +89,20 @@ public partial class SceneUnderstandingRoomScanner
     private void RegisterDebugButtons()
     {
         AddClick(forceUpdateButton, forceUpdateAction);
-        AddClick(startScanButton, startScanAction);
-        AddClick(stopScanButton, stopScanAction);
-        AddClick(lockRoomButton, lockRoomAction);
-        AddClick(unlockRoomButton, unlockRoomAction);
+        AddClick(autoUpdateToggleButton, autoUpdateToggleAction);
+        AddClick(lockToggleButton, lockToggleAction);
         AddClick(toggleRawMeshButton, toggleRawMeshAction);
         AddClick(toggleWallSegmentButton, toggleWallSegmentAction);
-        AddClick(clearButton, clearAction);
         AddClick(resetButton, resetAction);
     }
 
     private void UnregisterDebugButtons()
     {
         RemoveClick(forceUpdateButton, forceUpdateAction);
-        RemoveClick(startScanButton, startScanAction);
-        RemoveClick(stopScanButton, stopScanAction);
-        RemoveClick(lockRoomButton, lockRoomAction);
-        RemoveClick(unlockRoomButton, unlockRoomAction);
+        RemoveClick(autoUpdateToggleButton, autoUpdateToggleAction);
+        RemoveClick(lockToggleButton, lockToggleAction);
         RemoveClick(toggleRawMeshButton, toggleRawMeshAction);
         RemoveClick(toggleWallSegmentButton, toggleWallSegmentAction);
-        RemoveClick(clearButton, clearAction);
         RemoveClick(resetButton, resetAction);
     }
 
@@ -155,34 +142,37 @@ public partial class SceneUnderstandingRoomScanner
         RefreshDebugText();
     }
 
-    public void DebugStartScan()
+    public void DebugToggleAutoUpdate()
     {
-        AddDebugLog("start scan");
-        StartScanning();
+        if (isRunning)
+        {
+            AddDebugLog("auto update stop");
+            StopScanning();
+        }
+        else
+        {
+            AddDebugLog("auto update start");
+            StartScanning();
+        }
+
         RefreshDebugText();
     }
 
-    public void DebugStopScan()
+    public void DebugToggleLock()
     {
-        AddDebugLog("stop scan");
-        StopScanning();
+        if (lockRoom)
+        {
+            AddDebugLog("unlock room");
+            UnlockRoom();
+        }
+        else
+        {
+            AddDebugLog("lock room");
+            LockRoom();
+        }
+
         RefreshDebugText();
     }
-
-    public void DebugLockRoom()
-    {
-        AddDebugLog("lock room");
-        LockRoom();
-        RefreshDebugText();
-    }
-
-    public void DebugUnlockRoom()
-    {
-        AddDebugLog("unlock room");
-        UnlockRoom();
-        RefreshDebugText();
-    }
-
     public void DebugToggleRawMesh()
     {
         showRawSceneMeshes = !showRawSceneMeshes;
@@ -305,7 +295,7 @@ public partial class SceneUnderstandingRoomScanner
         AppendSceneObjectCounts();
         AppendRoomResult();
         AppendViewOptions();
-        AppendRecentLogs();
+        //AppendRecentLogs();
 
         debugText.text = debugBuilder.ToString();
     }

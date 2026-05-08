@@ -18,40 +18,38 @@ public class BuildingInfoController : MonoBehaviour
     [Header("Next Panel Reference")]
     public GameObject panel_AutoScanCheck;    // 완료 시 넘어갈 다음 메인 패널
 
+    // 안내 문구 변수
+    private string placeholderText = "방이 몇층에 위치해 있나요?";
+
     private void OnEnable()
     {
         // 이 패널이 켜질 때마다 초기 상태를 보장합니다.
         btn_SelectBuildingType.SetActive(true);
         btn_InputFloor.SetActive(true);
         uiManager.ToggleBuildingTypeOptions(false);
+
+        // 패널이 켜질 때 텍스트를 안내 문구로 초기화
+        if (text_Floor != null)
+        {
+            text_Floor.text = placeholderText;
+        }
     }
 
     // ==========================================
     // 1. 건물 종류 선택 기능
     // ==========================================
 
-    // [건물 종류 선택 버튼]을 눌렀을 때
     public void OnClick_OpenBuildingTypeMenu()
     {
-        // 본인 버튼들을 끄고
         btn_SelectBuildingType.SetActive(false);
         btn_InputFloor.SetActive(false);
-
-        // 서브 패널(3개 늘어진 버튼)을 켬
         uiManager.ToggleBuildingTypeOptions(true);
     }
 
-    // [아파트 / 빌라 / 단독주택 버튼] 중 하나를 눌렀을 때
-    // (인스펙터에서 이 함수를 연결하고 매개변수로 "아파트" 등을 직접 타이핑해서 넣어줍니다)
     public void OnSelect_BuildingType(string selectedType)
     {
-        // 텍스트를 선택한 종류로 변경
         text_BuildingType.text = selectedType;
-
-        // 옵션 패널을 끄고
         uiManager.ToggleBuildingTypeOptions(false);
-
-        // 다시 버튼들을 켬
         btn_SelectBuildingType.SetActive(true);
         btn_InputFloor.SetActive(true);
     }
@@ -60,22 +58,26 @@ public class BuildingInfoController : MonoBehaviour
     // 2. 층수 입력 기능
     // ==========================================
 
-    // [층수 입력 버튼]을 눌렀을 때
     public void OnClick_OpenFloorNumpad()
     {
-        // 넘버패드 컨트롤러에게 "이 텍스트(text_Floor)를 바꿔줘"라고 명령하며 넘버패드를 켭니다.
         numpadController.OpenNumpad(text_Floor);
     }
 
     // ==========================================
-    // 3. 완료 및 다음 화면 전환
+    // 3. 완료 및 다음 화면 전환 
     // ==========================================
 
-    // [완료 버튼]을 눌렀을 때
     public void OnClick_CompleteBuildingInfo()
     {
-        // UIManager를 통해 메인 패널을 통째로 교체합니다.
-        // 현재 패널(BuildingInfo)은 UIManager 내부 로직에 의해 자동으로 꺼집니다.
+        // [유효성 검사] 텍스트가 비어있거나 안내 문구 그대로라면 입력을 안 한 것으로 간주
+        if (string.IsNullOrEmpty(text_Floor.text) || text_Floor.text == placeholderText)
+        {
+            // 시스템 메시지를 띄우고 함수 강제 종료
+            uiManager.ShowWarningMessage("방이 위치한 층수를 입력해주세요.");
+            return;
+        }
+
+        // 유효성 검사를 무사히 통과했다면 다음 화면으로 전환
         uiManager.ShowMainPanel(panel_AutoScanCheck);
     }
 }

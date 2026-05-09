@@ -18,6 +18,10 @@ public class FurnitureObjectFactory : MonoBehaviour
     public bool normalizeModelToGround = true;
     public bool centerModelXZ = true;
 
+    [Header("Size")]
+    public bool applyTargetSize = true;
+    public bool nonUniformScale = true;
+
     public void CreateFromResult(FurnitureObjectResult result)
     {
         if (result == null)
@@ -40,7 +44,7 @@ public class FurnitureObjectFactory : MonoBehaviour
     {
         Vector3 position = ToVector3(result.position, new Vector3(0f, 0f, 2f));
         Vector3 rotationEuler = ToVector3(result.rotation, Vector3.zero);
-        Vector3 scale = ToVector3(result.scale, Vector3.one);
+        Vector3 initialScale = ToVector3(result.scale, Vector3.one);
 
         GameObject root = new GameObject($"Furniture_{result.label}_{result.id}");
 
@@ -49,7 +53,7 @@ public class FurnitureObjectFactory : MonoBehaviour
 
         root.transform.position = position;
         root.transform.rotation = Quaternion.Euler(rotationEuler);
-        root.transform.localScale = scale;
+        root.transform.localScale = initialScale;
 
         AddMetadata(root, result);
 
@@ -93,6 +97,16 @@ public class FurnitureObjectFactory : MonoBehaviour
             NormalizeModelToGround(root);
         }
 
+        if (applyTargetSize)
+        {
+            ApplyTargetSize(root, result);
+
+            if (normalizeModelToGround)
+            {
+                NormalizeModelToGround(root);
+            }
+        }
+
         AddPhysics(root, result);
 
         Debug.Log($"[FurnitureObjectFactory] Created GLB furniture: {root.name}");
@@ -102,7 +116,7 @@ public class FurnitureObjectFactory : MonoBehaviour
     {
         Vector3 position = ToVector3(result.position, new Vector3(0f, 0f, 2f));
         Vector3 rotationEuler = ToVector3(result.rotation, Vector3.zero);
-        Vector3 scale = ToVector3(result.scale, Vector3.one);
+        Vector3 targetSize = GetTargetSize(result);
 
         GameObject obj = GameObject.CreatePrimitive(PrimitiveType.Cube);
         obj.name = $"Furniture_{result.label}_{result.id}_FallbackBox";
@@ -110,9 +124,9 @@ public class FurnitureObjectFactory : MonoBehaviour
         if (furnitureRoot != null)
             obj.transform.SetParent(furnitureRoot);
 
-        obj.transform.position = position + new Vector3(0f, scale.y * 0.5f, 0f);
+        obj.transform.position = position + new Vector3(0f, targetSize.y * 0.5f, 0f);
         obj.transform.rotation = Quaternion.Euler(rotationEuler);
-        obj.transform.localScale = scale;
+        obj.transform.localScale = targetSize;
 
         Renderer renderer = obj.GetComponent<Renderer>();
         if (renderer != null && defaultMaterial != null)
@@ -128,15 +142,15 @@ public class FurnitureObjectFactory : MonoBehaviour
 
     private void CreateFallbackVisualUnderRoot(GameObject root, FurnitureObjectResult result)
     {
-        Vector3 scale = ToVector3(result.scale, Vector3.one);
+        Vector3 targetSize = GetTargetSize(result);
 
         GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
         cube.name = $"{result.label}_FallbackVisual";
 
         cube.transform.SetParent(root.transform);
-        cube.transform.localPosition = new Vector3(0f, scale.y * 0.5f, 0f);
+        cube.transform.localPosition = new Vector3(0f, targetSize.y * 0.5f, 0f);
         cube.transform.localRotation = Quaternion.identity;
-        cube.transform.localScale = scale;
+        cube.transform.localScale = targetSize;
 
         BoxCollider cubeCollider = cube.GetComponent<BoxCollider>();
         if (cubeCollider != null)
@@ -194,14 +208,14 @@ public class FurnitureObjectFactory : MonoBehaviour
         if (!addRigidbody)
             return;
 
-        Vector3 colliderSize = ToVector3(result.collider_size, Vector3.one);
+        Vector3 size = GetTargetSize(result);
 
         Rigidbody rb = root.GetComponent<Rigidbody>();
         if (rb == null)
             rb = root.AddComponent<Rigidbody>();
 
-        rb.mass = EstimateMass(colliderSize);
-        rb.centerOfMass = new Vector3(0f, -colliderSize.y * 0.15f, 0f);
+        rb.mass = EstimateMass(size);
+        rb.centerOfMass = new Vector3(0f, -size.y * 0.15f, 0f);
         rb.useGravity = true;
         rb.isKinematic = false;
     }
@@ -243,7 +257,7 @@ public class FurnitureObjectFactory : MonoBehaviour
 
     private void AddBoxColliderFallback(GameObject root, FurnitureObjectResult result)
     {
-        Vector3 colliderSize = ToVector3(result.collider_size, Vector3.one);
+        Vector3 colliderSize = GetTargetSize(result);
         Vector3 colliderCenter = ToVector3(result.collider_center, colliderSize * 0.5f);
 
         BoxCollider box = root.GetComponent<BoxCollider>();
@@ -290,6 +304,75 @@ public class FurnitureObjectFactory : MonoBehaviour
                 $"[FurnitureObjectFactory] Normalized {root.name}. " +
                 $"Before minY={localBounds.min.y:F3}, center={localBounds.center}, size={localBounds.size}, " +
                 $"After minY={newBounds.min.y:F3}, center={newBounds.center}, size={newBounds.size}"
+            );
+        }
+    }
+
+    private void ApplyTargetSize(GameObject root, FurnitureObjectResult result)
+    {
+        Vector3 targetSize = GetTargetSize(result);
+
+        if (targetSize.x <= 0f || targetSize.y <= 0f || targetSize.z <= 0f)
+        {
+            Debug.LogWarning($"[FurnitureObjectFactory] Invalid target size for {root.name}: {targetSize}");
+            return;
+        }
+
+        if (!TryGetLocalRendererBounds(root, out Bounds bounds))
+        {
+            Debug.LogWarning($"[FurnitureObjectFactory] Cannot apply target size. No renderer bounds found: {root.name}");
+            return;
+        }
+
+        Vector3 currentSize = bounds.size;
+
+        if (currentSize.x <= 0.0001f || currentSize.y <= 0.0001f || currentSize.z <= 0.0001f)
+        {
+            Debug.LogWarning($"[FurnitureObjectFactory] Current bounds too small: {root.name}, size={currentSize}");
+            return;
+        }
+
+        Vector3 scaleFactor;
+
+        if (nonUniformScale)
+        {
+            scaleFactor = new Vector3(
+                targetSize.x / currentSize.x,
+                targetSize.y / currentSize.y,
+                targetSize.z / currentSize.z
+            );
+        }
+        else
+        {
+            float factor = Mathf.Min(
+                targetSize.x / currentSize.x,
+                targetSize.y / currentSize.y,
+                targetSize.z / currentSize.z
+            );
+
+            scaleFactor = new Vector3(factor, factor, factor);
+        }
+
+        scaleFactor.x = Mathf.Clamp(scaleFactor.x, 0.01f, 100f);
+        scaleFactor.y = Mathf.Clamp(scaleFactor.y, 0.01f, 100f);
+        scaleFactor.z = Mathf.Clamp(scaleFactor.z, 0.01f, 100f);
+
+        for (int i = 0; i < root.transform.childCount; i++)
+        {
+            Transform child = root.transform.GetChild(i);
+
+            child.localScale = new Vector3(
+                child.localScale.x * scaleFactor.x,
+                child.localScale.y * scaleFactor.y,
+                child.localScale.z * scaleFactor.z
+            );
+        }
+
+        if (TryGetLocalRendererBounds(root, out Bounds newBounds))
+        {
+            Debug.Log(
+                $"[FurnitureObjectFactory] Applied target size to {root.name}. " +
+                $"Target={targetSize}, Before={currentSize}, After={newBounds.size}, ScaleFactor={scaleFactor}"
             );
         }
     }
@@ -341,6 +424,21 @@ public class FurnitureObjectFactory : MonoBehaviour
         }
 
         return hasBounds;
+    }
+
+    private Vector3 GetTargetSize(FurnitureObjectResult result)
+    {
+        Vector3 targetSize = ToVector3(result.target_size, Vector3.zero);
+
+        if (targetSize.x > 0f && targetSize.y > 0f && targetSize.z > 0f)
+            return targetSize;
+
+        Vector3 colliderSize = ToVector3(result.collider_size, Vector3.zero);
+
+        if (colliderSize.x > 0f && colliderSize.y > 0f && colliderSize.z > 0f)
+            return colliderSize;
+
+        return ToVector3(result.scale, Vector3.one);
     }
 
     private Vector3 ToVector3(float[] arr, Vector3 fallback)

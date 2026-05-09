@@ -7,28 +7,28 @@ public class BuildingInfoController : MonoBehaviour
     public UIManager uiManager;
     public NumpadController numpadController;
 
-    [Header("UI Objects (º»ÀÎ ÆĞ³Î ³»ºÎ)")]
-    public GameObject btn_SelectBuildingType; // °Ç¹° Á¾·ù ¼±ÅÃ ¹öÆ°
-    public GameObject btn_InputFloor;         // Ãş¼ö ÀÔ·Â ¹öÆ°
+    [Header("UI Objects (ë³¸ì¸ íŒ¨ë„ ë‚´ë¶€)")]
+    public GameObject btn_SelectBuildingType; // ê±´ë¬¼ ì¢…ë¥˜ ì„ íƒ ë²„íŠ¼
+    public GameObject btn_InputFloor;         // ì¸µìˆ˜ ì…ë ¥ ë²„íŠ¼
 
     [Header("Text References")]
-    public TMP_Text text_BuildingType;        // °Ç¹° Á¾·ù ¹öÆ° ¾ÈÀÇ ÅØ½ºÆ®
-    public TMP_Text text_Floor;               // Ãş¼ö ÀÔ·Â ¹öÆ° ¾ÈÀÇ ÅØ½ºÆ®
+    public TMP_Text text_BuildingType;        // ê±´ë¬¼ ì¢…ë¥˜ ë²„íŠ¼ ì•ˆì˜ í…ìŠ¤íŠ¸
+    public TMP_Text text_Floor;               // ì¸µìˆ˜ ì…ë ¥ ë²„íŠ¼ ì•ˆì˜ í…ìŠ¤íŠ¸
 
     [Header("Next Panel Reference")]
-    public GameObject panel_AutoScanCheck;    // ¿Ï·á ½Ã ³Ñ¾î°¥ ´ÙÀ½ ¸ŞÀÎ ÆĞ³Î
+    public GameObject panel_AutoScanCheck;    // ì™„ë£Œ ì‹œ ë„˜ì–´ê°ˆ ë‹¤ìŒ ë©”ì¸ íŒ¨ë„
 
-    // ¾È³» ¹®±¸ º¯¼ö
-    private string placeholderText = "¹æÀÌ ¸îÃş¿¡ À§Ä¡ÇØ ÀÖ³ª¿ä?";
+    // ì•ˆë‚´ ë¬¸êµ¬ ë³€ìˆ˜
+    private string placeholderText = "ë°©ì´ ëª‡ì¸µì— ìœ„ì¹˜í•´ ìˆë‚˜ìš”?";
 
     private void OnEnable()
     {
-        // ÀÌ ÆĞ³ÎÀÌ ÄÑÁú ¶§¸¶´Ù ÃÊ±â »óÅÂ¸¦ º¸ÀåÇÕ´Ï´Ù.
+        // ì´ íŒ¨ë„ì´ ì¼œì§ˆ ë•Œë§ˆë‹¤ ì´ˆê¸° ìƒíƒœë¥¼ ë³´ì¥í•©ë‹ˆë‹¤.
         btn_SelectBuildingType.SetActive(true);
         btn_InputFloor.SetActive(true);
         uiManager.ToggleBuildingTypeOptions(false);
 
-        // ÆĞ³ÎÀÌ ÄÑÁú ¶§ ÅØ½ºÆ®¸¦ ¾È³» ¹®±¸·Î ÃÊ±âÈ­
+        // íŒ¨ë„ì´ ì¼œì§ˆ ë•Œ í…ìŠ¤íŠ¸ë¥¼ ì•ˆë‚´ ë¬¸êµ¬ë¡œ ì´ˆê¸°í™”
         if (text_Floor != null)
         {
             text_Floor.text = placeholderText;
@@ -36,7 +36,7 @@ public class BuildingInfoController : MonoBehaviour
     }
 
     // ==========================================
-    // 1. °Ç¹° Á¾·ù ¼±ÅÃ ±â´É
+    // 1. ê±´ë¬¼ ì¢…ë¥˜ ì„ íƒ ê¸°ëŠ¥
     // ==========================================
 
     public void OnClick_OpenBuildingTypeMenu()
@@ -55,7 +55,7 @@ public class BuildingInfoController : MonoBehaviour
     }
 
     // ==========================================
-    // 2. Ãş¼ö ÀÔ·Â ±â´É
+    // 2. ì¸µìˆ˜ ì…ë ¥ ê¸°ëŠ¥
     // ==========================================
 
     public void OnClick_OpenFloorNumpad()
@@ -64,20 +64,21 @@ public class BuildingInfoController : MonoBehaviour
     }
 
     // ==========================================
-    // 3. ¿Ï·á ¹× ´ÙÀ½ È­¸é ÀüÈ¯ 
+    // 3. ì™„ë£Œ ë° ë‹¤ìŒ í™”ë©´ ì „í™˜ 
     // ==========================================
 
     public void OnClick_CompleteBuildingInfo()
     {
-        // [À¯È¿¼º °Ë»ç] ÅØ½ºÆ®°¡ ºñ¾îÀÖ°Å³ª ¾È³» ¹®±¸ ±×´ë·Î¶ó¸é ÀÔ·ÂÀ» ¾È ÇÑ °ÍÀ¸·Î °£ÁÖ
+        // [ìœ íš¨ì„± ê²€ì‚¬] í…ìŠ¤íŠ¸ê°€ ë¹„ì–´ìˆê±°ë‚˜ ì•ˆë‚´ ë¬¸êµ¬ ê·¸ëŒ€ë¡œë¼ë©´ ì…ë ¥ì„ ì•ˆ í•œ ê²ƒìœ¼ë¡œ ê°„ì£¼
         if (string.IsNullOrEmpty(text_Floor.text) || text_Floor.text == placeholderText)
         {
-            // ½Ã½ºÅÛ ¸Ş½ÃÁö¸¦ ¶ç¿ì°í ÇÔ¼ö °­Á¦ Á¾·á
-            uiManager.ShowWarningMessage("¹æÀÌ À§Ä¡ÇÑ Ãş¼ö¸¦ ÀÔ·ÂÇØÁÖ¼¼¿ä.");
+            // ì‹œìŠ¤í…œ ë©”ì‹œì§€ë¥¼ ë„ìš°ê³  í•¨ìˆ˜ ê°•ì œ ì¢…ë£Œ
+            uiManager.ShowWarningMessage("ë°©ì´ ìœ„ì¹˜í•œ ì¸µìˆ˜ë¥¼ ì…ë ¥í•´ì£¼ì„¸ìš”.");
             return;
         }
 
-        // À¯È¿¼º °Ë»ç¸¦ ¹«»çÈ÷ Åë°úÇß´Ù¸é ´ÙÀ½ È­¸éÀ¸·Î ÀüÈ¯
-        uiManager.ShowMainPanel(panel_AutoScanCheck);
+        // ìœ íš¨ì„± ê²€ì‚¬ë¥¼ ë¬´ì‚¬íˆ í†µê³¼í–ˆë‹¤ë©´ Workflow ìƒíƒœë¥¼ RoomInfoInput -> RoomBuildë¡œ ì „í™˜í•©ë‹ˆë‹¤.
+        // ì‹¤ì œ ë‹¤ìŒ íŒ¨ë„ í‘œì‹œëŠ” UIManager.ShowWorkflowState(...)ê°€ ë‹´ë‹¹í•©ë‹ˆë‹¤.
+        uiManager.CompleteRoomInfoInput();
     }
 }

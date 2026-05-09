@@ -5,7 +5,7 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
 
-public class ManualWallBuilder : MonoBehaviour
+public partial class ManualWallBuilder : MonoBehaviour
 {
     public enum BuildMode
     {
@@ -79,6 +79,41 @@ public class ManualWallBuilder : MonoBehaviour
         public bool hitTarget;
     }
 
+    private enum EditUndoActionKind
+    {
+        None,
+        ManualWallCreated,
+        ManualWallCutModified,
+        ManualWallCutRemoved,
+        SceneWallCutModified,
+        SceneWallCutRemoved
+    }
+
+    private struct EditUndoAction
+    {
+        public int actionId;
+        public EditUndoActionKind kind;
+        public SelectableWallSourceKind sourceKind;
+        public int index;
+        public Vector2 start;
+        public Vector2 end;
+        public WallSegment sceneSegment;
+        public GameObject wallObject;
+        public Material material;
+    }
+
+    private struct ManualWallCreationGuardRecord
+    {
+        public float time;
+        public GameObject wallObject;
+    }
+
+    private struct WallCutGuardRecord
+    {
+        public float time;
+        public EditUndoAction action;
+    }
+
     [Header("References")]
     public SceneUnderstandingRoomScanner scanner;
 
@@ -114,6 +149,34 @@ public class ManualWallBuilder : MonoBehaviour
 
     public float minWallLength = 0.2f;
 
+    [Header("Manual Wall Burst Guard")]
+    [Tooltip("HoloLens 입력/인식 오류로 짧은 시간 안에 벽이 연속 생성되는 경우, 해당 구간에 생성된 벽들을 자동 취소합니다.")]
+    public bool enableManualWallBurstGuard = true;
+
+    [Tooltip("이 시간 범위 안의 수동 벽 생성 횟수를 감시합니다.")]
+    public float manualWallBurstIntervalSeconds = 2.0f;
+
+    [Tooltip("감시 시간 안에 이 횟수 이상 벽이 생성되면 burst로 판단하고, 해당 구간의 벽 생성을 모두 취소합니다.")]
+    public int manualWallBurstCreationLimit = 5;
+
+    [Tooltip("burst 감지 후 이 시간 동안 추가 수동 벽 생성을 무시합니다. 같은 입력이 계속 유지될 때 즉시 재발하는 것을 막기 위한 값입니다.")]
+    public float manualWallBurstSuppressSeconds = 2.0f;
+
+    [Tooltip("생성 폭주로 취소한 벽 개수입니다. Debug 확인용입니다.")]
+    public int burstCanceledManualWallCount;
+
+    [Tooltip("최근 burst guard 감시 창 안에 들어온 수동 벽 생성 개수입니다. Debug 확인용입니다.")]
+    public int recentManualWallCreationCount;
+
+    [Tooltip("마지막 burst guard 메시지입니다. Debug 확인용입니다.")]
+    public string lastManualWallBurstGuardMessage;
+
+    [Tooltip("최근 burst guard 감시 창 안에 들어온 벽 자르기 완료 횟수입니다. Debug 확인용입니다.")]
+    public int recentWallCutOperationCount;
+
+    [Tooltip("연속 자르기 burst로 자동 되돌린 cut 작업 개수입니다. Debug 확인용입니다.")]
+    public int burstCanceledWallCutOperationCount;
+
     [Header("Unified Manual Wall Interaction")]
 
     [Tooltip("벽 endpoint에서 이 거리 이내를 선택하면 모서리 선택으로 판단합니다.")]
@@ -135,6 +198,9 @@ public class ManualWallBuilder : MonoBehaviour
     [Header("Perpendicular Wall Extend")]
     public bool extendPerpendicularWallToNextWall = true;
     public bool includeClosureEdgesForPerpendicularExtend = true;
+
+    [Tooltip("Closure Edge도 Manual Wall 단계에서 선택 가능한 벽으로 만들고, 수직 벽 연장/스냅 대상에 포함합니다. 자동 벽 사이의 빈 구간을 임시 벽처럼 막기 위한 옵션입니다.")]
+    public bool includeClosureEdgesAsManualWallSelectable = true;
     public bool includeManualWallsForPerpendicularExtend = true;
     public float maxPerpendicularWallLength = 5.0f;
     public float perpendicularWallEndPadding = 0.02f;
@@ -156,13 +222,31 @@ public class ManualWallBuilder : MonoBehaviour
     [Tooltip("자르기 후 남은 벽이 이 길이보다 짧으면 벽 전체를 삭제합니다.")]
     public float minWallLengthAfterCut = 0.2f;
 
+    [Tooltip("자르기 대상 선택 후 실제 cut 위치를 세로 라인으로 표시합니다. 이 오브젝트는 입력/충돌에는 사용되지 않습니다.")]
+    public bool showWallCutLinePreview = true;
+
+    [Tooltip("자르기 라인 표시용 Material입니다. 비워두면 Wall Cut Target Material 또는 런타임 Material을 사용합니다.")]
+    public Material wallCutLineMaterial;
+
+    [Tooltip("자르기 라인 표시용 세로 박스의 벽 방향 길이입니다.")]
+    public float wallCutLineWidth = 0.035f;
+
+    [Tooltip("자르기 라인 표시용 세로 박스의 두께 방향 깊이입니다. 벽보다 살짝 두껍게 두면 잘 보입니다.")]
+    public float wallCutLineDepth = 0.09f;
+
+    [Tooltip("자르기 라인이 바닥/천장을 살짝 넘어서 보이도록 더하는 높이입니다.")]
+    public float wallCutLineHeightPadding = 0.04f;
+
     [Header("Selectable Surface Settings")]
     public bool showSelectableSurfaces = true;
     public float selectableFloorThickness = 0.03f;
     public float selectableWallThickness = 0.05f;
     public float floorMargin = 0.3f;
 
-    [Header("MRTK Pressable Buttons")]
+    [Header("MRTK Pressable Buttons - Legacy Direct Binding")]
+    [Tooltip("이전 버전처럼 ManualWallBuilder가 버튼 listener를 직접 등록할지 여부입니다. 새 구조에서는 ManualWallPanelController가 버튼을 연결하므로 기본값은 false입니다.")]
+    public bool registerLegacyButtonListeners = false;
+
     public PressableButton rebuildSelectableSurfacesButton;
 
     [Tooltip("수동 벽 생성 <-> 벽 자르기 모드를 전환하는 단일 토글 버튼입니다.")]
@@ -193,8 +277,16 @@ public class ManualWallBuilder : MonoBehaviour
     private readonly List<GameObject> manualWalls = new List<GameObject>();
     private readonly List<ManualWallSegmentData> manualWallSegments = new List<ManualWallSegmentData>();
     private readonly List<GameObject> selectableSurfaces = new List<GameObject>();
+    private readonly Stack<EditUndoAction> editUndoStack = new Stack<EditUndoAction>();
+    private readonly List<ManualWallCreationGuardRecord> recentManualWallCreations = new List<ManualWallCreationGuardRecord>();
+    private readonly List<WallCutGuardRecord> recentWallCutOperations = new List<WallCutGuardRecord>();
 
     private float lastValidPreviewPointTime;
+    private float manualWallCreationSuppressedUntilTime;
+    private float wallCutSuppressedUntilTime;
+    private int suppressedManualWallCreationAttemptCount;
+    private int suppressedWallCutAttemptCount;
+    private int nextEditUndoActionId = 1;
 
     private GameObject lastGeneratedWall;
     private int lastGeneratedWallIndex = -1;
@@ -203,8 +295,11 @@ public class ManualWallBuilder : MonoBehaviour
     private Vector2 lastWallDirection;
     private Material runtimeLastCreatedWallMaterial;
     private Material runtimeWallCutTargetMaterial;
+    private Material runtimeWallCutLineMaterial;
     private bool warnedRuntimeMaterialShaderMissing;
     private int lastManualWallModeToggleFrame = -1;
+
+    private GameObject cutLinePreviewObject;
 
     private int cutTargetWallIndex = -1;
     private GameObject cutTargetWall;
@@ -243,13 +338,19 @@ public class ManualWallBuilder : MonoBehaviour
 
     private void OnEnable()
     {
-        CreateButtonActions();
-        RegisterButtons();
+        if (registerLegacyButtonListeners)
+        {
+            CreateButtonActions();
+            RegisterButtons();
+        }
     }
 
     private void OnDisable()
     {
-        UnregisterButtons();
+        if (registerLegacyButtonListeners)
+        {
+            UnregisterButtons();
+        }
     }
 
     private void Update()
@@ -320,6 +421,7 @@ public class ManualWallBuilder : MonoBehaviour
         ClearCutTargetSelection();
         ClearPendingFirstPoint();
         SetPreviewLineVisible(false);
+        ResetManualWallBurstGuardWindow();
 
         status = "Manual wall create mode. Select floor for two-point wall, or select wall for wall-based generation.";
         cutModeStatus = "Wall cut mode OFF.";
@@ -333,6 +435,7 @@ public class ManualWallBuilder : MonoBehaviour
         ClearPendingFirstPoint();
         ClearCutTargetSelection();
         SetPreviewLineVisible(false);
+        ResetManualWallBurstGuardWindow();
 
         status = "Manual wall mode disabled.";
         cutModeStatus = "Wall cut mode OFF.";
@@ -374,6 +477,7 @@ public class ManualWallBuilder : MonoBehaviour
         ClearPendingFirstPoint();
         SetPreviewLineVisible(false);
         ClearCutTargetSelection();
+        ResetManualWallBurstGuardWindow();
 
         cutModeStatus = "Wall cut mode ON. Select a manual or detected wall at the cut position.";
         status = cutModeStatus;
@@ -570,44 +674,25 @@ public class ManualWallBuilder : MonoBehaviour
             return;
         }
 
+        if (TryUndoLastEditOperation())
+        {
+            return;
+        }
+
         if (manualWalls.Count == 0)
         {
-            status = "No manual wall to undo.";
+            status = "No manual wall or wall cut operation to undo.";
             Debug.Log($"[ManualWall] {status}");
             return;
         }
 
         int lastIndex = manualWalls.Count - 1;
-        GameObject last = manualWalls[lastIndex];
-
-        manualWalls.RemoveAt(lastIndex);
-
-        if (manualWallSegments.Count > lastIndex)
-        {
-            manualWallSegments.RemoveAt(lastIndex);
-        }
-        else if (manualWallSegments.Count > 0)
-        {
-            manualWallSegments.RemoveAt(manualWallSegments.Count - 1);
-        }
-
-        if (last != null)
-        {
-            Destroy(last);
-        }
-
-        if (lastGeneratedWallIndex == lastIndex)
-        {
-            ClearLastGeneratedWallState();
-        }
-        else if (lastGeneratedWallIndex > lastIndex)
-        {
-            lastGeneratedWallIndex--;
-        }
+        DeleteManualWallAt(lastIndex);
 
         status = "Undo last manual wall.";
         Debug.Log($"[ManualWall] {status}");
     }
+
 
     public void ClearManualWalls()
     {
@@ -621,9 +706,12 @@ public class ManualWallBuilder : MonoBehaviour
 
         manualWalls.Clear();
         manualWallSegments.Clear();
+        editUndoStack.Clear();
+        ResetManualWallBurstGuardWindow();
         ClearLastGeneratedWallState();
         ClearPendingFirstPoint();
         ClearCutTargetSelection();
+        ClearCutLinePreviewObject();
 
         status = "Manual walls cleared.";
         Debug.Log($"[ManualWall] {status}");
@@ -680,7 +768,7 @@ public class ManualWallBuilder : MonoBehaviour
         cutTargetOriginalMaterial = GetWallMaterial(cutTargetWall);
         hasCutTarget = true;
 
-        SetWallMaterial(cutTargetWall, GetWallCutTargetMaterial());
+        ShowCutLinePreview(segment.start, segment.end, cutPoint);
 
         status = "Manual wall cut target selected. Select the side/area to remove.";
         cutModeStatus = status;
@@ -737,7 +825,7 @@ public class ManualWallBuilder : MonoBehaviour
         cutTargetOriginalMaterial = GetWallMaterial(cutTargetWall);
         hasCutTarget = true;
 
-        SetWallMaterial(cutTargetWall, GetWallCutTargetMaterial());
+        ShowCutLinePreview(segment.start, segment.end, cutPoint);
 
         status = "Detected wall cut target selected. Select the side/area to remove.";
         cutModeStatus = status;
@@ -746,6 +834,12 @@ public class ManualWallBuilder : MonoBehaviour
 
     private void ApplyWallCut(SurfaceSelection areaSelection)
     {
+        if (IsWallCutTemporarilySuppressed())
+        {
+            ClearCutTargetSelection(restoreMaterialAlreadyApplied: true);
+            return;
+        }
+
         if (cutTargetSourceKind == SelectableWallSourceKind.ManualWall)
         {
             ApplyManualWallCut(areaSelection);
@@ -776,7 +870,8 @@ public class ManualWallBuilder : MonoBehaviour
             return;
         }
 
-        ManualWallSegmentData segment = manualWallSegments[cutTargetWallIndex];
+        int targetIndex = cutTargetWallIndex;
+        ManualWallSegmentData segment = manualWallSegments[targetIndex];
 
         if (segment.wallObject == null)
         {
@@ -787,10 +882,24 @@ public class ManualWallBuilder : MonoBehaviour
             return;
         }
 
-        if (!TryCalculateCutResult(segment.start, segment.end, areaSelection, out Vector2 newStart, out Vector2 newEnd, out float remainingLength))
+        Vector2 oldStart = segment.start;
+        Vector2 oldEnd = segment.end;
+        GameObject target = segment.wallObject;
+        Material originalMaterial = cutTargetOriginalMaterial != null
+            ? cutTargetOriginalMaterial
+            : GetWallMaterial(target);
+
+        if (!TryCalculateCutResult(oldStart, oldEnd, areaSelection, out Vector2 newStart, out Vector2 newEnd, out float remainingLength))
         {
-            DeleteManualWallAt(cutTargetWallIndex);
-            ClearCutTargetSelection();
+            EditUndoAction removedInvalidManualCutUndoAction = PushManualWallCutRemovedUndo(targetIndex, oldStart, oldEnd, target, originalMaterial);
+            DeleteManualWallAt(targetIndex);
+            ClearCutTargetSelection(restoreMaterialAlreadyApplied: true);
+
+            if (!RegisterWallCutOperationForBurstGuard(removedInvalidManualCutUndoAction))
+            {
+                return;
+            }
+
             status = "Cut target was too short and removed.";
             cutModeStatus = status;
             Debug.Log($"[ManualWall] {status}");
@@ -799,24 +908,35 @@ public class ManualWallBuilder : MonoBehaviour
 
         if (remainingLength < Mathf.Max(minWallLength, minWallLengthAfterCut))
         {
-            DeleteManualWallAt(cutTargetWallIndex);
-            ClearCutTargetSelection();
+            EditUndoAction removedShortManualCutUndoAction = PushManualWallCutRemovedUndo(targetIndex, oldStart, oldEnd, target, originalMaterial);
+            DeleteManualWallAt(targetIndex);
+            ClearCutTargetSelection(restoreMaterialAlreadyApplied: true);
+
+            if (!RegisterWallCutOperationForBurstGuard(removedShortManualCutUndoAction))
+            {
+                return;
+            }
+
             status = "Remaining wall was too short. Wall removed.";
             cutModeStatus = status;
             Debug.Log($"[ManualWall] {status}");
             return;
         }
 
-        GameObject target = segment.wallObject;
-        Material restoreMaterial = cutTargetOriginalMaterial != null ? cutTargetOriginalMaterial : manualWallMaterial;
+        if (!UpdateManualWallGeometry(
+                targetIndex,
+                ToFloorWorld(newStart),
+                ToFloorWorld(newEnd)))
+        {
+            ClearCutTargetSelection();
+            status = "Failed to apply manual wall cut.";
+            cutModeStatus = status;
+            Debug.LogWarning($"[ManualWall] {status}");
+            return;
+        }
 
-        UpdateManualWallGeometry(
-            cutTargetWallIndex,
-            ToFloorWorld(newStart),
-            ToFloorWorld(newEnd)
-        );
-
-        SetWallMaterial(target, restoreMaterial);
+        EditUndoAction modifiedManualCutUndoAction = PushManualWallCutModifiedUndo(targetIndex, oldStart, oldEnd, target, originalMaterial);
+        SetWallMaterial(target, originalMaterial != null ? originalMaterial : manualWallMaterial);
 
         if (target == lastGeneratedWall)
         {
@@ -825,14 +945,23 @@ public class ManualWallBuilder : MonoBehaviour
 
         ClearCutTargetSelection(restoreMaterialAlreadyApplied: true);
 
+        if (!RegisterWallCutOperationForBurstGuard(modifiedManualCutUndoAction))
+        {
+            return;
+        }
+
         status = $"Manual wall cut applied. remaining length:{remainingLength:F2}";
         cutModeStatus = status;
         Debug.Log($"[ManualWall] {status}");
     }
 
+
     private void ApplySceneWallCut(SurfaceSelection areaSelection)
     {
-        if (!TryGetSceneWallSegment(cutTargetSourceKind, cutTargetWallIndex, out WallSegment segment))
+        SelectableWallSourceKind sourceKind = cutTargetSourceKind;
+        int sourceIndex = cutTargetWallIndex;
+
+        if (!TryGetSceneWallSegment(sourceKind, sourceIndex, out WallSegment segment))
         {
             ClearCutTargetSelection();
             status = "Detected wall cut target is no longer valid.";
@@ -841,11 +970,20 @@ public class ManualWallBuilder : MonoBehaviour
             return;
         }
 
+        WallSegment oldSegment = segment;
+
         if (!TryCalculateCutResult(segment.start, segment.end, areaSelection, out Vector2 newStart, out Vector2 newEnd, out float remainingLength))
         {
-            RemoveSceneWallSegment(cutTargetSourceKind, cutTargetWallIndex);
+            EditUndoAction removedInvalidSceneCutUndoAction = PushSceneWallCutRemovedUndo(sourceKind, sourceIndex, oldSegment);
+            RemoveSceneWallSegment(sourceKind, sourceIndex);
             ClearCutTargetSelection(restoreMaterialAlreadyApplied: true);
             RebuildSelectableSurfaces();
+
+            if (!RegisterWallCutOperationForBurstGuard(removedInvalidSceneCutUndoAction))
+            {
+                return;
+            }
+
             status = "Detected wall cut target was too short and removed.";
             cutModeStatus = status;
             Debug.Log($"[ManualWall] {status}");
@@ -854,24 +992,38 @@ public class ManualWallBuilder : MonoBehaviour
 
         if (remainingLength < Mathf.Max(minWallLength, minWallLengthAfterCut))
         {
-            RemoveSceneWallSegment(cutTargetSourceKind, cutTargetWallIndex);
+            EditUndoAction removedShortSceneCutUndoAction = PushSceneWallCutRemovedUndo(sourceKind, sourceIndex, oldSegment);
+            RemoveSceneWallSegment(sourceKind, sourceIndex);
             ClearCutTargetSelection(restoreMaterialAlreadyApplied: true);
             RebuildSelectableSurfaces();
+
+            if (!RegisterWallCutOperationForBurstGuard(removedShortSceneCutUndoAction))
+            {
+                return;
+            }
+
             status = "Remaining detected wall was too short. Wall removed.";
             cutModeStatus = status;
             Debug.Log($"[ManualWall] {status}");
             return;
         }
 
-        UpdateSceneWallSegment(cutTargetSourceKind, cutTargetWallIndex, newStart, newEnd);
+        UpdateSceneWallSegment(sourceKind, sourceIndex, newStart, newEnd);
+        EditUndoAction modifiedSceneCutUndoAction = PushSceneWallCutModifiedUndo(sourceKind, sourceIndex, oldSegment);
 
         ClearCutTargetSelection(restoreMaterialAlreadyApplied: true);
         RebuildSelectableSurfaces();
+
+        if (!RegisterWallCutOperationForBurstGuard(modifiedSceneCutUndoAction))
+        {
+            return;
+        }
 
         status = $"Detected wall cut applied. remaining length:{remainingLength:F2}";
         cutModeStatus = status;
         Debug.Log($"[ManualWall] {status}");
     }
+
 
     private bool TryCalculateCutResult(
         Vector2 segmentStart,
@@ -1023,6 +1175,610 @@ public class ManualWallBuilder : MonoBehaviour
         }
     }
 
+
+    private bool IsManualWallCreationTemporarilySuppressed()
+    {
+        if (!enableManualWallBurstGuard)
+        {
+            return false;
+        }
+
+        if (Time.time >= manualWallCreationSuppressedUntilTime)
+        {
+            suppressedManualWallCreationAttemptCount = 0;
+            return false;
+        }
+
+        suppressedManualWallCreationAttemptCount++;
+
+        int logStep = Mathf.Max(1, manualWallBurstCreationLimit);
+
+        if (suppressedManualWallCreationAttemptCount % logStep == 0)
+        {
+            lastManualWallBurstGuardMessage =
+                $"Manual wall creation is temporarily blocked after burst detection. attempts:{suppressedManualWallCreationAttemptCount}, wait:{manualWallCreationSuppressedUntilTime - Time.time:F1}s";
+            status = lastManualWallBurstGuardMessage;
+            Debug.LogError($"[ManualWall][BurstGuard] {lastManualWallBurstGuardMessage}");
+        }
+
+        return true;
+    }
+
+    private bool IsWallCutTemporarilySuppressed()
+    {
+        if (!enableManualWallBurstGuard)
+        {
+            return false;
+        }
+
+        if (Time.time >= wallCutSuppressedUntilTime)
+        {
+            suppressedWallCutAttemptCount = 0;
+            return false;
+        }
+
+        suppressedWallCutAttemptCount++;
+
+        int logStep = Mathf.Max(1, manualWallBurstCreationLimit);
+
+        if (suppressedWallCutAttemptCount % logStep == 0)
+        {
+            lastManualWallBurstGuardMessage =
+                $"Wall cut is temporarily blocked after burst detection. attempts:{suppressedWallCutAttemptCount}, wait:{wallCutSuppressedUntilTime - Time.time:F1}s";
+            status = lastManualWallBurstGuardMessage;
+            cutModeStatus = status;
+            Debug.LogError($"[ManualWall][BurstGuard] {lastManualWallBurstGuardMessage}");
+        }
+
+        return true;
+    }
+
+    private bool RegisterManualWallCreationForBurstGuard(GameObject wallObject)
+    {
+        if (!enableManualWallBurstGuard)
+        {
+            recentManualWallCreationCount = 0;
+            return true;
+        }
+
+        float now = Time.time;
+        float interval = Mathf.Max(0.1f, manualWallBurstIntervalSeconds);
+
+        for (int i = recentManualWallCreations.Count - 1; i >= 0; i--)
+        {
+            ManualWallCreationGuardRecord record = recentManualWallCreations[i];
+
+            if (record.wallObject == null || now - record.time > interval)
+            {
+                recentManualWallCreations.RemoveAt(i);
+            }
+        }
+
+        recentManualWallCreations.Add(new ManualWallCreationGuardRecord
+        {
+            time = now,
+            wallObject = wallObject
+        });
+
+        recentManualWallCreationCount = recentManualWallCreations.Count;
+
+        int limit = Mathf.Max(1, manualWallBurstCreationLimit);
+
+        if (recentManualWallCreations.Count < limit)
+        {
+            return true;
+        }
+
+        CancelRecentManualWallCreationBurst(now);
+        return false;
+    }
+
+    private void CancelRecentManualWallCreationBurst(float now)
+    {
+        List<GameObject> wallsToCancel = new List<GameObject>();
+
+        foreach (ManualWallCreationGuardRecord record in recentManualWallCreations)
+        {
+            if (record.wallObject != null)
+            {
+                wallsToCancel.Add(record.wallObject);
+            }
+        }
+
+        RemoveUndoActionsForManualWallObjects(wallsToCancel);
+
+        int removedCount = 0;
+
+        for (int i = wallsToCancel.Count - 1; i >= 0; i--)
+        {
+            GameObject wall = wallsToCancel[i];
+
+            if (wall == null)
+            {
+                continue;
+            }
+
+            int index = manualWalls.IndexOf(wall);
+
+            if (index < 0)
+            {
+                continue;
+            }
+
+            DeleteManualWallAt(index);
+            removedCount++;
+        }
+
+        burstCanceledManualWallCount += removedCount;
+        recentManualWallCreations.Clear();
+        recentManualWallCreationCount = 0;
+        manualWallCreationSuppressedUntilTime = now + Mathf.Max(0.0f, manualWallBurstSuppressSeconds);
+        suppressedManualWallCreationAttemptCount = 0;
+
+        ClearPendingFirstPoint();
+        SetPreviewLineVisible(false);
+        ClearCutTargetSelection();
+
+        lastManualWallBurstGuardMessage =
+            $"Manual wall burst detected. Canceled {removedCount} walls created within {manualWallBurstIntervalSeconds:F1}s. Creation is blocked for {manualWallBurstSuppressSeconds:F1}s.";
+
+        status = lastManualWallBurstGuardMessage;
+        cutModeStatus = status;
+        Debug.LogError($"[ManualWall][BurstGuard] {lastManualWallBurstGuardMessage}");
+    }
+
+    private bool RegisterWallCutOperationForBurstGuard(EditUndoAction action)
+    {
+        if (!enableManualWallBurstGuard)
+        {
+            recentWallCutOperationCount = 0;
+            return true;
+        }
+
+        float now = Time.time;
+        float interval = Mathf.Max(0.1f, manualWallBurstIntervalSeconds);
+
+        for (int i = recentWallCutOperations.Count - 1; i >= 0; i--)
+        {
+            WallCutGuardRecord record = recentWallCutOperations[i];
+
+            if (now - record.time > interval)
+            {
+                recentWallCutOperations.RemoveAt(i);
+            }
+        }
+
+        recentWallCutOperations.Add(new WallCutGuardRecord
+        {
+            time = now,
+            action = action
+        });
+
+        recentWallCutOperationCount = recentWallCutOperations.Count;
+
+        int limit = Mathf.Max(1, manualWallBurstCreationLimit);
+
+        if (recentWallCutOperations.Count < limit)
+        {
+            return true;
+        }
+
+        CancelRecentWallCutBurst(now);
+        return false;
+    }
+
+    private void CancelRecentWallCutBurst(float now)
+    {
+        HashSet<int> actionIdsToRemove = new HashSet<int>();
+        int revertedCount = 0;
+
+        for (int i = recentWallCutOperations.Count - 1; i >= 0; i--)
+        {
+            EditUndoAction action = recentWallCutOperations[i].action;
+
+            if (action.actionId > 0)
+            {
+                actionIdsToRemove.Add(action.actionId);
+            }
+
+            if (TryUndoEditActionSilently(action))
+            {
+                revertedCount++;
+            }
+        }
+
+        RemoveUndoActionsByIds(actionIdsToRemove);
+
+        burstCanceledWallCutOperationCount += revertedCount;
+        recentWallCutOperations.Clear();
+        recentWallCutOperationCount = 0;
+        wallCutSuppressedUntilTime = now + Mathf.Max(0.0f, manualWallBurstSuppressSeconds);
+        suppressedWallCutAttemptCount = 0;
+
+        ClearPendingFirstPoint();
+        SetPreviewLineVisible(false);
+        ClearCutTargetSelection(restoreMaterialAlreadyApplied: true);
+        RebuildSelectableSurfaces();
+
+        lastManualWallBurstGuardMessage =
+            $"Wall cut burst detected. Reverted {revertedCount} cuts applied within {manualWallBurstIntervalSeconds:F1}s. Cutting is blocked for {manualWallBurstSuppressSeconds:F1}s.";
+
+        status = lastManualWallBurstGuardMessage;
+        cutModeStatus = status;
+        Debug.LogError($"[ManualWall][BurstGuard] {lastManualWallBurstGuardMessage}");
+    }
+
+    private bool TryUndoEditActionSilently(EditUndoAction action)
+    {
+        switch (action.kind)
+        {
+            case EditUndoActionKind.ManualWallCutModified:
+                return TryUndoManualWallCutModified(action);
+
+            case EditUndoActionKind.ManualWallCutRemoved:
+                return TryUndoManualWallCutRemoved(action);
+
+            case EditUndoActionKind.SceneWallCutModified:
+                SetSceneWallSegment(action.sourceKind, action.index, action.sceneSegment);
+                return true;
+
+            case EditUndoActionKind.SceneWallCutRemoved:
+                InsertSceneWallSegment(action.sourceKind, action.index, action.sceneSegment);
+                return true;
+        }
+
+        return false;
+    }
+
+    private void RemoveUndoActionsByIds(HashSet<int> actionIds)
+    {
+        if (actionIds == null || actionIds.Count == 0 || editUndoStack.Count == 0)
+        {
+            return;
+        }
+
+        List<EditUndoAction> keptActions = new List<EditUndoAction>();
+
+        while (editUndoStack.Count > 0)
+        {
+            EditUndoAction action = editUndoStack.Pop();
+
+            if (action.actionId <= 0 || !actionIds.Contains(action.actionId))
+            {
+                keptActions.Add(action);
+            }
+        }
+
+        for (int i = keptActions.Count - 1; i >= 0; i--)
+        {
+            editUndoStack.Push(keptActions[i]);
+        }
+    }
+
+    private void RemoveUndoActionsForManualWallObjects(List<GameObject> targetWalls)
+    {
+        if (targetWalls == null || targetWalls.Count == 0 || editUndoStack.Count == 0)
+        {
+            return;
+        }
+
+        HashSet<int> targetInstanceIds = new HashSet<int>();
+
+        foreach (GameObject wall in targetWalls)
+        {
+            if (wall != null)
+            {
+                targetInstanceIds.Add(wall.GetInstanceID());
+            }
+        }
+
+        if (targetInstanceIds.Count == 0)
+        {
+            return;
+        }
+
+        List<EditUndoAction> keptActions = new List<EditUndoAction>();
+
+        while (editUndoStack.Count > 0)
+        {
+            EditUndoAction action = editUndoStack.Pop();
+
+            bool removeAction =
+                action.wallObject != null &&
+                targetInstanceIds.Contains(action.wallObject.GetInstanceID());
+
+            if (!removeAction)
+            {
+                keptActions.Add(action);
+            }
+        }
+
+        for (int i = keptActions.Count - 1; i >= 0; i--)
+        {
+            editUndoStack.Push(keptActions[i]);
+        }
+    }
+
+    private void ResetManualWallBurstGuardWindow()
+    {
+        recentManualWallCreations.Clear();
+        recentWallCutOperations.Clear();
+        recentManualWallCreationCount = 0;
+        recentWallCutOperationCount = 0;
+        manualWallCreationSuppressedUntilTime = 0.0f;
+        wallCutSuppressedUntilTime = 0.0f;
+        suppressedManualWallCreationAttemptCount = 0;
+        suppressedWallCutAttemptCount = 0;
+    }
+
+
+    private void PushManualWallCreatedUndo(int index, GameObject wallObject)
+    {
+        editUndoStack.Push(new EditUndoAction
+        {
+            kind = EditUndoActionKind.ManualWallCreated,
+            sourceKind = SelectableWallSourceKind.ManualWall,
+            index = index,
+            wallObject = wallObject
+        });
+    }
+
+    private EditUndoAction PushManualWallCutModifiedUndo(int index, Vector2 oldStart, Vector2 oldEnd, GameObject wallObject, Material material)
+    {
+        EditUndoAction action = new EditUndoAction
+        {
+            actionId = nextEditUndoActionId++,
+            kind = EditUndoActionKind.ManualWallCutModified,
+            sourceKind = SelectableWallSourceKind.ManualWall,
+            index = index,
+            start = oldStart,
+            end = oldEnd,
+            wallObject = wallObject,
+            material = material
+        };
+
+        editUndoStack.Push(action);
+        return action;
+    }
+
+    private EditUndoAction PushManualWallCutRemovedUndo(int index, Vector2 oldStart, Vector2 oldEnd, GameObject wallObject, Material material)
+    {
+        EditUndoAction action = new EditUndoAction
+        {
+            actionId = nextEditUndoActionId++,
+            kind = EditUndoActionKind.ManualWallCutRemoved,
+            sourceKind = SelectableWallSourceKind.ManualWall,
+            index = index,
+            start = oldStart,
+            end = oldEnd,
+            wallObject = wallObject,
+            material = material
+        };
+
+        editUndoStack.Push(action);
+        return action;
+    }
+
+    private EditUndoAction PushSceneWallCutModifiedUndo(SelectableWallSourceKind sourceKind, int sourceIndex, WallSegment oldSegment)
+    {
+        EditUndoAction action = new EditUndoAction
+        {
+            actionId = nextEditUndoActionId++,
+            kind = EditUndoActionKind.SceneWallCutModified,
+            sourceKind = sourceKind,
+            index = sourceIndex,
+            sceneSegment = oldSegment
+        };
+
+        editUndoStack.Push(action);
+        return action;
+    }
+
+    private EditUndoAction PushSceneWallCutRemovedUndo(SelectableWallSourceKind sourceKind, int sourceIndex, WallSegment oldSegment)
+    {
+        EditUndoAction action = new EditUndoAction
+        {
+            actionId = nextEditUndoActionId++,
+            kind = EditUndoActionKind.SceneWallCutRemoved,
+            sourceKind = sourceKind,
+            index = sourceIndex,
+            sceneSegment = oldSegment
+        };
+
+        editUndoStack.Push(action);
+        return action;
+    }
+
+    private bool TryUndoLastEditOperation()
+    {
+        while (editUndoStack.Count > 0)
+        {
+            EditUndoAction action = editUndoStack.Pop();
+
+            switch (action.kind)
+            {
+                case EditUndoActionKind.ManualWallCreated:
+                    if (TryUndoManualWallCreated(action))
+                    {
+                        status = "Undo manual wall creation.";
+                        cutModeStatus = status;
+                        Debug.Log($"[ManualWall] {status}");
+                        return true;
+                    }
+                    break;
+
+                case EditUndoActionKind.ManualWallCutModified:
+                    if (TryUndoManualWallCutModified(action))
+                    {
+                        status = "Undo manual wall cut.";
+                        cutModeStatus = status;
+                        Debug.Log($"[ManualWall] {status}");
+                        return true;
+                    }
+                    break;
+
+                case EditUndoActionKind.ManualWallCutRemoved:
+                    if (TryUndoManualWallCutRemoved(action))
+                    {
+                        status = "Undo removed manual wall cut.";
+                        cutModeStatus = status;
+                        Debug.Log($"[ManualWall] {status}");
+                        return true;
+                    }
+                    break;
+
+                case EditUndoActionKind.SceneWallCutModified:
+                    SetSceneWallSegment(action.sourceKind, action.index, action.sceneSegment);
+                    RebuildSelectableSurfaces();
+                    status = "Undo detected wall cut.";
+                    cutModeStatus = status;
+                    Debug.Log($"[ManualWall] {status}");
+                    return true;
+
+                case EditUndoActionKind.SceneWallCutRemoved:
+                    InsertSceneWallSegment(action.sourceKind, action.index, action.sceneSegment);
+                    RebuildSelectableSurfaces();
+                    status = "Undo removed detected wall cut.";
+                    cutModeStatus = status;
+                    Debug.Log($"[ManualWall] {status}");
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryUndoManualWallCreated(EditUndoAction action)
+    {
+        int index = -1;
+
+        if (action.wallObject != null)
+        {
+            index = manualWalls.IndexOf(action.wallObject);
+        }
+
+        if (index < 0 && action.index >= 0 && action.index < manualWalls.Count)
+        {
+            index = action.index;
+        }
+
+        if (index < 0)
+        {
+            return false;
+        }
+
+        DeleteManualWallAt(index);
+        return true;
+    }
+
+    private bool TryUndoManualWallCutModified(EditUndoAction action)
+    {
+        int index = ResolveManualWallIndex(action.index, action.wallObject);
+
+        if (index < 0)
+        {
+            return false;
+        }
+
+        bool restored = UpdateManualWallGeometry(
+            index,
+            ToFloorWorld(action.start),
+            ToFloorWorld(action.end)
+        );
+
+        if (!restored)
+        {
+            return false;
+        }
+
+        SetWallMaterial(manualWalls[index], action.material != null ? action.material : manualWallMaterial);
+        RefreshManualWallSourceIndices();
+        return true;
+    }
+
+    private bool TryUndoManualWallCutRemoved(EditUndoAction action)
+    {
+        GameObject restored = InsertManualWallAt(
+            action.index,
+            action.start,
+            action.end,
+            action.material != null ? action.material : manualWallMaterial
+        );
+
+        return restored != null;
+    }
+
+    private int ResolveManualWallIndex(int preferredIndex, GameObject wallObject)
+    {
+        if (wallObject != null)
+        {
+            int index = manualWalls.IndexOf(wallObject);
+
+            if (index >= 0)
+            {
+                return index;
+            }
+        }
+
+        if (preferredIndex >= 0 && preferredIndex < manualWalls.Count)
+        {
+            return preferredIndex;
+        }
+
+        return -1;
+    }
+
+    private GameObject InsertManualWallAt(int index, Vector2 start2, Vector2 end2, Material material)
+    {
+        if (scanner == null || scanner.currentRoom == null)
+        {
+            return null;
+        }
+
+        float floorY = scanner.currentRoom.floorY;
+        float ceilingY = scanner.currentRoom.ceilingY;
+        float height = Mathf.Max(0.1f, ceilingY - floorY);
+
+        Vector3 start = new Vector3(start2.x, floorY, start2.y);
+        Vector3 end = new Vector3(end2.x, floorY, end2.y);
+
+        if (Vector3.Distance(start, end) < minWallLength)
+        {
+            return null;
+        }
+
+        GameObject wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        wall.name = "ManualWall";
+
+        ApplyWallTransform(wall, start, end, height);
+        SetWallMaterial(wall, material != null ? material : manualWallMaterial);
+
+        if (manualWallRoot != null)
+        {
+            wall.transform.SetParent(manualWallRoot, true);
+        }
+
+        int insertIndex = Mathf.Clamp(index, 0, manualWalls.Count);
+
+        manualWalls.Insert(insertIndex, wall);
+        manualWallSegments.Insert(insertIndex, new ManualWallSegmentData
+        {
+            start = start2,
+            end = end2,
+            wallObject = wall
+        });
+
+        AddSelectableSurface(
+            wall,
+            SelectableSurfaceKind.ManualWall,
+            material != null ? material : manualWallMaterial,
+            visible: true
+        );
+
+        RefreshManualWallSourceIndices();
+        return wall;
+    }
+
     private void ClearCutTargetSelection(bool restoreMaterialAlreadyApplied = false)
     {
         if (!restoreMaterialAlreadyApplied && cutTargetWall != null)
@@ -1032,6 +1788,8 @@ public class ManualWallBuilder : MonoBehaviour
                 cutTargetOriginalMaterial != null ? cutTargetOriginalMaterial : manualWallMaterial
             );
         }
+
+        ClearCutLinePreviewObject();
 
         cutTargetWallIndex = -1;
         cutTargetWall = null;
@@ -1065,7 +1823,7 @@ public class ManualWallBuilder : MonoBehaviour
         Vector3 end = point;
         SnapWallEndpoints(ref start, ref end);
 
-        CreateManualWallInternal(
+        GameObject createdWall = CreateManualWallInternal(
             start,
             end,
             LastWallCreationType.TwoPoint,
@@ -1076,6 +1834,11 @@ public class ManualWallBuilder : MonoBehaviour
 
         ClearPendingFirstPoint();
         SetPreviewLineVisible(false);
+
+        if (createdWall == null)
+        {
+            return;
+        }
 
         status = "Floor two-point wall completed.";
         Debug.Log($"[ManualWall] {status}");
@@ -1098,7 +1861,7 @@ public class ManualWallBuilder : MonoBehaviour
             Vector3 end = ToFloorWorld(projectedWorld);
             SnapWallEndpoints(ref start, ref end);
 
-            CreateManualWallInternal(
+            GameObject wallFromFirstPoint = CreateManualWallInternal(
                 start,
                 end,
                 LastWallCreationType.TwoPoint,
@@ -1109,6 +1872,11 @@ public class ManualWallBuilder : MonoBehaviour
 
             ClearPendingFirstPoint();
             SetPreviewLineVisible(false);
+
+            if (wallFromFirstPoint == null)
+            {
+                return;
+            }
 
             status = "Wall completed by using selected wall point as second floor point.";
             Debug.Log($"[ManualWall] {status}");
@@ -1147,7 +1915,7 @@ public class ManualWallBuilder : MonoBehaviour
         Vector2 normal = new Vector2(-wallDir.y, wallDir.x).normalized;
         WallBuildCandidate candidate = ChooseBestCandidate(anchor, normal);
 
-        CreateManualWallInternal(
+        GameObject createdWall = CreateManualWallInternal(
             ToFloorWorld(candidate.anchor),
             ToFloorWorld(candidate.end),
             creationType,
@@ -1156,12 +1924,22 @@ public class ManualWallBuilder : MonoBehaviour
             highlightAsLastCreated: true
         );
 
+        if (createdWall == null)
+        {
+            return;
+        }
+
         string hitText = candidate.hitTarget ? "target wall found" : "fallback max length";
         status = $"Wall-based manual wall created. type:{creationType}, {hitText}";
         Debug.Log($"[ManualWall] {status}");
     }
 
-    public List<ManualWallSegmentSnapshot> GetManualWallSegmentsSnapshot()
+    /// <summary>
+    /// ManualWallBuilder가 실제로 관리 중인 수동 벽 segment를 반환합니다.
+    /// Confirm Room 단계에서는 manualWallRoot를 숨긴 상태에서도 검증/미리보기에 수동 벽을 포함해야 하므로
+    /// 기본값은 inactive wall도 포함하도록 둡니다.
+    /// </summary>
+    public List<ManualWallSegmentSnapshot> GetManualWallSegmentsSnapshot(bool includeInactiveObjects = true)
     {
         List<ManualWallSegmentSnapshot> result = new List<ManualWallSegmentSnapshot>();
 
@@ -1169,12 +1947,15 @@ public class ManualWallBuilder : MonoBehaviour
         {
             ManualWallSegmentData segment = manualWallSegments[i];
 
+            // Destroy된 벽은 Unity의 fake-null 비교로 걸러집니다.
             if (segment.wallObject == null)
             {
                 continue;
             }
 
-            if (!segment.wallObject.activeInHierarchy)
+            // Confirm Room 진입 시 manualWallRoot를 숨기면 activeInHierarchy가 false가 됩니다.
+            // 이 경우에도 직접 생성한 벽은 최종 방 후보에 포함되어야 합니다.
+            if (!includeInactiveObjects && !segment.wallObject.activeInHierarchy)
             {
                 continue;
             }
@@ -1203,6 +1984,11 @@ public class ManualWallBuilder : MonoBehaviour
         Vector2 direction,
         bool highlightAsLastCreated)
     {
+        if (IsManualWallCreationTemporarilySuppressed())
+        {
+            return null;
+        }
+
         if (scanner == null || scanner.currentRoom == null)
         {
             status = "Cannot create wall. Scanner or currentRoom is null.";
@@ -1275,6 +2061,13 @@ public class ManualWallBuilder : MonoBehaviour
             lastWallDirection = direction.sqrMagnitude > 0.0001f ? direction.normalized : GetDirection2D(start, end);
             hasLastGeneratedWall = true;
             lastGeneratedWallType = creationType.ToString();
+        }
+
+        PushManualWallCreatedUndo(manualWalls.Count - 1, wall);
+
+        if (!RegisterManualWallCreationForBurstGuard(wall))
+        {
+            return null;
         }
 
         status = $"Manual wall created. length:{length:F2}, height:{height:F2}, type:{creationType}";
@@ -1547,7 +2340,7 @@ public class ManualWallBuilder : MonoBehaviour
             }
         }
 
-        if (includeClosureEdgesForPerpendicularExtend)
+        if (includeClosureEdgesForPerpendicularExtend || includeClosureEdgesAsManualWallSelectable)
         {
             foreach (WallSegment edge in scanner.currentRoom.closureEdges)
             {
@@ -1678,7 +2471,7 @@ public class ManualWallBuilder : MonoBehaviour
             yield return wall;
         }
 
-        if (includeClosureEdgesForPerpendicularExtend)
+        if (includeClosureEdgesForPerpendicularExtend || includeClosureEdgesAsManualWallSelectable)
         {
             foreach (WallSegment edge in scanner.currentRoom.closureEdges)
             {
@@ -1827,6 +2620,45 @@ public class ManualWallBuilder : MonoBehaviour
                  sourceIndex < scanner.currentRoom.closureEdges.Count)
         {
             scanner.currentRoom.closureEdges.RemoveAt(sourceIndex);
+        }
+    }
+
+
+    private void SetSceneWallSegment(SelectableWallSourceKind sourceKind, int sourceIndex, WallSegment segment)
+    {
+        if (scanner == null || scanner.currentRoom == null || sourceIndex < 0)
+        {
+            return;
+        }
+
+        if (sourceKind == SelectableWallSourceKind.DetectedWall &&
+            sourceIndex < scanner.currentRoom.detectedWalls.Count)
+        {
+            scanner.currentRoom.detectedWalls[sourceIndex] = segment;
+        }
+        else if (sourceKind == SelectableWallSourceKind.ClosureEdge &&
+                 sourceIndex < scanner.currentRoom.closureEdges.Count)
+        {
+            scanner.currentRoom.closureEdges[sourceIndex] = segment;
+        }
+    }
+
+    private void InsertSceneWallSegment(SelectableWallSourceKind sourceKind, int sourceIndex, WallSegment segment)
+    {
+        if (scanner == null || scanner.currentRoom == null)
+        {
+            return;
+        }
+
+        if (sourceKind == SelectableWallSourceKind.DetectedWall)
+        {
+            int index = Mathf.Clamp(sourceIndex, 0, scanner.currentRoom.detectedWalls.Count);
+            scanner.currentRoom.detectedWalls.Insert(index, segment);
+        }
+        else if (sourceKind == SelectableWallSourceKind.ClosureEdge)
+        {
+            int index = Mathf.Clamp(sourceIndex, 0, scanner.currentRoom.closureEdges.Count);
+            scanner.currentRoom.closureEdges.Insert(index, segment);
         }
     }
 
@@ -2062,7 +2894,7 @@ public class ManualWallBuilder : MonoBehaviour
             );
         }
 
-        if (includeClosureEdgesForPerpendicularExtend)
+        if (includeClosureEdgesForPerpendicularExtend || includeClosureEdgesAsManualWallSelectable)
         {
             for (int i = 0; i < scanner.currentRoom.closureEdges.Count; i++)
             {
@@ -2358,6 +3190,105 @@ public class ManualWallBuilder : MonoBehaviour
         }
     }
 
+
+    private void ShowCutLinePreview(Vector2 segmentStart, Vector2 segmentEnd, Vector2 cutPosition)
+    {
+        ClearCutLinePreviewObject();
+
+        if (!showWallCutLinePreview || scanner == null || scanner.currentRoom == null)
+        {
+            return;
+        }
+
+        Vector2 dir = segmentEnd - segmentStart;
+
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            return;
+        }
+
+        dir.Normalize();
+
+        float floorY = scanner.currentRoom.floorY;
+        float ceilingY = scanner.currentRoom.ceilingY;
+        float height = Mathf.Max(0.1f, ceilingY - floorY) + Mathf.Max(0.0f, wallCutLineHeightPadding);
+        float centerY = floorY + (ceilingY - floorY) * 0.5f;
+
+        cutLinePreviewObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        cutLinePreviewObject.name = "ManualWall_CutLinePreview";
+
+        cutLinePreviewObject.transform.position = new Vector3(cutPosition.x, centerY, cutPosition.y);
+        float yaw = Mathf.Atan2(dir.x, dir.y) * Mathf.Rad2Deg;
+        cutLinePreviewObject.transform.rotation = Quaternion.Euler(0.0f, yaw, 0.0f);
+        cutLinePreviewObject.transform.localScale = new Vector3(
+            Mathf.Max(wallCutLineDepth, wallThickness * 1.25f),
+            height,
+            Mathf.Max(0.01f, wallCutLineWidth)
+        );
+
+        if (manualWallRoot != null)
+        {
+            cutLinePreviewObject.transform.SetParent(manualWallRoot, true);
+        }
+        else
+        {
+            cutLinePreviewObject.transform.SetParent(transform, true);
+        }
+
+        MeshRenderer renderer = cutLinePreviewObject.GetComponent<MeshRenderer>();
+
+        if (renderer != null)
+        {
+            Material material = GetCutLinePreviewMaterial();
+
+            if (material != null)
+            {
+                renderer.sharedMaterial = material;
+            }
+        }
+
+        Collider collider = cutLinePreviewObject.GetComponent<Collider>();
+
+        if (collider != null)
+        {
+            collider.isTrigger = true;
+            collider.enabled = false;
+        }
+    }
+
+    private void ClearCutLinePreviewObject()
+    {
+        if (cutLinePreviewObject != null)
+        {
+            Destroy(cutLinePreviewObject);
+            cutLinePreviewObject = null;
+        }
+    }
+
+    private Material GetCutLinePreviewMaterial()
+    {
+        if (wallCutLineMaterial != null)
+        {
+            return wallCutLineMaterial;
+        }
+
+        if (wallCutTargetMaterial != null)
+        {
+            return wallCutTargetMaterial;
+        }
+
+        if (runtimeWallCutLineMaterial == null)
+        {
+            runtimeWallCutLineMaterial = CreateRuntimeMaterial(
+                "Runtime_WallCutLinePreview_Material",
+                new Color(1.0f, 0.12f, 0.05f, 0.95f),
+                wallCutLineMaterial != null ? wallCutLineMaterial : wallCutTargetMaterial
+            );
+        }
+
+        return runtimeWallCutLineMaterial != null ? runtimeWallCutLineMaterial : GetWallCutTargetMaterial();
+    }
+
     private void ClearPendingFirstPoint()
     {
         firstFloorPoint = null;
@@ -2439,6 +3370,15 @@ public class ManualWallBuilder : MonoBehaviour
                 "Runtime_WallCutTarget_Material",
                 new Color(1.0f, 0.25f, 0.15f, 0.75f),
                 wallCutTargetMaterial
+            );
+        }
+
+        if (runtimeWallCutLineMaterial == null)
+        {
+            runtimeWallCutLineMaterial = CreateRuntimeMaterial(
+                "Runtime_WallCutLinePreview_Material",
+                new Color(1.0f, 0.12f, 0.05f, 0.95f),
+                wallCutLineMaterial != null ? wallCutLineMaterial : wallCutTargetMaterial
             );
         }
     }

@@ -1,104 +1,587 @@
+using System;
+using MixedReality.Toolkit.UX;
+using TMPro;
 using UnityEngine;
-using TMPro; // TextMeshPro¸¦ »ç¿ëÇÏ±â À§ÇØ Ãß°¡
+using UnityEngine.Events;
 
 public class UIManager : MonoBehaviour
 {
-    [Header("1. ¸ŞÀÎ ÆĞ³Î (È­¸é ÀüÈ¯¿ë)")]
-    public GameObject panel_BuildingInfo;       // 1. °Ç¹° Á¤º¸ ÀÔ·Â ÆÇ³Ú
-    public GameObject panel_AutoScanCheck;      // 4. µÑ·¯º¸¸ç Mesh È®ÀÎÇÏ´Â ¹öÆ° ¸ğÀ½
-    public GameObject panel_ManualWall;         // 5. ¼öµ¿ º® »ı¼º ¹öÆ° ¸ğÀ½
-    public GameObject panel_MeshAndSimSetup;    // 6. ÀüÃ¼ Mesh ÃßÃâ + ¹æ ¿Ï¼º + Áøµµ ¼³Á¤ UI
-    public GameObject panel_Result;             // 8. °á°ú UI
+    [Serializable]
+    public class WorkflowStateUiConfig
+    {
+        public RoomBuildWorkflowManager.WorkflowState state;
+        public GameObject mainPanel;
 
-    [Header("2. ¼­ºê ÆĞ³Î (ÆË¾÷/¿À¹ö·¹ÀÌ¿ë)")]
-    public GameObject sub_BuildingTypeOptions;  // 2. °Ç¹° Á¾·ùµéÀÌ ´Ã¾îÁ® ÀÖ´Â ¹öÆ° 3°³
-    public GameObject sub_Numpad;               // 3. ³Ñ¹öÆĞµå
-    public GameObject sub_IntensitySlider;      // 7. Áøµµ ¼³Á¤ ½½¶óÀÌµå
+        [Tooltip("í•´ë‹¹ ìƒíƒœì—ì„œ ì¶”ê°€ë¡œ ì¼¤ ë²„íŠ¼ì…ë‹ˆë‹¤. ë²„íŠ¼ì´ ìƒíƒœë³„ íŒ¨ë„ì˜ ìì‹ì´ë©´ ë¹„ì›Œë„ ë©ë‹ˆë‹¤.")]
+        public PressableButton[] visibleButtons;
 
-    [Header("3. ½Ã½ºÅÛ ¸Ş½ÃÁö UI")]
-    public GameObject panel_SystemMessage;      // °æ°í/¾È³» ¸Ş½ÃÁö¸¦ ¶ç¿ï ÆĞ³Î
-    public TMP_Text text_SystemMessage;         // ¸Ş½ÃÁö ³»¿ëÀ» º¯°æÇÒ ÅØ½ºÆ® ÄÄÆ÷³ÍÆ®
+        [Tooltip("í•´ë‹¹ ìƒíƒœì—ì„œ ì¶”ê°€ë¡œ ì¼¤ ì˜¤ë¸Œì íŠ¸ì…ë‹ˆë‹¤. ë²„íŠ¼ì´ ì•„ë‹Œ ìƒíƒœë³„ ì•ˆë‚´ë¬¸/ê·¸ë£¹ì„ ì¼¤ ë•Œ ì‚¬ìš©í•©ë‹ˆë‹¤.")]
+        public GameObject[] visibleObjects;
+
+        [Tooltip("ìƒíƒœ ì§„ì… ì‹œ Numpad/Slider ê°™ì€ ì„œë¸ŒíŒ¨ë„ì„ ë‹«ìŠµë‹ˆë‹¤.")]
+        public bool hideSubPanelsOnEnter = true;
+    }
+
+    [Header("Workflow ì—°ê²°")]
+    [Tooltip("ë°© ìƒì„±/ìˆ˜ë™ ë²½/ìº¡ì²˜/ë°°ì¹˜/ì‹œë®¬ë ˆì´ì…˜ ë‹¨ê³„ì˜ ì‹¤ì œ ì‘ì—…ì„ ë‹´ë‹¹í•˜ëŠ” WorkflowManagerì…ë‹ˆë‹¤.")]
+    public RoomBuildWorkflowManager workflowManager;
+
+    [Tooltip("workflowManagerê°€ ë¹„ì–´ ìˆìœ¼ë©´ ëŸ°íƒ€ì„ì— Sceneì—ì„œ ìë™ íƒìƒ‰í•©ë‹ˆë‹¤.")]
+    public bool autoFindWorkflowManager = true;
+
+    [Tooltip("Workflow ìƒíƒœê°€ ë°”ë€” ë•Œ UIManagerê°€ ë©”ì¸ íŒ¨ë„ì„ ì „í™˜í•©ë‹ˆë‹¤.")]
+    public bool useWorkflowDrivenPanels = true;
+
+    [Tooltip("ìƒíƒœë³„ UI ì„¤ì • ë°°ì—´ì„ ìš°ì„  ì‚¬ìš©í•©ë‹ˆë‹¤. ê° ìƒíƒœë§ˆë‹¤ mainPanelê³¼ í•„ìš”í•œ ë²„íŠ¼/ì˜¤ë¸Œì íŠ¸ë¥¼ ì§ì ‘ ì§€ì •í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.")]
+    public bool useWorkflowStateUiConfigs = true;
+
+    [Tooltip("ì´ì „ ë²„ì „ í˜¸í™˜ìš©ì…ë‹ˆë‹¤. ìƒˆ êµ¬ì¡°ì—ì„œëŠ” ê° PanelControllerê°€ ë²„íŠ¼ì„ ì—°ê²°í•˜ë¯€ë¡œ ê¸°ë³¸ê°’ì€ falseì…ë‹ˆë‹¤.")]
+    public bool registerWorkflowButtons = false;
+
+    [Tooltip("í˜„ì¬ Workflow ìƒíƒœì— ë§ëŠ” ë²„íŠ¼ë§Œ ë³´ì´ë„ë¡ ë²„íŠ¼ GameObject activeë¥¼ ì œì–´í•©ë‹ˆë‹¤. ë²„íŠ¼ì´ ì´ë¯¸ íŒ¨ë„ í•˜ìœ„ì—ì„œ ê´€ë¦¬ë˜ë©´ êº¼ë„ ë©ë‹ˆë‹¤.")]
+    public bool manageWorkflowButtonVisibility = false;
+
+    [Tooltip("WorkflowManagerê°€ ì—†ì„ ë•Œë§Œ ê¸°ì¡´ì²˜ëŸ¼ BuildingInfo íŒ¨ë„ë¡œ ì‹œì‘í•©ë‹ˆë‹¤.")]
+    public bool useLegacyStartPanelWhenWorkflowMissing = true;
+
+    [Header("1. Opening / RoomInfoInput íŒ¨ë„")]
+    [Tooltip("ì•± ì‹œì‘ ì‹œ ê°€ì¥ ë¨¼ì € ë³´ì—¬ì¤„ Opening íŒ¨ë„ì…ë‹ˆë‹¤. ë¹„ì›Œë‘ë©´ Opening íŒ¨ë„ ë‹¨ê³„ëŠ” ì‚¬ìš©í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.")]
+    public GameObject panel_Opening;
+
+    [Tooltip("panel_Openingì´ ì—°ê²°ë˜ì–´ ìˆìœ¼ë©´ Startì—ì„œ Opening íŒ¨ë„ì„ ë¨¼ì € ë³´ì—¬ì¤ë‹ˆë‹¤.")]
+    public bool showOpeningPanelOnStart = true;
+
+    [Tooltip("RoomInfoInput ë‹¨ê³„ íŒ¨ë„ì…ë‹ˆë‹¤. ê¸°ì¡´ panel_BuildingInfo ì—­í• ì„ ì´ í•„ë“œë¡œ í†µí•©í•©ë‹ˆë‹¤.")]
+    public GameObject panel_RoomInfoInput;
+
+    [Header("1-0. Legacy Fallback íŒ¨ë„")]
+    [Tooltip("ì´ì „ ë²„ì „ í˜¸í™˜ìš©ì…ë‹ˆë‹¤. panel_RoomInfoInputì´ ë¹„ì–´ ìˆì„ ë•Œë§Œ fallbackìœ¼ë¡œ ì‚¬ìš©í•©ë‹ˆë‹¤.")]
+    public GameObject panel_BuildingInfo;
+
+    public GameObject panel_AutoScanCheck;
+    public GameObject panel_ManualWall;
+    public GameObject panel_MeshAndSimSetup;
+    public GameObject panel_Result;
+
+    [Header("1-1. Workflow ë‹¨ê³„ë³„ ë©”ì¸ íŒ¨ë„")]
+    [Tooltip("RoomBuild ë‹¨ê³„ íŒ¨ë„ì…ë‹ˆë‹¤. ë¹„ì›Œë‘ë©´ panel_AutoScanCheckë¥¼ ì‚¬ìš©í•©ë‹ˆë‹¤.")]
+    public GameObject panel_RoomBuild;
+
+    [Tooltip("ManualWallGenerate ë‹¨ê³„ íŒ¨ë„ì…ë‹ˆë‹¤. ë¹„ì›Œë‘ë©´ panel_ManualWallì„ ì‚¬ìš©í•©ë‹ˆë‹¤.")]
+    public GameObject panel_ManualWallGenerate;
+
+    [Tooltip("ManualWallConfirmed ë‹¨ê³„ íŒ¨ë„ì…ë‹ˆë‹¤. ë¹„ì›Œë‘ë©´ panel_MeshAndSimSetupì„ ì‚¬ìš©í•©ë‹ˆë‹¤.")]
+    public GameObject panel_ManualWallConfirmed;
+
+    [Tooltip("RoomCapture ë‹¨ê³„ íŒ¨ë„ì…ë‹ˆë‹¤.")]
+    public GameObject panel_RoomCapture;
+
+    [Tooltip("FurniturePlacement ë‹¨ê³„ íŒ¨ë„ì…ë‹ˆë‹¤.")]
+    public GameObject panel_FurniturePlacement;
+
+    [Tooltip("SimulationProcess ë‹¨ê³„ íŒ¨ë„ì…ë‹ˆë‹¤.")]
+    public GameObject panel_SimulationProcess;
+
+    [Tooltip("SimulationSuccess ë‹¨ê³„ íŒ¨ë„ì…ë‹ˆë‹¤. ë¹„ì›Œë‘ë©´ panel_Resultë¥¼ ì‚¬ìš©í•©ë‹ˆë‹¤.")]
+    public GameObject panel_SimulationSuccess;
+
+    [Tooltip("RunSimulation ë‹¨ê³„ íŒ¨ë„ì…ë‹ˆë‹¤. ë¹„ì›Œë‘ë©´ panel_Resultë¥¼ ì‚¬ìš©í•©ë‹ˆë‹¤.")]
+    public GameObject panel_RunSimulation;
+
+    [Tooltip("FurnitureRePlacement ë‹¨ê³„ íŒ¨ë„ì…ë‹ˆë‹¤. ë¹„ì›Œë‘ë©´ panel_FurniturePlacementë¥¼ ì‚¬ìš©í•©ë‹ˆë‹¤.")]
+    public GameObject panel_FurnitureRePlacement;
+
+    [Header("1-2. Workflow ìƒíƒœë³„ UI ì„¤ì •")]
+    [Tooltip("ìƒíƒœë³„ë¡œ í‘œì‹œí•  ë©”ì¸ íŒ¨ë„ê³¼ ì¶”ê°€ ë²„íŠ¼/ì˜¤ë¸Œì íŠ¸ë¥¼ ì§€ì •í•©ë‹ˆë‹¤. ë¹„ì›Œë‘ë©´ ìœ„ì˜ íŒ¨ë„ í•„ë“œ fallbackì„ ì‚¬ìš©í•©ë‹ˆë‹¤.")]
+    public WorkflowStateUiConfig[] workflowStateUiConfigs;
+
+    [Header("2. ì„œë¸Œ íŒ¨ë„")]
+    public GameObject sub_BuildingTypeOptions;
+    public GameObject sub_Numpad;
+    public GameObject sub_IntensitySlider;
+
+    [Header("3. ì‹œìŠ¤í…œ ë©”ì‹œì§€ UI")]
+    public GameObject panel_SystemMessage;
+    public TMP_Text text_SystemMessage;
+
+    [Header("4. Workflow ë²„íŠ¼ - Legacy Fallback")]
+    [Tooltip("ìƒˆ êµ¬ì¡°ì—ì„œëŠ” ê° PanelControllerì— ë²„íŠ¼ì„ ì—°ê²°í•˜ëŠ” ê²ƒì„ ê¶Œì¥í•©ë‹ˆë‹¤. ì´ í•„ë“œëŠ” ì´ì „ ë²„ì „ í˜¸í™˜ìš©ì…ë‹ˆë‹¤.")]
+    public PressableButton completeRoomInfoInputButton;
+    public PressableButton switchToManualWallButton;
+    public PressableButton returnToRoomBuildButton;
+    public PressableButton confirmManualWallsButton;
+    public PressableButton backToManualWallButton;
+    public PressableButton confirmRoomButton;
+
+    [Header("4-1. Workflow ë²„íŠ¼ - í™•ì¥ ë‹¨ê³„ Legacy Fallback")]
+    public PressableButton completeRoomCaptureButton;
+    public PressableButton completeFurniturePlacementButton;
+    public PressableButton completeSimulationProcessButton;
+    public PressableButton startRunSimulationButton;
+    public PressableButton completeRunSimulationButton;
+    public PressableButton startFurnitureRePlacementButton;
+    public PressableButton completeFurnitureRePlacementButton;
+    public PressableButton returnToRoomCaptureButton;
+
+    [Header("5. Workflow ìƒíƒœ í‘œì‹œ")]
+    public TMP_Text text_WorkflowStatus;
+
+    private UnityAction completeRoomInfoInputAction;
+    private UnityAction switchToManualWallAction;
+    private UnityAction returnToRoomBuildAction;
+    private UnityAction confirmManualWallsAction;
+    private UnityAction backToManualWallAction;
+    private UnityAction confirmRoomAction;
+    private UnityAction completeRoomCaptureAction;
+    private UnityAction completeFurniturePlacementAction;
+    private UnityAction completeSimulationProcessAction;
+    private UnityAction startRunSimulationAction;
+    private UnityAction completeRunSimulationAction;
+    private UnityAction startFurnitureRePlacementAction;
+    private UnityAction completeFurnitureRePlacementAction;
+    private UnityAction returnToRoomCaptureAction;
+
+    private void Awake()
+    {
+        EnsureWorkflowManagerReference();
+
+        if (workflowManager != null && workflowManager.uiManager == null)
+        {
+            workflowManager.uiManager = this;
+        }
+    }
+
+    private void OnEnable()
+    {
+        if (registerWorkflowButtons)
+        {
+            CreateWorkflowButtonActions();
+            RegisterWorkflowButtons();
+        }
+    }
 
     private void Start()
     {
-        // ½ÃÀÛÇÒ ¶§ ¸ğµç ÆË¾÷°ú ¸Ş½ÃÁö¸¦ ²ô°í, Ã¹ ¹øÂ° ¸ŞÀÎ ÆĞ³Î¸¸ ÄÕ´Ï´Ù.
         HideAllSubPanels();
         HideWarningMessage();
-        ShowMainPanel(panel_BuildingInfo);
+
+        EnsureWorkflowManagerReference();
+
+        if (workflowManager != null)
+        {
+            if (workflowManager.uiManager == null)
+            {
+                workflowManager.uiManager = this;
+            }
+
+            if (showOpeningPanelOnStart && panel_Opening != null)
+            {
+                ShowMainPanel(panel_Opening);
+                UpdateWorkflowStatus(workflowManager);
+                return;
+            }
+
+            ShowWorkflowState(workflowManager.currentState);
+            UpdateWorkflowStatus(workflowManager);
+            return;
+        }
+
+        if (useLegacyStartPanelWhenWorkflowMissing)
+        {
+            ShowMainPanel(panel_Opening != null ? panel_Opening : (panel_RoomInfoInput != null ? panel_RoomInfoInput : panel_BuildingInfo));
+        }
     }
 
-    // ==========================================
-    // [ÇÙ½É ±â´É 1] ¸ŞÀÎ ÆĞ³Î ÀüÈ¯
-    // ==========================================
+    private void OnDisable()
+    {
+        if (registerWorkflowButtons)
+        {
+            UnregisterWorkflowButtons();
+        }
+    }
+
+    public RoomBuildWorkflowManager GetWorkflowManager()
+    {
+        EnsureWorkflowManagerReference();
+        return workflowManager;
+    }
+
+    private void EnsureWorkflowManagerReference()
+    {
+        if (workflowManager != null || !autoFindWorkflowManager)
+        {
+            return;
+        }
+
+        RoomBuildWorkflowManager[] managers =
+            FindObjectsByType<RoomBuildWorkflowManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+
+        if (managers != null && managers.Length > 0)
+        {
+            workflowManager = managers[0];
+        }
+    }
+
+    private void CreateWorkflowButtonActions()
+    {
+        completeRoomInfoInputAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteRoomInfoInput);
+        switchToManualWallAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.SwitchToManualWallGeneration);
+        returnToRoomBuildAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.ReturnToRoomBuild);
+        confirmManualWallsAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.ConfirmManualWalls);
+        backToManualWallAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.BackToManualWallGeneration);
+        confirmRoomAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.ConfirmRoomAndStartRoomCapture);
+        completeRoomCaptureAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteRoomCapture);
+        completeFurniturePlacementAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteFurniturePlacement);
+        completeSimulationProcessAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteSimulationProcess);
+        startRunSimulationAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.StartRunSimulation);
+        completeRunSimulationAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteRunSimulation);
+        startFurnitureRePlacementAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.StartFurnitureRePlacement);
+        completeFurnitureRePlacementAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteFurnitureRePlacement);
+        returnToRoomCaptureAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.ReturnToRoomCapture);
+    }
+
+    private void RegisterWorkflowButtons()
+    {
+        AddClick(completeRoomInfoInputButton, completeRoomInfoInputAction);
+        AddClick(switchToManualWallButton, switchToManualWallAction);
+        AddClick(returnToRoomBuildButton, returnToRoomBuildAction);
+        AddClick(confirmManualWallsButton, confirmManualWallsAction);
+        AddClick(backToManualWallButton, backToManualWallAction);
+        AddClick(confirmRoomButton, confirmRoomAction);
+        AddClick(completeRoomCaptureButton, completeRoomCaptureAction);
+        AddClick(completeFurniturePlacementButton, completeFurniturePlacementAction);
+        AddClick(completeSimulationProcessButton, completeSimulationProcessAction);
+        AddClick(startRunSimulationButton, startRunSimulationAction);
+        AddClick(completeRunSimulationButton, completeRunSimulationAction);
+        AddClick(startFurnitureRePlacementButton, startFurnitureRePlacementAction);
+        AddClick(completeFurnitureRePlacementButton, completeFurnitureRePlacementAction);
+        AddClick(returnToRoomCaptureButton, returnToRoomCaptureAction);
+    }
+
+    private void UnregisterWorkflowButtons()
+    {
+        RemoveClick(completeRoomInfoInputButton, completeRoomInfoInputAction);
+        RemoveClick(switchToManualWallButton, switchToManualWallAction);
+        RemoveClick(returnToRoomBuildButton, returnToRoomBuildAction);
+        RemoveClick(confirmManualWallsButton, confirmManualWallsAction);
+        RemoveClick(backToManualWallButton, backToManualWallAction);
+        RemoveClick(confirmRoomButton, confirmRoomAction);
+        RemoveClick(completeRoomCaptureButton, completeRoomCaptureAction);
+        RemoveClick(completeFurniturePlacementButton, completeFurniturePlacementAction);
+        RemoveClick(completeSimulationProcessButton, completeSimulationProcessAction);
+        RemoveClick(startRunSimulationButton, startRunSimulationAction);
+        RemoveClick(completeRunSimulationButton, completeRunSimulationAction);
+        RemoveClick(startFurnitureRePlacementButton, startFurnitureRePlacementAction);
+        RemoveClick(completeFurnitureRePlacementButton, completeFurnitureRePlacementAction);
+        RemoveClick(returnToRoomCaptureButton, returnToRoomCaptureAction);
+    }
+
+    private static void AddClick(PressableButton button, UnityAction action)
+    {
+        if (button == null || action == null)
+        {
+            return;
+        }
+
+        button.OnClicked.RemoveListener(action);
+        button.OnClicked.AddListener(action);
+    }
+
+    private static void RemoveClick(PressableButton button, UnityAction action)
+    {
+        if (button == null || action == null)
+        {
+            return;
+        }
+
+        button.OnClicked.RemoveListener(action);
+    }
+
+    [ContextMenu("Reset Workflow State UI Configs From Panel Fields")]
+    public void ResetWorkflowStateUiConfigsFromPanelFields()
+    {
+        workflowStateUiConfigs = new[]
+        {
+            CreateConfig(RoomBuildWorkflowManager.WorkflowState.RoomInfoInput, panel_RoomInfoInput != null ? panel_RoomInfoInput : panel_BuildingInfo, completeRoomInfoInputButton),
+            CreateConfig(RoomBuildWorkflowManager.WorkflowState.RoomBuild, panel_RoomBuild != null ? panel_RoomBuild : panel_AutoScanCheck, switchToManualWallButton),
+            CreateConfig(RoomBuildWorkflowManager.WorkflowState.ManualWallGenerate, panel_ManualWallGenerate != null ? panel_ManualWallGenerate : panel_ManualWall, returnToRoomBuildButton, confirmManualWallsButton),
+            CreateConfig(RoomBuildWorkflowManager.WorkflowState.ManualWallConfirmed, panel_ManualWallConfirmed != null ? panel_ManualWallConfirmed : panel_MeshAndSimSetup, backToManualWallButton, confirmRoomButton),
+            CreateConfig(RoomBuildWorkflowManager.WorkflowState.RoomCapture, panel_RoomCapture, completeRoomCaptureButton),
+            CreateConfig(RoomBuildWorkflowManager.WorkflowState.FurniturePlacement, panel_FurniturePlacement, completeFurniturePlacementButton, startFurnitureRePlacementButton),
+            CreateConfig(RoomBuildWorkflowManager.WorkflowState.SimulationProcess, panel_SimulationProcess),
+            CreateConfig(RoomBuildWorkflowManager.WorkflowState.SimulationSuccess, panel_SimulationSuccess != null ? panel_SimulationSuccess : panel_Result, startRunSimulationButton, startFurnitureRePlacementButton),
+            CreateConfig(RoomBuildWorkflowManager.WorkflowState.RunSimulation, panel_RunSimulation != null ? panel_RunSimulation : panel_Result, completeRunSimulationButton),
+            CreateConfig(RoomBuildWorkflowManager.WorkflowState.FurnitureRePlacement, panel_FurnitureRePlacement != null ? panel_FurnitureRePlacement : panel_FurniturePlacement, completeFurnitureRePlacementButton)
+        };
+    }
+
+    private static WorkflowStateUiConfig CreateConfig(
+        RoomBuildWorkflowManager.WorkflowState state,
+        GameObject panel,
+        params PressableButton[] visibleButtons)
+    {
+        return new WorkflowStateUiConfig
+        {
+            state = state,
+            mainPanel = panel,
+            visibleButtons = visibleButtons,
+            visibleObjects = null,
+            hideSubPanelsOnEnter = true
+        };
+    }
+
+    public void ShowWorkflowState(RoomBuildWorkflowManager.WorkflowState state)
+    {
+        if (!useWorkflowDrivenPanels)
+        {
+            return;
+        }
+
+        WorkflowStateUiConfig config = GetWorkflowStateUiConfig(state);
+
+        ShowMainPanel(GetPanelForWorkflowState(state, config));
+        ApplyWorkflowStateVisibleObjects(config);
+        UpdateWorkflowButtonVisibility(state);
+
+        if (config != null && config.hideSubPanelsOnEnter)
+        {
+            HideAllSubPanels();
+        }
+    }
+
+    private WorkflowStateUiConfig GetWorkflowStateUiConfig(RoomBuildWorkflowManager.WorkflowState state)
+    {
+        if (!useWorkflowStateUiConfigs || workflowStateUiConfigs == null)
+        {
+            return null;
+        }
+
+        foreach (WorkflowStateUiConfig config in workflowStateUiConfigs)
+        {
+            if (config != null && config.state == state)
+            {
+                return config;
+            }
+        }
+
+        return null;
+    }
+
+    private GameObject GetPanelForWorkflowState(RoomBuildWorkflowManager.WorkflowState state, WorkflowStateUiConfig config)
+    {
+        if (config != null && config.mainPanel != null)
+        {
+            return config.mainPanel;
+        }
+
+        switch (state)
+        {
+            case RoomBuildWorkflowManager.WorkflowState.RoomInfoInput:
+                return panel_RoomInfoInput != null ? panel_RoomInfoInput : panel_BuildingInfo;
+            case RoomBuildWorkflowManager.WorkflowState.RoomBuild:
+                return panel_RoomBuild != null ? panel_RoomBuild : panel_AutoScanCheck;
+            case RoomBuildWorkflowManager.WorkflowState.ManualWallGenerate:
+                return panel_ManualWallGenerate != null ? panel_ManualWallGenerate : panel_ManualWall;
+            case RoomBuildWorkflowManager.WorkflowState.ManualWallConfirmed:
+                return panel_ManualWallConfirmed != null ? panel_ManualWallConfirmed : panel_MeshAndSimSetup;
+            case RoomBuildWorkflowManager.WorkflowState.RoomCapture:
+                return panel_RoomCapture != null ? panel_RoomCapture : panel_MeshAndSimSetup;
+            case RoomBuildWorkflowManager.WorkflowState.FurniturePlacement:
+                return panel_FurniturePlacement != null ? panel_FurniturePlacement : panel_Result;
+            case RoomBuildWorkflowManager.WorkflowState.SimulationProcess:
+                return panel_SimulationProcess != null ? panel_SimulationProcess : panel_MeshAndSimSetup;
+            case RoomBuildWorkflowManager.WorkflowState.SimulationSuccess:
+                return panel_SimulationSuccess != null ? panel_SimulationSuccess : panel_Result;
+            case RoomBuildWorkflowManager.WorkflowState.RunSimulation:
+                return panel_RunSimulation != null ? panel_RunSimulation : panel_Result;
+            case RoomBuildWorkflowManager.WorkflowState.FurnitureRePlacement:
+                return panel_FurnitureRePlacement != null ? panel_FurnitureRePlacement : (panel_FurniturePlacement != null ? panel_FurniturePlacement : panel_Result);
+            default:
+                return panel_RoomInfoInput != null ? panel_RoomInfoInput : panel_BuildingInfo;
+        }
+    }
+
+    private void ApplyWorkflowStateVisibleObjects(WorkflowStateUiConfig activeConfig)
+    {
+        if (!useWorkflowStateUiConfigs || workflowStateUiConfigs == null)
+        {
+            return;
+        }
+
+        foreach (WorkflowStateUiConfig config in workflowStateUiConfigs)
+        {
+            if (config == null)
+            {
+                continue;
+            }
+
+            bool active = config == activeConfig;
+
+            if (config.visibleButtons != null)
+            {
+                foreach (PressableButton button in config.visibleButtons)
+                {
+                    if (button != null)
+                    {
+                        button.gameObject.SetActive(active);
+                    }
+                }
+            }
+
+            if (config.visibleObjects != null)
+            {
+                foreach (GameObject visibleObject in config.visibleObjects)
+                {
+                    if (visibleObject != null)
+                    {
+                        visibleObject.SetActive(active);
+                    }
+                }
+            }
+        }
+    }
+
+    private void UpdateWorkflowButtonVisibility(RoomBuildWorkflowManager.WorkflowState state)
+    {
+        if (!manageWorkflowButtonVisibility)
+        {
+            return;
+        }
+
+        SetButtonActive(completeRoomInfoInputButton, state == RoomBuildWorkflowManager.WorkflowState.RoomInfoInput);
+        SetButtonActive(switchToManualWallButton, state == RoomBuildWorkflowManager.WorkflowState.RoomBuild);
+        SetButtonActive(returnToRoomBuildButton, state == RoomBuildWorkflowManager.WorkflowState.ManualWallGenerate);
+        SetButtonActive(confirmManualWallsButton, state == RoomBuildWorkflowManager.WorkflowState.ManualWallGenerate);
+        SetButtonActive(backToManualWallButton, state == RoomBuildWorkflowManager.WorkflowState.ManualWallConfirmed);
+        SetButtonActive(confirmRoomButton, state == RoomBuildWorkflowManager.WorkflowState.ManualWallConfirmed);
+        SetButtonActive(completeRoomCaptureButton, state == RoomBuildWorkflowManager.WorkflowState.RoomCapture);
+        SetButtonActive(completeFurniturePlacementButton, state == RoomBuildWorkflowManager.WorkflowState.FurniturePlacement);
+        SetButtonActive(completeSimulationProcessButton, false);
+        SetButtonActive(startRunSimulationButton, state == RoomBuildWorkflowManager.WorkflowState.SimulationSuccess);
+        SetButtonActive(completeRunSimulationButton, state == RoomBuildWorkflowManager.WorkflowState.RunSimulation);
+        SetButtonActive(startFurnitureRePlacementButton, state == RoomBuildWorkflowManager.WorkflowState.FurniturePlacement || state == RoomBuildWorkflowManager.WorkflowState.SimulationSuccess);
+        SetButtonActive(completeFurnitureRePlacementButton, state == RoomBuildWorkflowManager.WorkflowState.FurnitureRePlacement);
+        SetButtonActive(returnToRoomCaptureButton, false);
+    }
+
+    private static void SetButtonActive(PressableButton button, bool active)
+    {
+        if (button != null)
+        {
+            button.gameObject.SetActive(active);
+        }
+    }
+
+    private bool RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand command)
+    {
+        RoomBuildWorkflowManager workflow = GetWorkflowManager();
+
+        if (workflow == null)
+        {
+            ShowWarningMessage("WorkflowManagerê°€ ì—°ê²°ë˜ì–´ ìˆì§€ ì•ŠìŠµë‹ˆë‹¤.");
+            return false;
+        }
+
+        return workflow.RequestCommand(command);
+    }
+
+    public void CompleteRoomInfoInput()
+    {
+        RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteRoomInfoInput);
+    }
+
+    public void OpenRoomInfoInputFromOpening()
+    {
+        EnsureWorkflowManagerReference();
+
+        if (workflowManager != null && workflowManager.currentState != RoomBuildWorkflowManager.WorkflowState.RoomInfoInput)
+        {
+            ShowWarningMessage("í˜„ì¬ ìƒíƒœì—ì„œëŠ” RoomInfoInput íŒ¨ë„ë¡œ ëŒì•„ê°ˆ ìˆ˜ ì—†ìŠµë‹ˆë‹¤.");
+            return;
+        }
+
+        ShowWorkflowState(RoomBuildWorkflowManager.WorkflowState.RoomInfoInput);
+    }
+
+    public void UpdateWorkflowStatus(RoomBuildWorkflowManager workflow)
+    {
+        if (workflow == null || text_WorkflowStatus == null)
+        {
+            return;
+        }
+
+        text_WorkflowStatus.text = workflow.BuildWorkflowStatusText();
+    }
+
     public void ShowMainPanel(GameObject targetPanel)
     {
-        // 1. ±âÁ¸ ¸ŞÀÎ ÆĞ³ÎµéÀ» ¸ğµÎ ²ü´Ï´Ù. (null Ã¼Å© Æ÷ÇÔÇÏ¿© ¾ÈÀüÇÏ°Ô)
-        if (panel_BuildingInfo) panel_BuildingInfo.SetActive(false);
-        if (panel_AutoScanCheck) panel_AutoScanCheck.SetActive(false);
-        if (panel_ManualWall) panel_ManualWall.SetActive(false);
-        if (panel_MeshAndSimSetup) panel_MeshAndSimSetup.SetActive(false);
-        if (panel_Result) panel_Result.SetActive(false);
+        SetMainPanelActive(panel_Opening, false);
+        SetMainPanelActive(panel_RoomInfoInput, false);
+        SetMainPanelActive(panel_BuildingInfo, false);
+        SetMainPanelActive(panel_AutoScanCheck, false);
+        SetMainPanelActive(panel_ManualWall, false);
+        SetMainPanelActive(panel_MeshAndSimSetup, false);
+        SetMainPanelActive(panel_Result, false);
+        SetMainPanelActive(panel_RoomBuild, false);
+        SetMainPanelActive(panel_ManualWallGenerate, false);
+        SetMainPanelActive(panel_ManualWallConfirmed, false);
+        SetMainPanelActive(panel_RoomCapture, false);
+        SetMainPanelActive(panel_FurniturePlacement, false);
+        SetMainPanelActive(panel_SimulationProcess, false);
+        SetMainPanelActive(panel_SimulationSuccess, false);
+        SetMainPanelActive(panel_RunSimulation, false);
+        SetMainPanelActive(panel_FurnitureRePlacement, false);
 
-        // 2. È­¸éÀÌ ÀüÈ¯µÉ ¶§ ¿­·ÁÀÖ´ø ÆË¾÷(¼­ºê ÆĞ³Î)µéµµ ±ò²ûÇÏ°Ô ´Ù ´İ¾ÆÁİ´Ï´Ù.
         HideAllSubPanels();
 
-        // 3. ¸ñÇ¥ ÆĞ³Î¸¸ ÄÕ´Ï´Ù.
         if (targetPanel != null)
         {
             targetPanel.SetActive(true);
         }
     }
 
-    // ==========================================
-    // [ÇÙ½É ±â´É 2] ¼­ºê ÆĞ³Î(ÆË¾÷) µ¶¸³ Á¦¾î
-    // ==========================================
+    private static void SetMainPanelActive(GameObject panel, bool active)
+    {
+        if (panel != null)
+        {
+            panel.SetActive(active);
+        }
+    }
 
-    // ¼­ºê ÆĞ³Î ÀüÃ¼ ²ô±â (ÃÊ±âÈ­¿ë)
     public void HideAllSubPanels()
     {
-        if (sub_BuildingTypeOptions) sub_BuildingTypeOptions.SetActive(false);
-        if (sub_Numpad) sub_Numpad.SetActive(false);
-        if (sub_IntensitySlider) sub_IntensitySlider.SetActive(false);
+        if (sub_BuildingTypeOptions != null) sub_BuildingTypeOptions.SetActive(false);
+        if (sub_Numpad != null) sub_Numpad.SetActive(false);
+        if (sub_IntensitySlider != null) sub_IntensitySlider.SetActive(false);
     }
 
-    // °Ç¹° Á¾·ù ¼±ÅÃ ¹öÆ°(3°³) On/Off
     public void ToggleBuildingTypeOptions(bool isActive)
     {
-        if (sub_BuildingTypeOptions) sub_BuildingTypeOptions.SetActive(isActive);
+        if (sub_BuildingTypeOptions != null) sub_BuildingTypeOptions.SetActive(isActive);
     }
 
-    // ³Ñ¹öÆĞµå On/Off
     public void ToggleNumpad(bool isActive)
     {
-        if (sub_Numpad) sub_Numpad.SetActive(isActive);
+        if (sub_Numpad != null) sub_Numpad.SetActive(isActive);
     }
 
-    // Áøµµ ¼³Á¤ ½½¶óÀÌµå On/Off
     public void ToggleIntensitySlider(bool isActive)
     {
-        if (sub_IntensitySlider) sub_IntensitySlider.SetActive(isActive);
+        if (sub_IntensitySlider != null) sub_IntensitySlider.SetActive(isActive);
     }
-
-    // ==========================================
-    // [ÇÙ½É ±â´É 3] ½Ã½ºÅÛ °æ°í/¾È³» ¸Ş½ÃÁö ÆË¾÷
-    // ==========================================
 
     public void ShowWarningMessage(string message, float duration = 2.0f)
     {
         if (panel_SystemMessage != null && text_SystemMessage != null)
         {
-            // ÅØ½ºÆ®¸¦ Àü´Ş¹ŞÀº ¸Ş½ÃÁö·Î º¯°æÇÏ°í ÆĞ³ÎÀ» ÄÕ´Ï´Ù.
             text_SystemMessage.text = message;
             panel_SystemMessage.SetActive(true);
-
-            // duration(ÃÊ) µÚ¿¡ HideWarningMessage ÇÔ¼ö¸¦ ½ÇÇàÇÏµµ·Ï ¿¹¾àÇÕ´Ï´Ù.
-            // (¹öÆ°À» ¿¬Å¸ÇßÀ» ¶§ Å¸ÀÌ¸Ó°¡ ²¿ÀÌÁö ¾Êµµ·Ï ±âÁ¸ ¿¹¾àÀ» Ãë¼ÒÇÏ°í ´Ù½Ã ¿¹¾àÇÔ)
             CancelInvoke(nameof(HideWarningMessage));
             Invoke(nameof(HideWarningMessage), duration);
         }
     }
 
-    private void HideWarningMessage()
+    public void HideWarningMessage()
     {
         if (panel_SystemMessage != null)
         {

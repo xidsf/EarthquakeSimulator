@@ -5,7 +5,7 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
 
-public class ManualWallBuilder : MonoBehaviour
+public partial class ManualWallBuilder : MonoBehaviour
 {
     public enum BuildMode
     {
@@ -243,7 +243,10 @@ public class ManualWallBuilder : MonoBehaviour
     public float selectableWallThickness = 0.05f;
     public float floorMargin = 0.3f;
 
-    [Header("MRTK Pressable Buttons")]
+    [Header("MRTK Pressable Buttons - Legacy Direct Binding")]
+    [Tooltip("이전 버전처럼 ManualWallBuilder가 버튼 listener를 직접 등록할지 여부입니다. 새 구조에서는 ManualWallPanelController가 버튼을 연결하므로 기본값은 false입니다.")]
+    public bool registerLegacyButtonListeners = false;
+
     public PressableButton rebuildSelectableSurfacesButton;
 
     [Tooltip("수동 벽 생성 <-> 벽 자르기 모드를 전환하는 단일 토글 버튼입니다.")]
@@ -335,13 +338,19 @@ public class ManualWallBuilder : MonoBehaviour
 
     private void OnEnable()
     {
-        CreateButtonActions();
-        RegisterButtons();
+        if (registerLegacyButtonListeners)
+        {
+            CreateButtonActions();
+            RegisterButtons();
+        }
     }
 
     private void OnDisable()
     {
-        UnregisterButtons();
+        if (registerLegacyButtonListeners)
+        {
+            UnregisterButtons();
+        }
     }
 
     private void Update()
@@ -1925,7 +1934,12 @@ public class ManualWallBuilder : MonoBehaviour
         Debug.Log($"[ManualWall] {status}");
     }
 
-    public List<ManualWallSegmentSnapshot> GetManualWallSegmentsSnapshot()
+    /// <summary>
+    /// ManualWallBuilder가 실제로 관리 중인 수동 벽 segment를 반환합니다.
+    /// Confirm Room 단계에서는 manualWallRoot를 숨긴 상태에서도 검증/미리보기에 수동 벽을 포함해야 하므로
+    /// 기본값은 inactive wall도 포함하도록 둡니다.
+    /// </summary>
+    public List<ManualWallSegmentSnapshot> GetManualWallSegmentsSnapshot(bool includeInactiveObjects = true)
     {
         List<ManualWallSegmentSnapshot> result = new List<ManualWallSegmentSnapshot>();
 
@@ -1933,12 +1947,15 @@ public class ManualWallBuilder : MonoBehaviour
         {
             ManualWallSegmentData segment = manualWallSegments[i];
 
+            // Destroy된 벽은 Unity의 fake-null 비교로 걸러집니다.
             if (segment.wallObject == null)
             {
                 continue;
             }
 
-            if (!segment.wallObject.activeInHierarchy)
+            // Confirm Room 진입 시 manualWallRoot를 숨기면 activeInHierarchy가 false가 됩니다.
+            // 이 경우에도 직접 생성한 벽은 최종 방 후보에 포함되어야 합니다.
+            if (!includeInactiveObjects && !segment.wallObject.activeInHierarchy)
             {
                 continue;
             }

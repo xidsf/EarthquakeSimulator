@@ -1,6 +1,7 @@
 using MixedReality.Toolkit.UX;
 using UnityEngine;
 using UnityEngine.Events;
+using TMPro; // [추가] TextMeshPro를 사용하기 위한 네임스페이스
 
 public class RoomBuildPanelController : WorkflowPanelControllerBase
 {
@@ -16,6 +17,10 @@ public class RoomBuildPanelController : WorkflowPanelControllerBase
 
     [Tooltip("현재 스캔된 방을 기준으로 Manual Wall 생성 단계로 이동합니다.")]
     public PressableButton openManualWallButton;
+
+    [Header("Text References")]
+    [Tooltip("[추가] 토글 버튼 하위에 있는 텍스트 컴포넌트를 연결해주세요.")]
+    public TMP_Text text_ToggleRoomFixed;
 
     [Header("Debug Buttons - Optional")]
     [Tooltip("디버깅용 강제 Scene Understanding 갱신 버튼입니다. 실제 사용자 UI에는 노출하지 않는 것을 권장합니다.")]
@@ -55,6 +60,9 @@ public class RoomBuildPanelController : WorkflowPanelControllerBase
         EnsureScannerReference();
         CreateActions();
         RegisterButtons();
+
+        // [추가] 패널이 켜질 때 현재 스캐너의 상태에 맞춰 텍스트를 초기화합니다.
+        UpdateToggleRoomFixedText();
     }
 
     private void OnDisable()
@@ -106,7 +114,6 @@ public class RoomBuildPanelController : WorkflowPanelControllerBase
         AddClick(resetRoomBuildButton, resetRoomBuildAction);
         AddClick(openManualWallButton, openManualWallAction);
 
-        // Debug / legacy listeners. 실제 사용자 UI에서는 이 버튼들을 연결하지 않아도 됩니다.
         AddClick(forceUpdateButton, forceUpdateAction);
         AddClick(startScanningButton, startScanningAction);
         AddClick(stopScanningButton, stopScanningAction);
@@ -154,8 +161,30 @@ public class RoomBuildPanelController : WorkflowPanelControllerBase
             scanner.StopScanning();
             scanner.LockRoom();
         }
+
+        // [추가] 토글 상태가 변경된 직후 텍스트를 갱신합니다.
+        UpdateToggleRoomFixedText();
     }
 
+    // [추가] 스캐너의 잠금 상태(lockRoom)를 확인하여 텍스트를 변경하는 로직
+    private void UpdateToggleRoomFixedText()
+    {
+        if (text_ToggleRoomFixed != null && scanner != null)
+        {
+            // 방이 잠겨있다면(고정됨) 텍스트를 "On", 풀려있다면 "Off"로 표시합니다.
+            // 만약 반대로 표시하고 싶으시다면 "On"과 "Off"의 위치를 바꿔주시면 됩니다.
+            if (scanner.lockRoom)
+            {
+                text_ToggleRoomFixed.text = "현재 상태로 잠그기\nOn";
+            }
+            else
+            {
+                text_ToggleRoomFixed.text = "현재 상태로 잠그기\nOff";
+            }
+        }
+    }
+
+    // (이하 기존 함수들 동일)
     public void OnClickResetRoomBuild()
     {
         RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.ResetRoomBuild);
@@ -184,15 +213,13 @@ public class RoomBuildPanelController : WorkflowPanelControllerBase
         scanner.autoUpdate = true;
         scanner.UnlockRoom();
         scanner.StartScanning();
+        UpdateToggleRoomFixedText(); // 명시적 스캔 시작 시 텍스트 갱신
     }
 
     public void OnClickStopScanning()
     {
         EnsureScannerReference();
-        if (scanner == null)
-        {
-            return;
-        }
+        if (scanner == null) return;
 
         scanner.autoUpdate = false;
         scanner.StopScanning();
@@ -209,14 +236,8 @@ public class RoomBuildPanelController : WorkflowPanelControllerBase
 
         scanner.autoUpdate = !scanner.autoUpdate;
 
-        if (scanner.autoUpdate)
-        {
-            scanner.StartScanning();
-        }
-        else
-        {
-            scanner.StopScanning();
-        }
+        if (scanner.autoUpdate) scanner.StartScanning();
+        else scanner.StopScanning();
     }
 
     public void OnClickLockRoom()
@@ -231,6 +252,7 @@ public class RoomBuildPanelController : WorkflowPanelControllerBase
         scanner.autoUpdate = false;
         scanner.StopScanning();
         scanner.LockRoom();
+        UpdateToggleRoomFixedText(); // 명시적 잠금 시 텍스트 갱신
     }
 
     public void OnClickUnlockRoom()
@@ -245,6 +267,7 @@ public class RoomBuildPanelController : WorkflowPanelControllerBase
         scanner.UnlockRoom();
         scanner.autoUpdate = true;
         scanner.StartScanning();
+        UpdateToggleRoomFixedText(); // 명시적 잠금 해제 시 텍스트 갱신
     }
 
     public void OnClickToggleLockRoom()

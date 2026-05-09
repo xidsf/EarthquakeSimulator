@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using MixedReality.Toolkit.UX;
 using TMPro;
@@ -36,6 +37,19 @@ public class RoomBuildWorkflowManager : MonoBehaviour
     [Header("References")]
     public SceneUnderstandingRoomScanner scanner;
     public ManualWallBuilder manualWallBuilder;
+
+    [Header("Startup / Build Safety")]
+    [Tooltip("빌드 실행 시 Scene에 serialize된 currentState 값과 무관하게 항상 RoomBuild UI로 시작합니다.")]
+    public bool forceRoomBuildStateOnStartup = true;
+
+    [Tooltip("초기 RoomBuild 진입 시 scanner lock을 풀고 scanning을 시작합니다.")]
+    public bool startScannerWhenInitializingRoomBuild = true;
+
+    [Tooltip("빌드 환경에서 다른 Start 초기화가 UI를 다시 바꾸는 경우를 막기 위해 다음 프레임에 RoomBuild UI를 한 번 더 적용합니다.")]
+    public bool reapplyInitialRoomBuildStateNextFrame = true;
+
+    [Tooltip("초기화 생명주기 로그를 Unity 로그로 출력합니다. 빌드에서 WorkflowManager가 실행되는지 확인할 때 사용합니다.")]
+    public bool logWorkflowLifecycle = true;
 
     [Header("UI Groups")]
     public GameObject roomBuildButtonGroup;
@@ -134,6 +148,19 @@ public class RoomBuildWorkflowManager : MonoBehaviour
     [Tooltip("Confirm Room에서 Manual Wall로 돌아갈 때 기존 raw mesh / wall segmentation 표시를 다시 켭니다.")]
     public bool restoreAutoRoomVisualsWhenBackToManual = true;
 
+    [Header("Furniture Capture")]
+    [Tooltip("Confirm Room Button을 눌러 FurnitureRecognition 단계로 넘어갈 때 확정된 방 오브젝트 참조를 전달할 대상입니다.")]
+    public HoloLensFurnitureCaptureAndUpload furnitureCapture;
+
+    [Tooltip("Confirm Room Button을 눌렀을 때 furnitureCapture.SetRoomObjects(...)를 자동 호출합니다.")]
+    public bool passConfirmedRoomObjectsToFurnitureCaptureOnConfirmRoom = true;
+
+    [Tooltip("마지막 Confirm Room Button 처리에서 furnitureCapture로 방 오브젝트 전달에 성공했는지 확인하는 debug 값입니다.")]
+    public bool confirmedRoomObjectsPassedToFurnitureCapture;
+
+    [Tooltip("마지막으로 furnitureCapture에 전달한 ConfirmedRoom_Wall 개수입니다.")]
+    public int lastPassedConfirmedWallCount;
+
     [Header("Debug")]
     public WorkflowState currentState = WorkflowState.RoomBuild;
     public bool finalRoomClosed;
@@ -154,6 +181,15 @@ public class RoomBuildWorkflowManager : MonoBehaviour
 
     private Material runtimeWallMaterial;
     private Material runtimeHorizontalMaterial;
+    private bool warnedRuntimeMaterialShaderMissing;
+
+    private GameObject confirmedRoomFloorObject;
+    private GameObject confirmedRoomCeilingObject;
+    private readonly List<GameObject> confirmedRoomWallObjects = new List<GameObject>();
+
+    public GameObject ConfirmedRoomFloorObject => confirmedRoomFloorObject;
+    public GameObject ConfirmedRoomCeilingObject => confirmedRoomCeilingObject;
+    public IReadOnlyList<GameObject> ConfirmedRoomWallObjects => confirmedRoomWallObjects;
 
     private UnityAction switchToManualWallAction;
     private UnityAction returnToRoomBuildAction;
@@ -163,6 +199,11 @@ public class RoomBuildWorkflowManager : MonoBehaviour
 
     private void Awake()
     {
+        if (logWorkflowLifecycle)
+        {
+            Debug.Log($"[Workflow] Awake. serialized currentState:{currentState}");
+        }
+
         if (confirmedRoomRoot == null)
         {
             confirmedRoomRoot = new GameObject("ConfirmedRoomRoot").transform;
@@ -173,14 +214,91 @@ public class RoomBuildWorkflowManager : MonoBehaviour
 
     private void OnEnable()
     {
+        if (logWorkflowLifecycle)
+        {
+            Debug.Log($"[Workflow] OnEnable. serialized currentState:{currentState}");
+        }
+
         CreateActions();
         RegisterButtons();
-        ApplyState(currentState);
+
+        if (forceRoomBuildStateOnStartup)
+        {
+            InitializeRoomBuildStartupState("OnEnable");
+        }
+        else
+        {
+            ApplyState(currentState);
+        }
+    }
+
+    private void Start()
+    {
+        if (!forceRoomBuildStateOnStartup)
+        {
+            return;
+        }
+
+        InitializeRoomBuildStartupState("Start");
+
+        if (reapplyInitialRoomBuildStateNextFrame)
+        {
+            StartCoroutine(ReapplyInitialRoomBuildStateAfterOneFrame());
+        }
     }
 
     private void OnDisable()
     {
         UnregisterButtons();
+    }
+
+    private IEnumerator ReapplyInitialRoomBuildStateAfterOneFrame()
+    {
+        yield return null;
+
+        if (forceRoomBuildStateOnStartup && currentState == WorkflowState.RoomBuild)
+        {
+            InitializeRoomBuildStartupState("Start+1Frame");
+        }
+    }
+
+    private void InitializeRoomBuildStartupState(string source)
+    {
+        if (logWorkflowLifecycle)
+        {
+            Debug.Log($"[Workflow] InitializeRoomBuildStartupState from {source}.");
+        }
+
+        currentState = WorkflowState.RoomBuild;
+        finalRoomClosed = false;
+        floodReachedOutside = false;
+        selectedCellCount = 0;
+        confirmedBoundarySegmentCount = 0;
+        openEndpointCount = -1;
+        manualWallCount = CountManualWalls();
+
+        if (manualWallBuilder != null)
+        {
+            manualWallBuilder.SetNoneMode();
+            manualWallBuilder.ClearSelectableSurfaces();
+        }
+
+        ClearConfirmedRoomVisualization();
+        SetAutoRoomVisualsActive(true);
+        SetManualWallVisualsActive(true);
+
+        if (scanner != null)
+        {
+            scanner.UnlockRoom();
+
+            if (startScannerWhenInitializingRoomBuild)
+            {
+                scanner.StartScanning();
+            }
+        }
+
+        status = $"Workflow initialized to RoomBuild by {source}.";
+        ApplyState(WorkflowState.RoomBuild);
     }
 
     private void LateUpdate()
@@ -471,11 +589,88 @@ public class RoomBuildWorkflowManager : MonoBehaviour
             return;
         }
 
+        bool passedRoomObjects = false;
+
+        if (passConfirmedRoomObjectsToFurnitureCaptureOnConfirmRoom)
+        {
+            passedRoomObjects = TryPassConfirmedRoomObjectsToFurnitureCapture();
+        }
+
         ApplyState(WorkflowState.FurnitureRecognition);
 
-        // TODO:
-        // 가구 인식 기능이 준비되면 여기서 호출.
-        SetStatus("Furniture recognition placeholder. Not implemented yet.");
+        if (passConfirmedRoomObjectsToFurnitureCaptureOnConfirmRoom)
+        {
+            SetStatus(
+                passedRoomObjects
+                    ? $"Furniture recognition ready. Room objects passed. walls:{lastPassedConfirmedWallCount}"
+                    : "Furniture recognition ready, but room objects were not passed. Check furnitureCapture/floor/ceiling/walls references."
+            );
+        }
+        else
+        {
+            SetStatus("Furniture recognition ready. Automatic room object passing is disabled.");
+        }
+    }
+
+    private bool TryPassConfirmedRoomObjectsToFurnitureCapture()
+    {
+        confirmedRoomObjectsPassedToFurnitureCapture = false;
+        lastPassedConfirmedWallCount = 0;
+
+        if (furnitureCapture == null)
+        {
+            Debug.LogWarning("[RoomWorkflow] furnitureCapture is null. Confirmed room objects were not passed.");
+            return false;
+        }
+
+        if (confirmedRoomRoot == null)
+        {
+            Debug.LogWarning("[RoomWorkflow] confirmedRoomRoot is null. Confirmed room objects were not passed.");
+            return false;
+        }
+
+        if (confirmedRoomFloorObject == null)
+        {
+            Debug.LogWarning("[RoomWorkflow] confirmedRoomFloorObject is null. Confirmed room objects were not passed.");
+            return false;
+        }
+
+        if (confirmedRoomCeilingObject == null)
+        {
+            Debug.LogWarning("[RoomWorkflow] confirmedRoomCeilingObject is null. Confirmed room objects were not passed.");
+            return false;
+        }
+
+        List<Transform> wallTransforms = new List<Transform>();
+
+        foreach (GameObject wallObject in confirmedRoomWallObjects)
+        {
+            if (wallObject == null)
+            {
+                continue;
+            }
+
+            wallTransforms.Add(wallObject.transform);
+        }
+
+        if (wallTransforms.Count == 0)
+        {
+            Debug.LogWarning("[RoomWorkflow] No confirmed room wall objects found. Confirmed room objects were not passed.");
+            return false;
+        }
+
+        furnitureCapture.SetRoomObjects(
+            confirmedRoomRoot,
+            confirmedRoomFloorObject.transform,
+            confirmedRoomCeilingObject.transform,
+            wallTransforms
+        );
+
+        confirmedRoomObjectsPassedToFurnitureCapture = true;
+        lastPassedConfirmedWallCount = wallTransforms.Count;
+
+        Debug.Log($"[RoomWorkflow] Passed confirmed room objects to furniture capture. walls:{lastPassedConfirmedWallCount}");
+        return true;
     }
 
     private void ApplyState(WorkflowState nextState)
@@ -1026,6 +1221,8 @@ public class RoomBuildWorkflowManager : MonoBehaviour
         {
             slab.AddComponent<BoxCollider>();
         }
+
+        RegisterConfirmedHorizontalObject(objectName, slab);
     }
 
     private List<Segment2D> BuildConfirmedWallSegmentsForVisualization()
@@ -1191,6 +1388,27 @@ public class RoomBuildWorkflowManager : MonoBehaviour
             MeshCollider meshCollider = surface.AddComponent<MeshCollider>();
             meshCollider.sharedMesh = mesh;
         }
+
+        RegisterConfirmedHorizontalObject(objectName, surface);
+    }
+
+    private void RegisterConfirmedHorizontalObject(string objectName, GameObject surfaceObject)
+    {
+        if (surfaceObject == null)
+        {
+            return;
+        }
+
+        if (objectName == "ConfirmedRoom_Floor")
+        {
+            confirmedRoomFloorObject = surfaceObject;
+            return;
+        }
+
+        if (objectName == "ConfirmedRoom_Ceiling")
+        {
+            confirmedRoomCeilingObject = surfaceObject;
+        }
     }
 
 
@@ -1258,6 +1476,8 @@ public class RoomBuildWorkflowManager : MonoBehaviour
         {
             wall.AddComponent<BoxCollider>();
         }
+
+        confirmedRoomWallObjects.Add(wall);
     }
 
     private void BuildGridHorizontalSurface(string objectName, float y, bool normalUp)
@@ -2132,6 +2352,12 @@ public class RoomBuildWorkflowManager : MonoBehaviour
 
     private void ClearConfirmedRoomObjectsOnly()
     {
+        confirmedRoomFloorObject = null;
+        confirmedRoomCeilingObject = null;
+        confirmedRoomWallObjects.Clear();
+        confirmedRoomObjectsPassedToFurnitureCapture = false;
+        lastPassedConfirmedWallCount = 0;
+
         if (confirmedRoomRoot == null)
         {
             return;
@@ -2696,23 +2922,78 @@ public class RoomBuildWorkflowManager : MonoBehaviour
         return runtimeHorizontalMaterial;
     }
 
-    private static Material CreateRuntimeMaterial(string materialName, Color color)
+    private Material CreateRuntimeMaterial(string materialName, Color color)
     {
-        Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+        Material template = confirmedRoomWallMaterial;
 
-        if (shader == null)
+        if (template == null)
         {
-            shader = Shader.Find("Unlit/Color");
+            template = confirmedRoomHorizontalMaterial;
         }
 
+        if (template != null && template.shader != null)
+        {
+            Material cloned = new Material(template);
+            cloned.name = materialName;
+            cloned.hideFlags = HideFlags.DontSave;
+            ApplyRuntimeMaterialColor(cloned, color);
+            return cloned;
+        }
+
+        Shader shader = FindRuntimeCompatibleShader();
+
         if (shader == null)
         {
-            shader = Shader.Find("Standard");
+            if (!warnedRuntimeMaterialShaderMissing)
+            {
+                warnedRuntimeMaterialShaderMissing = true;
+                Debug.LogWarning(
+                    "[Workflow] Runtime confirmed-room material was not created because no compatible shader was found in this build. " +
+                    "Assign Confirmed Room Wall Material and Confirmed Room Horizontal Material in the Inspector to enable confirmed-room colors."
+                );
+            }
+
+            return null;
         }
 
         Material material = new Material(shader);
         material.name = materialName;
         material.hideFlags = HideFlags.DontSave;
+        ApplyRuntimeMaterialColor(material, color);
+        return material;
+    }
+
+    private static Shader FindRuntimeCompatibleShader()
+    {
+        string[] shaderNames =
+        {
+            "Graphics Tools/Standard",
+            "Mixed Reality Toolkit/Standard",
+            "Universal Render Pipeline/Unlit",
+            "Universal Render Pipeline/Lit",
+            "Unlit/Color",
+            "Standard"
+        };
+
+        foreach (string shaderName in shaderNames)
+        {
+            Shader shader = Shader.Find(shaderName);
+
+            if (shader != null)
+            {
+                return shader;
+            }
+        }
+
+        return null;
+    }
+
+    private static void ApplyRuntimeMaterialColor(Material material, Color color)
+    {
+        if (material == null)
+        {
+            return;
+        }
 
         material.color = color;
 
@@ -2725,8 +3006,6 @@ public class RoomBuildWorkflowManager : MonoBehaviour
         {
             material.SetColor("_Color", color);
         }
-
-        return material;
     }
 
     private static bool SegmentsIntersect(

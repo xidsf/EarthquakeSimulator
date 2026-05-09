@@ -966,9 +966,9 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1622210430}
-        m_TargetAssemblyTypeName: FurnitureScanTester, Assembly-CSharp
-        m_MethodName: RunLatestMeshTest
+      - m_Target: {fileID: 1622210433}
+        m_TargetAssemblyTypeName: FurnitureSessionTester, Assembly-CSharp
+        m_MethodName: RunSessionTest
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
@@ -1028,6 +1028,8 @@ GameObject:
   - component: {fileID: 1622210432}
   - component: {fileID: 1622210431}
   - component: {fileID: 1622210430}
+  - component: {fileID: 1622210434}
+  - component: {fileID: 1622210433}
   m_Layer: 0
   m_Name: GameObject
   m_TagString: Untagged
@@ -1079,6 +1081,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   furnitureRoot: {fileID: 950033447}
   defaultMaterial: {fileID: 0}
+  useMeshCollider: 1
+  convexMeshCollider: 1
+  addRigidbody: 1
+  normalizeModelToGround: 1
+  centerModelXZ: 1
 --- !u!114 &1622210432
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1091,6 +1098,37 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b6363f64ca2195438a47f52df687601, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &1622210433
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1622210427}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d09133e62d00ded4bb0ef90758269476, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  sessionClient: {fileID: 1622210434}
+  objectFactory: {fileID: 1622210431}
+  furnitureRoot: {fileID: 950033447}
+--- !u!114 &1622210434
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1622210427}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 35fbecb2b34c27b4fbfbc515ddeb3500, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  startSessionUrl: https://api.earquake.xyz/scan-session/start
+  scanFrameUrl: https://api.earquake.xyz/scan-frame
+  processScanBaseUrl: https://api.earquake.xyz/process-scan/
+  resultBaseUrl: https://api.earquake.xyz/result/
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

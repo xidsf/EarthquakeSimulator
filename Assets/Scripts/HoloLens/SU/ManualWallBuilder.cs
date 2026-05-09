@@ -203,6 +203,7 @@ public class ManualWallBuilder : MonoBehaviour
     private Vector2 lastWallDirection;
     private Material runtimeLastCreatedWallMaterial;
     private Material runtimeWallCutTargetMaterial;
+    private bool warnedRuntimeMaterialShaderMissing;
     private int lastManualWallModeToggleFrame = -1;
 
     private int cutTargetWallIndex = -1;
@@ -2423,20 +2424,118 @@ public class ManualWallBuilder : MonoBehaviour
 
     private void EnsureRuntimeMaterials()
     {
-        Shader shader = Shader.Find("Standard");
-
         if (runtimeLastCreatedWallMaterial == null)
         {
-            runtimeLastCreatedWallMaterial = new Material(shader);
-            runtimeLastCreatedWallMaterial.name = "Runtime_LastCreatedManualWall_Material";
-            runtimeLastCreatedWallMaterial.color = new Color(1.0f, 0.78f, 0.15f, 0.75f);
+            runtimeLastCreatedWallMaterial = CreateRuntimeMaterial(
+                "Runtime_LastCreatedManualWall_Material",
+                new Color(1.0f, 0.78f, 0.15f, 0.75f),
+                lastCreatedWallMaterial
+            );
         }
 
         if (runtimeWallCutTargetMaterial == null)
         {
-            runtimeWallCutTargetMaterial = new Material(shader);
-            runtimeWallCutTargetMaterial.name = "Runtime_WallCutTarget_Material";
-            runtimeWallCutTargetMaterial.color = new Color(1.0f, 0.25f, 0.15f, 0.75f);
+            runtimeWallCutTargetMaterial = CreateRuntimeMaterial(
+                "Runtime_WallCutTarget_Material",
+                new Color(1.0f, 0.25f, 0.15f, 0.75f),
+                wallCutTargetMaterial
+            );
+        }
+    }
+
+    private Material CreateRuntimeMaterial(string materialName, Color color, Material preferredTemplate)
+    {
+        Material template = preferredTemplate;
+
+        if (template == null)
+        {
+            template = manualWallMaterial;
+        }
+
+        if (template == null)
+        {
+            template = selectableWallMaterial;
+        }
+
+        if (template == null)
+        {
+            template = markerMaterial;
+        }
+
+        if (template != null && template.shader != null)
+        {
+            Material cloned = new Material(template);
+            cloned.name = materialName;
+            cloned.hideFlags = HideFlags.DontSave;
+            ApplyRuntimeMaterialColor(cloned, color);
+            return cloned;
+        }
+
+        Shader shader = FindRuntimeCompatibleShader();
+
+        if (shader == null)
+        {
+            if (!warnedRuntimeMaterialShaderMissing)
+            {
+                warnedRuntimeMaterialShaderMissing = true;
+                Debug.LogWarning(
+                    "[ManualWall] Runtime highlight material was not created because no compatible shader was found in this build. " +
+                    "Assign Last Created Wall Material and Wall Cut Target Material in the Inspector to enable highlight colors."
+                );
+            }
+
+            return null;
+        }
+
+        Material material = new Material(shader);
+        material.name = materialName;
+        material.hideFlags = HideFlags.DontSave;
+        ApplyRuntimeMaterialColor(material, color);
+        return material;
+    }
+
+    private static Shader FindRuntimeCompatibleShader()
+    {
+        string[] shaderNames =
+        {
+            "Graphics Tools/Standard",
+            "Mixed Reality Toolkit/Standard",
+            "Universal Render Pipeline/Unlit",
+            "Universal Render Pipeline/Lit",
+            "Unlit/Color",
+            "Standard"
+        };
+
+        foreach (string shaderName in shaderNames)
+        {
+            Shader shader = Shader.Find(shaderName);
+
+            if (shader != null)
+            {
+                return shader;
+            }
+        }
+
+        return null;
+    }
+
+    private static void ApplyRuntimeMaterialColor(Material material, Color color)
+    {
+        if (material == null)
+        {
+            return;
+        }
+
+        material.color = color;
+
+        if (material.HasProperty("_BaseColor"))
+        {
+            material.SetColor("_BaseColor", color);
+        }
+
+        if (material.HasProperty("_Color"))
+        {
+            material.SetColor("_Color", color);
         }
     }
 }

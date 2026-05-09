@@ -25,7 +25,16 @@ public partial class SceneUnderstandingRoomScanner
     [Header("Simple Debug UI - Options")]
     public bool captureUnityLogsInDebugText = true;
     public float debugTextRefreshInterval = 0.25f;
-    public int maxDebugLogLines = 8;
+    public int maxDebugLogLines = 20;
+
+    [Tooltip("화면 중앙 Debug UI에는 SceneObject 개수와 중요 로그만 표시합니다. SU의 실시간 상태/Room/View 값은 로그 보존을 위해 숨깁니다.")]
+    public bool useCompactDebugText = true;
+
+    [Tooltip("반복적으로 발생하는 SceneUnderstanding/Room 재구성 상태 로그를 화면 Log 큐에 넣지 않습니다. Workflow, ManualWall, FurnitureCapture 로그를 보기 위한 옵션입니다.")]
+    public bool filterRealtimeSceneUnderstandingLogs = true;
+
+    [Tooltip("Graphics Tools/Standard shader의 ProximityLight 개수 초과 경고를 화면 Log 큐에서 숨깁니다. 렌더링 품질 경고이며 방 생성 로직에는 영향이 없습니다.")]
+    public bool filterProximityLightCountWarnings = true;
 
     private readonly StringBuilder debugBuilder = new StringBuilder();
     private readonly Queue<string> debugLogs = new Queue<string>();
@@ -234,6 +243,14 @@ public partial class SceneUnderstandingRoomScanner
 
         debugBuilder.Clear();
 
+        if (useCompactDebugText)
+        {
+            AppendSceneObjectCounts();
+            AppendRecentLogs();
+            debugText.text = debugBuilder.ToString();
+            return;
+        }
+
         debugBuilder.AppendLine("=== Scene Understanding Test ===");
         debugBuilder.Append("supported: ");
         debugBuilder.AppendLine(SceneObserver.IsSupported().ToString());
@@ -281,7 +298,7 @@ public partial class SceneUnderstandingRoomScanner
         AppendSceneObjectCounts();
         AppendRoomResult();
         AppendViewOptions();
-        //AppendRecentLogs();
+        AppendRecentLogs();
 
         debugText.text = debugBuilder.ToString();
     }
@@ -356,6 +373,11 @@ public partial class SceneUnderstandingRoomScanner
 
     private void AddDebugLog(string message)
     {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
         string line = $"[{DateTime.Now:HH:mm:ss}] {message}";
         debugLogs.Enqueue(line);
 
@@ -367,6 +389,11 @@ public partial class SceneUnderstandingRoomScanner
 
     private void OnUnityLogReceivedForDebugUi(string condition, string stackTrace, LogType type)
     {
+        if (!ShouldCaptureUnityLog(condition, type))
+        {
+            return;
+        }
+
         switch (type)
         {
             case LogType.Warning:
@@ -384,4 +411,45 @@ public partial class SceneUnderstandingRoomScanner
                 break;
         }
     }
+
+    private bool ShouldCaptureUnityLog(string condition, LogType type)
+    {
+        if (!filterRealtimeSceneUnderstandingLogs)
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(condition))
+        {
+            return false;
+        }
+
+        string log = condition.TrimStart();
+
+        if (filterProximityLightCountWarnings &&
+            type == LogType.Warning &&
+            log.Contains("Max proximity light count") &&
+            log.Contains("ProximityLight"))
+        {
+            return false;
+        }
+
+        // SceneUnderstandingRoomScanner가 주기적으로 출력하는 상태/요약 로그는
+        // 이미 화면의 Scene Objects 섹션에서 확인 가능하므로 Log 큐에 넣지 않습니다.
+        if (log.StartsWith("[SU]", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (log.StartsWith("[Room] Walls:", StringComparison.Ordinal) ||
+            log.StartsWith("[Room] Created", StringComparison.Ordinal) ||
+            log.StartsWith("[Room] Failed to calculate floor or ceiling Y", StringComparison.Ordinal) ||
+            log.StartsWith("[Room] Invalid floor/ceiling order", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
 }

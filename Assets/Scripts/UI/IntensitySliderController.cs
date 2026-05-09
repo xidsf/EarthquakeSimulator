@@ -5,7 +5,7 @@ using MixedReality.Toolkit.UX; // MRTK 슬라이더 데이터를 받기 위해 추가된 네임스
 public class IntensitySliderController : MonoBehaviour
 {
     [Header("Manager Reference")]
-    public SubUIManager uiManager;
+    public UIManager uiManager;
 
     [Header("UI References")]
     public TMP_Text text_CurrentIntensity;

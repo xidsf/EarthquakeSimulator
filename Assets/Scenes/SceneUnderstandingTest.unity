@@ -868,6 +868,15 @@ MonoBehaviour:
   lastCreatedWallMaterial: {fileID: 2100000, guid: 505dfa66215018d41b4b9d586b13ae14, type: 2}
   wallThickness: 0.06
   minWallLength: 0.2
+  enableManualWallBurstGuard: 1
+  manualWallBurstIntervalSeconds: 2
+  manualWallBurstCreationLimit: 4
+  manualWallBurstSuppressSeconds: 2
+  burstCanceledManualWallCount: 0
+  recentManualWallCreationCount: 0
+  lastManualWallBurstGuardMessage: 
+  recentWallCutOperationCount: 0
+  burstCanceledWallCutOperationCount: 0
   wallCornerSelectDistance: 0.18
   snapPointToWallDistance: 0.22
   snapPointToCornerDistance: 0.28
@@ -875,6 +884,7 @@ MonoBehaviour:
   perpendicularStartOffsetFromSourceWall: 0.03
   extendPerpendicularWallToNextWall: 1
   includeClosureEdgesForPerpendicularExtend: 1
+  includeClosureEdgesAsManualWallSelectable: 1
   includeManualWallsForPerpendicularExtend: 1
   maxPerpendicularWallLength: 5
   perpendicularWallEndPadding: 0.02
@@ -884,6 +894,11 @@ MonoBehaviour:
   wallCutModeActive: 0
   wallCutTargetMaterial: {fileID: 0}
   minWallLengthAfterCut: 0.2
+  showWallCutLinePreview: 1
+  wallCutLineMaterial: {fileID: 0}
+  wallCutLineWidth: 0.035
+  wallCutLineDepth: 0.09
+  wallCutLineHeightPadding: 0.04
   showSelectableSurfaces: 1
   selectableFloorThickness: 0.03
   selectableWallThickness: 0.05
@@ -2532,7 +2547,7 @@ MonoBehaviour:
   confirmManualWallsButton: {fileID: 742976829}
   backToManualWallButton: {fileID: 1329015154}
   confirmRoomButton: {fileID: 849125636}
-  workflowStatusText: {fileID: 1343992415}
+  workflowStatusText: {fileID: 0}
   autoLockRoomWhenSwitchingToManual: 1
   stopScanningWhenSwitchingToManual: 1
   rebuildSelectableSurfacesWhenSwitching: 1

@@ -37,6 +37,8 @@ public class FurnitureObjectResult
     public float[] rotation;
     public float[] scale;
 
+    public float[] target_size;
+
     public string collider_type;
     public float[] collider_center;
     public float[] collider_size;

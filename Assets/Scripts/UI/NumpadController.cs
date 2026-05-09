@@ -5,7 +5,7 @@ using MixedReality.Toolkit.UX; // MRTK3 버튼을 사용하기 위한 네임스페이스
 public class NumpadController : MonoBehaviour
 {
     [Header("Manager Reference")]
-    public UIManager uiManager;
+    public SubUIManager uiManager;
 
     [Header("Numpad Buttons")]
     [Tooltip("0부터 9까지 순서대로 버튼을 넣어주세요")]

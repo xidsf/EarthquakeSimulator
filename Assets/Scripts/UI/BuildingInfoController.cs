@@ -1,4 +1,6 @@
 using UnityEngine;
+using UnityEngine.Events;
+using MixedReality.Toolkit.UX; // [추가] PressableButton 사용을 위함
 using TMPro;
 
 public class BuildingInfoController : WorkflowPanelControllerBase
@@ -6,19 +8,26 @@ public class BuildingInfoController : WorkflowPanelControllerBase
     [Header("Manager References")]
     public NumpadController numpadController;
 
-    [Header("UI Objects (본인 패널 내부)")]
-    public GameObject btn_SelectBuildingType; // 건물 종류 선택 버튼
-    public GameObject btn_InputFloor;         // 층수 입력 버튼
-    public GameObject btn_CancelBuildingType; // 건물 종류 선택 취소 버튼
-    public GameObject btn_Complete;           // 완료(다음 단계) 버튼
+    // [수정] GameObject에서 PressableButton으로 타입 변경
+    [Header("User Buttons (본인 패널 내부)")]
+    public PressableButton btn_SelectBuildingType; // 건물 종류 선택 버튼
+    public PressableButton btn_InputFloor;         // 층수 입력 버튼
+    public PressableButton btn_CancelBuildingType; // 건물 종류 선택 취소 버튼
+    public PressableButton btn_Complete;           // 완료(다음 단계) 버튼
 
     [Header("Text References")]
     public TMP_Text text_BuildingType;        // 건물 종류 버튼 안의 텍스트
     public TMP_Text text_Floor;               // 층수 입력 버튼 안의 텍스트
 
-    // 안내 문구 변수 (유효성 검사의 기준이 됩니다)
+    // 안내 문구 변수
     private const string placeholderFloorText = "방이 몇층에 위치해 있나요?";
     private const string placeholderBuildingTypeText = "건물 종류 선택";
+
+    // [추가] UnityAction 캐싱 변수
+    private UnityAction openBuildingTypeMenuAction;
+    private UnityAction cancelBuildingTypeMenuAction;
+    private UnityAction openFloorNumpadAction;
+    private UnityAction completeBuildingInfoAction;
 
     protected override void Awake()
     {
@@ -27,11 +36,16 @@ public class BuildingInfoController : WorkflowPanelControllerBase
 
     private void OnEnable()
     {
+        EnsureCommonReferences();
+        CreateActions();
+        RegisterButtons();
+
         // 패널이 활성화될 때마다 버튼 상태를 초기화합니다.
-        if (btn_SelectBuildingType != null) btn_SelectBuildingType.SetActive(true);
-        if (btn_InputFloor != null) btn_InputFloor.SetActive(true);
-        if (btn_Complete != null) btn_Complete.SetActive(true);
-        if (btn_CancelBuildingType != null) btn_CancelBuildingType.SetActive(false);
+        // PressableButton으로 바뀌었으므로 .gameObject를 통해 SetActive를 호출합니다.
+        if (btn_SelectBuildingType != null) btn_SelectBuildingType.gameObject.SetActive(true);
+        if (btn_InputFloor != null) btn_InputFloor.gameObject.SetActive(true);
+        if (btn_Complete != null) btn_Complete.gameObject.SetActive(true);
+        if (btn_CancelBuildingType != null) btn_CancelBuildingType.gameObject.SetActive(false);
 
         if (uiManager != null)
         {
@@ -43,16 +57,49 @@ public class BuildingInfoController : WorkflowPanelControllerBase
         if (text_BuildingType != null) text_BuildingType.text = placeholderBuildingTypeText;
     }
 
+    private void OnDisable()
+    {
+        UnregisterButtons();
+    }
+
+    // ==========================================
+    // [추가] 버튼 액션 생성 및 등록
+    // ==========================================
+
+    private void CreateActions()
+    {
+        openBuildingTypeMenuAction ??= OnClick_OpenBuildingTypeMenu;
+        cancelBuildingTypeMenuAction ??= OnClick_CancelBuildingTypeMenu;
+        openFloorNumpadAction ??= OnClick_OpenFloorNumpad;
+        completeBuildingInfoAction ??= OnClick_CompleteBuildingInfo;
+    }
+
+    private void RegisterButtons()
+    {
+        AddClick(btn_SelectBuildingType, openBuildingTypeMenuAction);
+        AddClick(btn_CancelBuildingType, cancelBuildingTypeMenuAction);
+        AddClick(btn_InputFloor, openFloorNumpadAction);
+        AddClick(btn_Complete, completeBuildingInfoAction);
+    }
+
+    private void UnregisterButtons()
+    {
+        RemoveClick(btn_SelectBuildingType, openBuildingTypeMenuAction);
+        RemoveClick(btn_CancelBuildingType, cancelBuildingTypeMenuAction);
+        RemoveClick(btn_InputFloor, openFloorNumpadAction);
+        RemoveClick(btn_Complete, completeBuildingInfoAction);
+    }
+
     // ==========================================
     // 1. 건물 종류 선택 기능
     // ==========================================
 
     public void OnClick_OpenBuildingTypeMenu()
     {
-        if (btn_SelectBuildingType != null) btn_SelectBuildingType.SetActive(false);
-        if (btn_InputFloor != null) btn_InputFloor.SetActive(false);
-        if (btn_Complete != null) btn_Complete.SetActive(false);
-        if (btn_CancelBuildingType != null) btn_CancelBuildingType.SetActive(true);
+        if (btn_SelectBuildingType != null) btn_SelectBuildingType.gameObject.SetActive(false);
+        if (btn_InputFloor != null) btn_InputFloor.gameObject.SetActive(false);
+        if (btn_Complete != null) btn_Complete.gameObject.SetActive(false);
+        if (btn_CancelBuildingType != null) btn_CancelBuildingType.gameObject.SetActive(true);
 
         if (uiManager != null) uiManager.ToggleBuildingTypeOptions(true);
     }
@@ -61,22 +108,24 @@ public class BuildingInfoController : WorkflowPanelControllerBase
     {
         if (uiManager != null) uiManager.ToggleBuildingTypeOptions(false);
 
-        if (btn_SelectBuildingType != null) btn_SelectBuildingType.SetActive(true);
-        if (btn_InputFloor != null) btn_InputFloor.SetActive(true);
-        if (btn_Complete != null) btn_Complete.SetActive(true);
-        if (btn_CancelBuildingType != null) btn_CancelBuildingType.SetActive(false);
+        if (btn_SelectBuildingType != null) btn_SelectBuildingType.gameObject.SetActive(true);
+        if (btn_InputFloor != null) btn_InputFloor.gameObject.SetActive(true);
+        if (btn_Complete != null) btn_Complete.gameObject.SetActive(true);
+        if (btn_CancelBuildingType != null) btn_CancelBuildingType.gameObject.SetActive(false);
     }
 
+    // (참고: 이 메서드는 서브 패널의 UI 구조에서 개별적으로 호출되는 로직이므로, 
+    // AddClick을 통한 자동 등록 대상에서는 제외하고 기존대로 둡니다.)
     public void OnSelect_BuildingType(string selectedType)
     {
         if (text_BuildingType != null) text_BuildingType.text = selectedType;
 
         if (uiManager != null) uiManager.ToggleBuildingTypeOptions(false);
 
-        if (btn_SelectBuildingType != null) btn_SelectBuildingType.SetActive(true);
-        if (btn_InputFloor != null) btn_InputFloor.SetActive(true);
-        if (btn_Complete != null) btn_Complete.SetActive(true);
-        if (btn_CancelBuildingType != null) btn_CancelBuildingType.SetActive(false);
+        if (btn_SelectBuildingType != null) btn_SelectBuildingType.gameObject.SetActive(true);
+        if (btn_InputFloor != null) btn_InputFloor.gameObject.SetActive(true);
+        if (btn_Complete != null) btn_Complete.gameObject.SetActive(true);
+        if (btn_CancelBuildingType != null) btn_CancelBuildingType.gameObject.SetActive(false);
     }
 
     // ==========================================
@@ -98,7 +147,6 @@ public class BuildingInfoController : WorkflowPanelControllerBase
     public void OnClick_CompleteBuildingInfo()
     {
         // [유효성 검사 1] 건물 종류 선택 여부 확인
-        // 초기화된 텍스트와 같거나 비어있으면 선택하지 않은 것으로 간주합니다.
         if (text_BuildingType == null || string.IsNullOrWhiteSpace(text_BuildingType.text) || text_BuildingType.text == placeholderBuildingTypeText)
         {
             ShowWarning("건물 종류를 선택해주세요.");
@@ -129,7 +177,7 @@ public class BuildingInfoController : WorkflowPanelControllerBase
                 return;
             }
 
-            // 불필요한 0을 제거하고 정돈된 텍스트로 갱신 (예: 007 -> 7층)
+            // 불필요한 0을 제거하고 정돈된 텍스트로 갱신
             text_Floor.text = $"{floorNumber}층";
         }
         else

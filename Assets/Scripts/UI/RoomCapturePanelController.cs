@@ -1,14 +1,10 @@
+using System.Collections;
 using MixedReality.Toolkit.UX;
 using UnityEngine;
 using UnityEngine.Events;
-using TMPro;
 
 public class RoomCapturePanelController : WorkflowPanelControllerBase
 {
-    [Header("Main UI Control")]
-    [Tooltip("비활성화할 MainPlate 오브젝트를 연결해주세요.")]
-    public GameObject obj_MainPlate;
-
     [Header("User Buttons")]
     public PressableButton btn_Capture;
     public PressableButton btn_PopUpTip;
@@ -16,13 +12,20 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
     public PressableButton btn_Complete;
 
     [Header("UI Elements")]
-    [Tooltip("PopUpTip 버튼 내부의 텍스트입니다.")]
-    public TMP_Text text_PopUpTipBtn;
-    [Tooltip("띄우거나 숨길 CaptureTip 오브젝트입니다.")]
+    [Tooltip("일시적으로 띄웠다 페이드아웃되는 툴팁(CaptureTip) 오브젝트입니다.")]
     public GameObject obj_CaptureTip;
 
-    // 상태 추적
-    private bool isTipVisible = false;
+    [Tooltip("MainPlate 위에서 계속 표시되어야 하는 안내 문구(ForCapture) 오브젝트입니다.")]
+    public GameObject obj_ForCaptureText;
+
+    [Header("Tip Animation Settings")]
+    [Tooltip("도움말이 화면에 유지되는 시간(초)입니다.")]
+    public float tipShowDuration = 5.0f;
+    [Tooltip("도움말이 서서히 투명해지며 사라지는 시간(초)입니다.")]
+    public float tipFadeDuration = 1.0f;
+
+    private Coroutine tipSequenceCoroutine;
+    private CanvasGroup tipCanvasGroup;
 
     // UnityAction 캐싱
     private UnityAction captureAction;
@@ -33,6 +36,20 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
     protected override void Awake()
     {
         base.Awake();
+        SetupCanvasGroup();
+    }
+
+    private void SetupCanvasGroup()
+    {
+        // 툴팁(CaptureTip)의 페이드아웃을 위해 CanvasGroup이 없다면 자동으로 추가합니다.
+        if (obj_CaptureTip != null)
+        {
+            tipCanvasGroup = obj_CaptureTip.GetComponent<CanvasGroup>();
+            if (tipCanvasGroup == null)
+            {
+                tipCanvasGroup = obj_CaptureTip.AddComponent<CanvasGroup>();
+            }
+        }
     }
 
     private void OnEnable()
@@ -41,22 +58,26 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
         CreateActions();
         RegisterButtons();
 
-        // [추가] RoomCapture 단계 진입 시 MainPlate를 비활성화합니다.
-        if (obj_MainPlate != null)
+        // [핵심] ForCapture 텍스트는 툴팁과 달리, 이 단계가 켜져 있는 동안 계속 활성화 상태를 유지합니다.
+        if (obj_ForCaptureText != null)
         {
-            obj_MainPlate.SetActive(false);
+            obj_ForCaptureText.SetActive(true);
         }
 
-        // 초기 상태 설정
-        isTipVisible = false;
-        UpdateTipUI();
+        // 단계 진입 시 툴팁(CaptureTip)만 자동으로 띄웠다 사라지게 합니다.
+        ShowTipSequence();
     }
 
     private void OnDisable()
     {
         UnregisterButtons();
-        //다음 단계에서도 MainPanel은 꺼져있어야 함
-        //다다음 단계에서 킬 예정
+        StopTipSequence();
+
+        // 단계가 종료될 때 안내 문구도 함께 꺼줍니다.
+        if (obj_ForCaptureText != null)
+        {
+            obj_ForCaptureText.SetActive(false);
+        }
     }
 
     private void CreateActions()
@@ -84,39 +105,77 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
     }
 
     // ==========================================
-    // 버튼 이벤트 로직
+    // 툴팁(CaptureTip) 애니메이션 로직
     // ==========================================
-
-    public void OnClickCapture()
-    {
-        // TODO: 실제 사진 촬영 로직 연동
-        Debug.Log("[RoomCapture] 사진 촬영");
-    }
 
     public void OnClickPopUpTip()
     {
-        isTipVisible = !isTipVisible;
-        UpdateTipUI();
+        // 버튼을 누를 때마다 툴팁 애니메이션을 처음부터 다시 시작합니다.
+        ShowTipSequence();
     }
 
-    private void UpdateTipUI()
+    private void ShowTipSequence()
     {
-        if (obj_CaptureTip != null) obj_CaptureTip.SetActive(isTipVisible);
+        StopTipSequence();
 
-        if (text_PopUpTipBtn != null)
+        if (obj_CaptureTip != null)
         {
-            text_PopUpTipBtn.text = isTipVisible ? "툴팁 끄기" : "툴팁 띄우기";
+            obj_CaptureTip.SetActive(true);
+            if (tipCanvasGroup != null) tipCanvasGroup.alpha = 1.0f; // 투명도 초기화
+        }
+
+        tipSequenceCoroutine = StartCoroutine(TipFadeOutRoutine());
+    }
+
+    private void HideTipInstantly()
+    {
+        StopTipSequence();
+
+        if (obj_CaptureTip != null)
+        {
+            obj_CaptureTip.SetActive(false);
+            if (tipCanvasGroup != null) tipCanvasGroup.alpha = 1.0f;
         }
     }
 
-    public void OnClickGallery()
+    private void StopTipSequence()
     {
-        Debug.Log("[RoomCapture] 갤러리 (기능 미구현)");
+        if (tipSequenceCoroutine != null)
+        {
+            StopCoroutine(tipSequenceCoroutine);
+            tipSequenceCoroutine = null;
+        }
     }
+
+    private IEnumerator TipFadeOutRoutine()
+    {
+        // 5초 대기 (ForCapture와 무관하게 툴팁만 해당됨)
+        yield return new WaitForSeconds(tipShowDuration);
+
+        // 1초 페이드아웃
+        float elapsedTime = 0f;
+        while (elapsedTime < tipFadeDuration)
+        {
+            elapsedTime += Time.deltaTime;
+            if (tipCanvasGroup != null)
+            {
+                tipCanvasGroup.alpha = Mathf.Lerp(1.0f, 0.0f, elapsedTime / tipFadeDuration);
+            }
+            yield return null;
+        }
+
+        HideTipInstantly();
+    }
+
+    // ==========================================
+    // Workflow 버튼 이벤트
+    // ==========================================
+
+    public void OnClickCapture() { Debug.Log("[RoomCapture] 사진 촬영 로직 실행"); }
+    public void OnClickGallery() { Debug.Log("[RoomCapture] 갤러리 (기능 미구현)"); }
 
     public void OnClickComplete()
     {
-        // FurniturePlacement 단계로 이동 요청
         RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteRoomCapture);
     }
 }

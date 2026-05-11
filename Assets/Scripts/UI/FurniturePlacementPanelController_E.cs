@@ -2,7 +2,7 @@ using MixedReality.Toolkit.UX;
 using UnityEngine;
 using UnityEngine.Events;
 
-public class FurniturePlacementPanelController : WorkflowPanelControllerBase
+public class FurniturePlacementPanelController_E : WorkflowPanelControllerBase
 {
     [Header("User Buttons")]
     [Tooltip("스캔 데이터로 자동 인식된 가구들을 배치합니다.")]

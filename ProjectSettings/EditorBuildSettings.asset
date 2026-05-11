@@ -11,9 +11,12 @@ EditorBuildSettings:
   - enabled: 0
     path: Assets/Scenes/MainScene_Mobile.unity
     guid: 78cc45453477d5741b33943485e691b6
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/SceneUnderstandingTest.unity
     guid: 8ee7a21ad413b314ea4d23edb16aa645
+  - enabled: 1
+    path: Assets/Scenes/MainScene_hololens.unity
+    guid: 5ba8c6f4cd8f0e748b2922c652bf8460
   m_configObjects:
     NianticSpatial.NSDK.AR.AuthBuildSettings: {fileID: 11400000, guid: 859db36819ecf0541b3be63330a1e81a, type: 2}
     NianticSpatial.NSDK.AR.NsdkSettings: {fileID: 11400000, guid: cac371f609574c8408b7d4c2e6c8524d, type: 2}

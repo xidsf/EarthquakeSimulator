@@ -50,6 +50,12 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
     [Tooltip("confirmRoomManager가 비어 있으면 런타임에 같은 GameObject에 자동 추가합니다.")]
     public bool autoCreateConfirmRoomManager = true;
 
+    [Tooltip("RoomCapture 단계에서 ConfirmedRoomRoot를 촬영/업로드 metadata에 등록하는 관리자입니다.")]
+    public FurnitureCaptureManager furnitureCaptureManager;
+
+    [Tooltip("furnitureCaptureManager가 비어 있으면 런타임에 같은 GameObject에 자동 추가합니다.")]
+    public bool autoCreateFurnitureCaptureManager = true;
+
     [Header("Startup / Build Safety")]
     [Tooltip("빌드 실행 시 Scene에 serialize된 currentState 값과 무관하게 항상 방 정보 입력 UI로 시작합니다.")]
     public bool forceRoomInfoInputStateOnStartup = true;
@@ -83,68 +89,6 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
 
     public bool clearManualWallsWhenReturningToRoomBuild = true;
 
-    [Header("Boundary Sources")]
-    public bool includeDetectedWallsInClosedCheck = true;
-    public bool includeClosureEdgesInClosedCheck = true;
-    public bool includeManualWallsInClosedCheck = true;
-
-    [Header("Boundary Segment Cleanup")]
-    public bool normalizeBoundarySegmentsBeforeConfirm = true;
-    public float endpointSnapDistance = 0.12f;
-    public float collinearMergeAngle = 5.0f;
-    public float collinearMergeDistance = 0.10f;
-    public float boundaryMinSegmentLength = 0.05f;
-
-    [Header("User Room Flood Fill Validation")]
-    public float gridCellSize = 0.12f;
-    public float gridBoundsMargin = 0.75f;
-    public float wallBlockDistance = 0.08f;
-    public int maxGridCellsPerAxis = 220;
-    public int nearestFreeCellSearchRadius = 8;
-
-    [Header("Confirmed Room Visualization")]
-    public Transform confirmedRoomRoot;
-
-    [Tooltip("비워두면 런타임에 자동 생성됩니다.")]
-    public Material confirmedRoomWallMaterial;
-
-    [Tooltip("비워두면 런타임에 자동 생성됩니다. 바닥과 천장이 같이 사용합니다.")]
-    public Material confirmedRoomHorizontalMaterial;
-
-    public float confirmedWallThickness = 0.045f;
-    public float confirmedFloorYOffset = 0.025f;
-    public float confirmedCeilingYOffset = -0.025f;
-
-    [Tooltip("Confirmed Room의 바닥/천장을 polygon mesh가 아니라 얇은 Cube + BoxCollider slab으로 생성합니다.")]
-    public bool useConfirmedHorizontalBoxSlabs = true;
-
-    [Tooltip("Confirmed Room 바닥/천장 slab의 두께입니다. Floor는 이 두께만큼 아래로, Ceiling은 이 두께만큼 위로 생성되어 방 내부 높이를 침범하지 않습니다.")]
-    public float confirmedHorizontalSlabThickness = 0.06f;
-
-    [Tooltip("벽 segment들의 XZ bounds보다 바닥/천장 slab을 이 거리만큼 더 크게 만듭니다. 벽과 바닥/천장이 살짝 어긋나도 빈틈이 보이지 않게 하기 위한 값입니다.")]
-    public float confirmedHorizontalSlabPadding = 0.25f;
-
-    [Tooltip("기존 polygon mesh 기반 바닥/천장 fallback에 MeshCollider를 생성합니다. useConfirmedHorizontalBoxSlabs가 켜져 있으면 일반적으로 사용되지 않습니다.")]
-    public bool addConfirmedRoomMeshColliders = true;
-
-    [Tooltip("segment polygon 생성에 실패했을 때 grid cell 전체가 아니라 선택 영역의 외곽선만 추출해 하나의 polygon mesh로 만듭니다.")]
-    public bool useSelectedCellBoundaryPolygonFallback = true;
-
-    [Tooltip("마지막 Confirm horizontal mesh가 grid fallback까지 내려갔는지 확인하는 debug 값입니다.")]
-    public bool usedGridHorizontalFallback;
-
-    [Tooltip("segment loop 생성이 실패했을 때 flood fill selected cell 외곽선 polygon으로 Confirm mesh를 생성했는지 확인하는 debug 값입니다.")]
-    public bool usedSelectedCellBoundaryPolygonFallback;
-
-    [Tooltip("selected cell 외곽선 fallback polygon을 단순화하는 거리입니다. 너무 낮으면 계단형이 남고, 너무 높으면 방 모양이 과하게 단순화됩니다.")]
-    public float selectedCellFallbackSimplifyTolerance = 0.18f;
-
-    [Tooltip("selected cell fallback polygon vertex를 가까운 boundary segment로 붙이는 최대 거리입니다.")]
-    public float selectedCellFallbackSnapDistance = 0.24f;
-
-    [Tooltip("selected cell fallback polygon vertex를 detected/manual boundary segment 위로 보정합니다.")]
-    public bool snapSelectedCellFallbackPolygonToBoundary = true;
-
     [Tooltip("Confirm Room 상태에서 기존 raw mesh / wall segmentation 표시를 숨깁니다.")]
     public bool hideAutoRoomVisualsInConfirmRoom = true;
 
@@ -153,19 +97,6 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
 
     [Tooltip("Confirm Room에서 Manual Wall로 돌아갈 때 기존 raw mesh / wall segmentation 표시를 다시 켭니다.")]
     public bool restoreAutoRoomVisualsWhenBackToManual = true;
-
-    [Header("Furniture Capture")]
-    [Tooltip("Confirm Room Button을 눌러 RoomCapture 단계로 넘어갈 때 확정된 방 오브젝트 참조를 전달할 대상입니다.")]
-    public HoloLensFurnitureCaptureAndUpload furnitureCapture;
-
-    [Tooltip("Confirm Room Button을 눌렀을 때 furnitureCapture.SetRoomObjects(...)를 자동 호출합니다.")]
-    public bool passConfirmedRoomObjectsToFurnitureCaptureOnConfirmRoom = true;
-
-    [Tooltip("마지막 Confirm Room Button 처리에서 furnitureCapture로 방 오브젝트 전달에 성공했는지 확인하는 debug 값입니다.")]
-    public bool confirmedRoomObjectsPassedToFurnitureCapture;
-
-    [Tooltip("마지막으로 furnitureCapture에 전달한 ConfirmedRoom_Wall 개수입니다.")]
-    public int lastPassedConfirmedWallCount;
 
     [Header("Debug")]
     public WorkflowState currentState = WorkflowState.RoomInfoInput;
@@ -182,18 +113,6 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
 
     [Tooltip("Confirm Room 패널에서 표시할 마지막 검증 메시지입니다.")]
     public string confirmRoomValidationStatus;
-
-    [Tooltip("Confirm Room 패널에서 열린 endpoint를 작은 marker로 표시합니다.")]
-    public bool showConfirmRoomGapMarkers = true;
-
-    [Tooltip("열린 endpoint marker가 생성될 root입니다. 비워두면 런타임에 자동 생성됩니다.")]
-    public Transform confirmRoomMarkerRoot;
-
-    [Tooltip("열린 endpoint marker용 material입니다. 비워두면 런타임 material을 사용합니다.")]
-    public Material confirmRoomGapMarkerMaterial;
-
-    public float confirmRoomGapMarkerSize = 0.12f;
-    public float confirmRoomGapMarkerYOffset = 0.12f;
 
     public string status;
 
@@ -218,19 +137,8 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
             Debug.Log($"[Workflow] Awake. serialized currentState:{currentState}");
         }
 
-        if (confirmedRoomRoot == null)
-        {
-            confirmedRoomRoot = new GameObject("ConfirmedRoomRoot").transform;
-        }
-
-        if (confirmRoomMarkerRoot == null)
-        {
-            GameObject markerRootObject = new GameObject("ConfirmRoomGapMarkers");
-            markerRootObject.transform.SetParent(transform, false);
-            confirmRoomMarkerRoot = markerRootObject.transform;
-        }
-
         EnsureConfirmRoomManagerReference();
+        EnsureFurnitureCaptureManagerReference();
         EnsureUiManagerReference();
         EnsureWorkflowStateHandlers();
     }
@@ -411,6 +319,8 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
 
         ClearConfirmedRoomVisualization();
         ResetConfirmRoomReviewState();
+        EnsureFurnitureCaptureManagerReference();
+        furnitureCaptureManager?.ClearRoomObjectBindings();
 
         finalRoomClosed = false;
         floodReachedOutside = false;
@@ -677,26 +587,27 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
             SetAutoRoomVisualsActive(false);
         }
 
-        bool passedRoomObjects = false;
+        EnsureFurnitureCaptureManagerReference();
 
-        if (passConfirmedRoomObjectsToFurnitureCaptureOnConfirmRoom)
+        bool boundRoomObjects = true;
+        if (furnitureCaptureManager != null && furnitureCaptureManager.bindConfirmedRoomObjectsOnRoomConfirmed)
         {
-            passedRoomObjects = TryPassConfirmedRoomObjectsToFurnitureCapture();
+            boundRoomObjects = furnitureCaptureManager.BindConfirmedRoomObjectsFromConfirmRoom();
         }
 
         ApplyState(WorkflowState.RoomCapture);
 
-        if (passConfirmedRoomObjectsToFurnitureCaptureOnConfirmRoom)
+        if (furnitureCaptureManager != null && furnitureCaptureManager.bindConfirmedRoomObjectsOnRoomConfirmed)
         {
             SetStatus(
-                passedRoomObjects
-                    ? $"Room capture ready. Room objects passed. walls:{lastPassedConfirmedWallCount}"
-                    : "Room capture ready, but room objects were not passed. Check furnitureCapture/floor/ceiling/walls references."
+                boundRoomObjects
+                    ? $"Room capture ready. Room objects bound. walls:{furnitureCaptureManager.lastBoundWallCount}"
+                    : $"Room capture ready, but room objects were not bound. {furnitureCaptureManager.lastBindStatus}"
             );
         }
         else
         {
-            SetStatus("Room capture ready. Automatic room object passing is disabled.");
+            SetStatus("Room capture ready. FurnitureCaptureManager binding is disabled or missing.");
         }
     }
 
@@ -758,68 +669,6 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
     public void ReturnToRoomCapture()
     {
         SetStatus("Return to RoomCapture is blocked. After FurniturePlacement starts, the workflow cannot go back to RoomConfirm/RoomCapture.");
-    }
-
-    private bool TryPassConfirmedRoomObjectsToFurnitureCapture()
-    {
-        SyncConfirmRoomManagerState();
-        confirmedRoomObjectsPassedToFurnitureCapture = false;
-        lastPassedConfirmedWallCount = 0;
-
-        if (furnitureCapture == null)
-        {
-            Debug.LogWarning("[RoomWorkflow] furnitureCapture is null. Confirmed room objects were not passed.");
-            return false;
-        }
-
-        if (confirmedRoomRoot == null)
-        {
-            Debug.LogWarning("[RoomWorkflow] confirmedRoomRoot is null. Confirmed room objects were not passed.");
-            return false;
-        }
-
-        if (confirmedRoomFloorObject == null)
-        {
-            Debug.LogWarning("[RoomWorkflow] confirmedRoomFloorObject is null. Confirmed room objects were not passed.");
-            return false;
-        }
-
-        if (confirmedRoomCeilingObject == null)
-        {
-            Debug.LogWarning("[RoomWorkflow] confirmedRoomCeilingObject is null. Confirmed room objects were not passed.");
-            return false;
-        }
-
-        List<Transform> wallTransforms = new List<Transform>();
-
-        foreach (GameObject wallObject in confirmedRoomWallObjects)
-        {
-            if (wallObject == null)
-            {
-                continue;
-            }
-
-            wallTransforms.Add(wallObject.transform);
-        }
-
-        if (wallTransforms.Count == 0)
-        {
-            Debug.LogWarning("[RoomWorkflow] No confirmed room wall objects found. Confirmed room objects were not passed.");
-            return false;
-        }
-
-        furnitureCapture.SetRoomObjects(
-            confirmedRoomRoot,
-            confirmedRoomFloorObject.transform,
-            confirmedRoomCeilingObject.transform,
-            wallTransforms
-        );
-
-        confirmedRoomObjectsPassedToFurnitureCapture = true;
-        lastPassedConfirmedWallCount = wallTransforms.Count;
-
-        Debug.Log($"[RoomWorkflow] Passed confirmed room objects to furniture capture. walls:{lastPassedConfirmedWallCount}");
-        return true;
     }
 
     private bool ApplyState(WorkflowState nextState)
@@ -971,8 +820,6 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
         selectedCellCount = 0;
         confirmedBoundarySegmentCount = 0;
         openEndpointCount = -1;
-        confirmedRoomObjectsPassedToFurnitureCapture = false;
-        lastPassedConfirmedWallCount = 0;
     }
 
     private void ClearConfirmRoomGapMarkers()
@@ -1045,7 +892,6 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
             $"flood reached outside: {floodReachedOutside}\n" +
             $"selected cells: {selectedCellCount}\n" +
             $"confirmed boundary: {confirmedBoundarySegmentCount}\n" +
-            $"cell polygon fallback: {usedSelectedCellBoundaryPolygonFallback}\n" +
             $"confirm status: {confirmRoomValidationStatus}\n" +
             $"status: {status}";
     }
@@ -1075,11 +921,6 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
 
         if (confirmRoomManager != null)
         {
-            if (confirmedRoomRoot == null)
-            {
-                confirmedRoomRoot = new GameObject("ConfirmedRoomRoot").transform;
-            }
-
             confirmRoomManager.BindFromWorkflow(this);
             SyncConfirmRoomManagerState();
         }
@@ -1111,6 +952,24 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
             {
                 confirmedRoomWallObjects.Add(wallObject);
             }
+        }
+    }
+
+    private void EnsureFurnitureCaptureManagerReference()
+    {
+        if (furnitureCaptureManager == null)
+        {
+            furnitureCaptureManager = GetComponent<FurnitureCaptureManager>();
+        }
+
+        if (furnitureCaptureManager == null && autoCreateFurnitureCaptureManager)
+        {
+            furnitureCaptureManager = gameObject.AddComponent<FurnitureCaptureManager>();
+        }
+
+        if (furnitureCaptureManager != null)
+        {
+            furnitureCaptureManager.BindFromWorkflow(this);
         }
     }
 

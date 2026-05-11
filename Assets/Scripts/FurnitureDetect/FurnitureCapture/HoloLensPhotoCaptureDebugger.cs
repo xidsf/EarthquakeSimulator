@@ -17,6 +17,15 @@ public class HoloLensPhotoCaptureDebugger : MonoBehaviour
 
     [Header("Room Info")]
     [SerializeField] private RoomGeometrySnapshotProvider roomSnapshotProvider;
+    [SerializeField] private ConfirmRoomManager confirmRoomManager;
+    [SerializeField] private bool autoBindRoomObjectsBeforeCapture = true;
+    [SerializeField] private bool autoFindConfirmRoomManager = true;
+
+    [Header("Editor / Remote Test Capture")]
+    [SerializeField] private bool enableEditorOrRemoteTestCapture = true;
+    [SerializeField] private Texture2D testImageOverride;
+    [SerializeField] private int fallbackTestImageWidth = 1280;
+    [SerializeField] private int fallbackTestImageHeight = 720;
 
     private bool isCapturing = false;
 
@@ -34,17 +43,25 @@ public class HoloLensPhotoCaptureDebugger : MonoBehaviour
         }
 
         isCapturing = true;
+        TryAutoBindRoomObjectsFromConfirmRoom();
 
 #if UNITY_WSA && !UNITY_EDITOR
         Debug.Log("[CaptureDebugger] HoloLens2 PhotoCapture 경로 실행: 실제 RGB/PV 카메라 촬영");
         StartHoloLensPhotoCapture();
 #else
-        Debug.LogError(
-            "[CaptureDebugger] 현재 실행 환경에서는 실제 HoloLens2 RGB/PV 카메라 촬영을 수행하지 않습니다.\n" +
-            "Unity Editor / Holographic Remoting / Standalone에서는 GameView 캡처를 하지 않도록 막아두었습니다.\n" +
-            "실제 환경 사진은 HoloLens2 UWP 빌드에서 CapturePhotoForDebug()를 실행해야 얻을 수 있습니다."
-        );
-        isCapturing = false;
+        if (enableEditorOrRemoteTestCapture)
+        {
+            Debug.LogWarning("[CaptureDebugger] Editor/Remote 테스트 캡처 경로 실행. 실제 HoloLens PV 카메라 사진이 아니라 GameView/테스트 이미지입니다.");
+            StartCoroutine(CaptureEditorOrRemoteTestCoroutine());
+        }
+        else
+        {
+            Debug.LogError(
+                "[CaptureDebugger] 현재 실행 환경에서는 실제 HoloLens2 RGB/PV 카메라 촬영을 수행하지 않습니다.\n" +
+                "테스트 저장이 필요하면 enableEditorOrRemoteTestCapture를 켜세요."
+            );
+            isCapturing = false;
+        }
 #endif
     }
 
@@ -84,6 +101,55 @@ public class HoloLensPhotoCaptureDebugger : MonoBehaviour
         }
 
         roomSnapshotProvider.SetRoomGameObjects(root, floor, ceiling, walls);
+    }
+
+    public bool SetRoomObjectsFromConfirmRoomManager(ConfirmRoomManager manager)
+    {
+        if (manager == null)
+        {
+            Debug.LogWarning("[CaptureDebugger] ConfirmRoomManager가 null입니다.");
+            return false;
+        }
+
+        confirmRoomManager = manager;
+
+        if (roomSnapshotProvider == null)
+        {
+            Debug.LogWarning("[CaptureDebugger] roomSnapshotProvider가 연결되어 있지 않습니다.");
+            return false;
+        }
+
+        return roomSnapshotProvider.SetRoomObjectsFromConfirmRoomManager(manager);
+    }
+
+    private bool TryAutoBindRoomObjectsFromConfirmRoom()
+    {
+        if (!autoBindRoomObjectsBeforeCapture)
+        {
+            return true;
+        }
+
+        if (roomSnapshotProvider == null)
+        {
+            Debug.LogWarning("[CaptureDebugger] roomSnapshotProvider가 연결되어 있지 않습니다.");
+            return false;
+        }
+
+        if (confirmRoomManager == null && autoFindConfirmRoomManager)
+        {
+            ConfirmRoomManager[] managers = FindObjectsByType<ConfirmRoomManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            if (managers != null && managers.Length > 0)
+            {
+                confirmRoomManager = managers[0];
+            }
+        }
+
+        if (confirmRoomManager != null)
+        {
+            return roomSnapshotProvider.SetRoomObjectsFromConfirmRoomManager(confirmRoomManager);
+        }
+
+        return true;
     }
 
 #if UNITY_WSA && !UNITY_EDITOR
@@ -208,6 +274,110 @@ public class HoloLensPhotoCaptureDebugger : MonoBehaviour
 
 #endif
 
+#if !UNITY_WSA || UNITY_EDITOR
+    private IEnumerator CaptureEditorOrRemoteTestCoroutine()
+    {
+        yield return new WaitForEndOfFrame();
+
+        Texture2D texture = null;
+
+        if (testImageOverride != null)
+        {
+            texture = DuplicateTexture(testImageOverride);
+        }
+        else
+        {
+            try
+            {
+                texture = ScreenCapture.CaptureScreenshotAsTexture();
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[CaptureDebugger] GameView 캡처 실패. fallback 이미지 생성: {e.Message}");
+                texture = CreateFallbackTestTexture();
+            }
+        }
+
+        if (texture == null)
+        {
+            texture = CreateFallbackTestTexture();
+        }
+
+        byte[] jpgBytes = texture.EncodeToJPG(jpegQuality);
+        int imageWidth = texture.width;
+        int imageHeight = texture.height;
+        Destroy(texture);
+
+        Matrix4x4 cameraToWorld = Matrix4x4.identity;
+        Matrix4x4 projection = Matrix4x4.identity;
+        bool hasCameraToWorld = false;
+        bool hasProjection = false;
+
+        if (Camera.main != null)
+        {
+            cameraToWorld = Camera.main.cameraToWorldMatrix;
+            projection = Camera.main.projectionMatrix;
+            hasCameraToWorld = true;
+            hasProjection = true;
+        }
+
+        string captureId = CreateCaptureId();
+
+        FurnitureCaptureMetadata metadata = BuildMetadata(
+            captureId,
+            captureId + ".jpg",
+            imageWidth,
+            imageHeight,
+            hasCameraToWorld,
+            cameraToWorld,
+            hasProjection,
+            projection,
+            "UnityEditorOrRemote_TestCapture"
+        );
+
+        SaveCaptureDebugFiles(captureId, jpgBytes, metadata);
+        isCapturing = false;
+    }
+
+    private Texture2D DuplicateTexture(Texture2D source)
+    {
+        RenderTexture temporary = RenderTexture.GetTemporary(source.width, source.height, 0, RenderTextureFormat.Default, RenderTextureReadWrite.Linear);
+        Graphics.Blit(source, temporary);
+
+        RenderTexture previous = RenderTexture.active;
+        RenderTexture.active = temporary;
+
+        Texture2D readable = new Texture2D(source.width, source.height, TextureFormat.RGB24, false);
+        readable.ReadPixels(new Rect(0, 0, source.width, source.height), 0, 0);
+        readable.Apply();
+
+        RenderTexture.active = previous;
+        RenderTexture.ReleaseTemporary(temporary);
+        return readable;
+    }
+
+    private Texture2D CreateFallbackTestTexture()
+    {
+        int width = Mathf.Max(16, fallbackTestImageWidth);
+        int height = Mathf.Max(16, fallbackTestImageHeight);
+        Texture2D texture = new Texture2D(width, height, TextureFormat.RGB24, false);
+        Color32[] pixels = new Color32[width * height];
+
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                byte value = (byte)(((x / 32) + (y / 32)) % 2 == 0 ? 96 : 160);
+                pixels[y * width + x] = new Color32(value, value, value, 255);
+            }
+        }
+
+        texture.SetPixels32(pixels);
+        texture.Apply();
+        return texture;
+    }
+#endif
+
     private FurnitureCaptureMetadata BuildMetadata(
         string captureId,
         string imageFileName,
@@ -219,6 +389,8 @@ public class HoloLensPhotoCaptureDebugger : MonoBehaviour
         Matrix4x4 projection,
         string source)
     {
+        TryAutoBindRoomObjectsFromConfirmRoom();
+
         return new FurnitureCaptureMetadata
         {
             capture_id = captureId,

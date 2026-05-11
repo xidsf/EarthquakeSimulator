@@ -10,9 +10,14 @@ public class FurnitureObjectFactory : MonoBehaviour
     public Material defaultMaterial;
 
     [Header("Physics")]
-    public bool useMeshCollider = true;
+    public bool useMeshCollider = false;
     public bool convexMeshCollider = true;
-    public bool addRigidbody = true;
+    public bool addRigidbody = false;
+
+    [Header("Collider Performance")]
+    public bool skipConvexHullForLargeMeshes = true;
+    public int maxConvexMeshVertices = 220;
+    public bool meshColliderOnlyForFanAndChair = true;
 
     [Header("Model Alignment")]
     public bool normalizeModelToGround = true;
@@ -21,6 +26,13 @@ public class FurnitureObjectFactory : MonoBehaviour
     [Header("Size")]
     public bool applyTargetSize = true;
     public bool nonUniformScale = true;
+
+    [Header("Label Scale Policy")]
+    public bool forceBedRectangularRatio = true;
+    public float bedMinLengthWidthRatio = 1.60f;
+    public float bedMaxLengthWidthRatio = 1.95f;
+    public bool clampBedLengthStretch = true;
+    public bool preserveFanAndChairMeshRatio = true;
 
     public void CreateFromResult(FurnitureObjectResult result)
     {
@@ -43,13 +55,13 @@ public class FurnitureObjectFactory : MonoBehaviour
     private async void CreateFromGlb(FurnitureObjectResult result)
     {
         Vector3 position = ToVector3(result.position, new Vector3(0f, 0f, 2f));
-        Vector3 rotationEuler = ToVector3(result.rotation, Vector3.zero);
+        Vector3 rotationEuler = GetRotationEuler(result);
         Vector3 initialScale = ToVector3(result.scale, Vector3.one);
 
         GameObject root = new GameObject($"Furniture_{result.label}_{result.id}");
 
         if (furnitureRoot != null)
-            root.transform.SetParent(furnitureRoot);
+            root.transform.SetParent(furnitureRoot, true);
 
         root.transform.position = position;
         root.transform.rotation = Quaternion.Euler(rotationEuler);
@@ -68,11 +80,9 @@ public class FurnitureObjectFactory : MonoBehaviour
         if (!loaded)
         {
             Debug.LogError($"[FurnitureObjectFactory] Failed to load GLB: {result.mesh_url}");
-
             CreateFallbackVisualUnderRoot(root, result);
             AddBoxColliderFallback(root, result);
             AddRigidbodyOnly(root, result);
-
             return;
         }
 
@@ -84,11 +94,9 @@ public class FurnitureObjectFactory : MonoBehaviour
         if (!instantiated)
         {
             Debug.LogError($"[FurnitureObjectFactory] Failed to instantiate GLB: {result.mesh_url}");
-
             CreateFallbackVisualUnderRoot(root, result);
             AddBoxColliderFallback(root, result);
             AddRigidbodyOnly(root, result);
-
             return;
         }
 
@@ -115,15 +123,17 @@ public class FurnitureObjectFactory : MonoBehaviour
     private GameObject CreateFallbackBox(FurnitureObjectResult result)
     {
         Vector3 position = ToVector3(result.position, new Vector3(0f, 0f, 2f));
-        Vector3 rotationEuler = ToVector3(result.rotation, Vector3.zero);
-        Vector3 targetSize = GetTargetSize(result);
+        Vector3 rotationEuler = GetRotationEuler(result);
+        Vector3 targetSize = FixTargetSizeByLabel(result.label, GetTargetSize(result));
 
         GameObject obj = GameObject.CreatePrimitive(PrimitiveType.Cube);
         obj.name = $"Furniture_{result.label}_{result.id}_FallbackBox";
 
         if (furnitureRoot != null)
-            obj.transform.SetParent(furnitureRoot);
+            obj.transform.SetParent(furnitureRoot, true);
 
+        // Keep the previous convention: server position is used as the object's origin.
+        // Do not change vertical semantics here to avoid shifting already-working layouts.
         obj.transform.position = position + new Vector3(0f, targetSize.y * 0.5f, 0f);
         obj.transform.rotation = Quaternion.Euler(rotationEuler);
         obj.transform.localScale = targetSize;
@@ -136,18 +146,17 @@ public class FurnitureObjectFactory : MonoBehaviour
         AddRigidbodyOnly(obj, result);
 
         Debug.Log($"[FurnitureObjectFactory] Created fallback box: {obj.name}");
-
         return obj;
     }
 
     private void CreateFallbackVisualUnderRoot(GameObject root, FurnitureObjectResult result)
     {
-        Vector3 targetSize = GetTargetSize(result);
+        Vector3 targetSize = FixTargetSizeByLabel(result.label, GetTargetSize(result));
 
         GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
         cube.name = $"{result.label}_FallbackVisual";
 
-        cube.transform.SetParent(root.transform);
+        cube.transform.SetParent(root.transform, false);
         cube.transform.localPosition = new Vector3(0f, targetSize.y * 0.5f, 0f);
         cube.transform.localRotation = Quaternion.identity;
         cube.transform.localScale = targetSize;
@@ -182,14 +191,13 @@ public class FurnitureObjectFactory : MonoBehaviour
             AddRigidbodyOnly(root, result);
         }
 
-        if (useMeshCollider)
+        if (useMeshCollider && ShouldTryMeshColliderForLabel(result.label))
         {
-            int meshColliderCount = AddMeshCollidersToChildren(root);
+            int meshColliderCount = AddMeshCollidersToChildren(root, result.label);
 
             if (meshColliderCount > 0)
             {
                 BoxCollider existingBox = root.GetComponent<BoxCollider>();
-
                 if (existingBox != null)
                     existingBox.enabled = false;
 
@@ -197,7 +205,11 @@ public class FurnitureObjectFactory : MonoBehaviour
                 return;
             }
 
-            Debug.LogWarning($"[FurnitureObjectFactory] No MeshFilter found in {root.name}. Using BoxCollider fallback.");
+            Debug.LogWarning($"[FurnitureObjectFactory] No usable MeshCollider created for {root.name}. Using BoxCollider fallback.");
+        }
+        else if (useMeshCollider)
+        {
+            Debug.Log($"[FurnitureObjectFactory] MeshCollider skipped by label/performance policy for {root.name}, label={result.label}. Using BoxCollider fallback.");
         }
 
         AddBoxColliderFallback(root, result);
@@ -208,7 +220,7 @@ public class FurnitureObjectFactory : MonoBehaviour
         if (!addRigidbody)
             return;
 
-        Vector3 size = GetTargetSize(result);
+        Vector3 size = FixTargetSizeByLabel(result.label, GetTargetSize(result));
 
         Rigidbody rb = root.GetComponent<Rigidbody>();
         if (rb == null)
@@ -216,23 +228,34 @@ public class FurnitureObjectFactory : MonoBehaviour
 
         rb.mass = EstimateMass(size);
         rb.centerOfMass = new Vector3(0f, -size.y * 0.15f, 0f);
-        rb.useGravity = true;
-        rb.isKinematic = false;
+
+        bool shouldSimulate = result.simulation_enabled || result.earthquake_simulation;
+        bool shouldBeKinematic = result.is_fixed || string.Equals(result.rigidbody_mode, "kinematic");
+
+        rb.useGravity = result.use_gravity || shouldSimulate;
+        rb.isKinematic = shouldBeKinematic || !shouldSimulate;
     }
 
-    private int AddMeshCollidersToChildren(GameObject root)
+    private int AddMeshCollidersToChildren(GameObject root, string label)
     {
         int count = 0;
-
         MeshFilter[] meshFilters = root.GetComponentsInChildren<MeshFilter>(true);
 
         foreach (MeshFilter meshFilter in meshFilters)
         {
-            if (meshFilter == null)
+            if (meshFilter == null || meshFilter.sharedMesh == null)
                 continue;
 
-            if (meshFilter.sharedMesh == null)
+            Mesh mesh = meshFilter.sharedMesh;
+
+            if (convexMeshCollider && skipConvexHullForLargeMeshes && mesh.vertexCount > maxConvexMeshVertices)
+            {
+                Debug.LogWarning(
+                    $"[FurnitureObjectFactory] Skip convex MeshCollider for {meshFilter.gameObject.name}. " +
+                    $"vertexCount={mesh.vertexCount} > {maxConvexMeshVertices}. Using BoxCollider fallback."
+                );
                 continue;
+            }
 
             GameObject meshObject = meshFilter.gameObject;
 
@@ -241,14 +264,14 @@ public class FurnitureObjectFactory : MonoBehaviour
                 meshCollider = meshObject.AddComponent<MeshCollider>();
 
             meshCollider.sharedMesh = null;
-            meshCollider.sharedMesh = meshFilter.sharedMesh;
+            meshCollider.sharedMesh = mesh;
             meshCollider.convex = convexMeshCollider;
 
             count++;
 
             Debug.Log(
                 $"[FurnitureObjectFactory] MeshCollider added: {meshObject.name}, " +
-                $"mesh={meshFilter.sharedMesh.name}, convex={meshCollider.convex}"
+                $"mesh={mesh.name}, vertices={mesh.vertexCount}, convex={meshCollider.convex}"
             );
         }
 
@@ -257,8 +280,8 @@ public class FurnitureObjectFactory : MonoBehaviour
 
     private void AddBoxColliderFallback(GameObject root, FurnitureObjectResult result)
     {
-        Vector3 colliderSize = GetTargetSize(result);
-        Vector3 colliderCenter = ToVector3(result.collider_center, colliderSize * 0.5f);
+        Vector3 colliderSize = FixTargetSizeByLabel(result.label, GetTargetSize(result));
+        Vector3 colliderCenter = ToVector3(result.collider_center, new Vector3(0f, colliderSize.y * 0.5f, 0f));
 
         BoxCollider box = root.GetComponent<BoxCollider>();
         if (box == null)
@@ -268,7 +291,7 @@ public class FurnitureObjectFactory : MonoBehaviour
         box.center = colliderCenter;
         box.size = colliderSize;
 
-        Debug.Log($"[FurnitureObjectFactory] Added fallback BoxCollider to {root.name}");
+        Debug.Log($"[FurnitureObjectFactory] Added fallback BoxCollider to {root.name}, size={colliderSize}, center={colliderCenter}");
     }
 
     private void NormalizeModelToGround(GameObject root)
@@ -310,7 +333,7 @@ public class FurnitureObjectFactory : MonoBehaviour
 
     private void ApplyTargetSize(GameObject root, FurnitureObjectResult result)
     {
-        Vector3 targetSize = GetTargetSize(result);
+        Vector3 targetSize = FixTargetSizeByLabel(result.label, GetTargetSize(result));
 
         if (targetSize.x <= 0f || targetSize.y <= 0f || targetSize.z <= 0f)
         {
@@ -332,26 +355,7 @@ public class FurnitureObjectFactory : MonoBehaviour
             return;
         }
 
-        Vector3 scaleFactor;
-
-        if (nonUniformScale)
-        {
-            scaleFactor = new Vector3(
-                targetSize.x / currentSize.x,
-                targetSize.y / currentSize.y,
-                targetSize.z / currentSize.z
-            );
-        }
-        else
-        {
-            float factor = Mathf.Min(
-                targetSize.x / currentSize.x,
-                targetSize.y / currentSize.y,
-                targetSize.z / currentSize.z
-            );
-
-            scaleFactor = new Vector3(factor, factor, factor);
-        }
+        Vector3 scaleFactor = GetScaleFactorByLabel(result.label, targetSize, currentSize);
 
         scaleFactor.x = Mathf.Clamp(scaleFactor.x, 0.01f, 100f);
         scaleFactor.y = Mathf.Clamp(scaleFactor.y, 0.01f, 100f);
@@ -360,7 +364,6 @@ public class FurnitureObjectFactory : MonoBehaviour
         for (int i = 0; i < root.transform.childCount; i++)
         {
             Transform child = root.transform.GetChild(i);
-
             child.localScale = new Vector3(
                 child.localScale.x * scaleFactor.x,
                 child.localScale.y * scaleFactor.y,
@@ -372,17 +375,172 @@ public class FurnitureObjectFactory : MonoBehaviour
         {
             Debug.Log(
                 $"[FurnitureObjectFactory] Applied target size to {root.name}. " +
-                $"Target={targetSize}, Before={currentSize}, After={newBounds.size}, ScaleFactor={scaleFactor}"
+                $"Label={result.label}, Target={targetSize}, Before={currentSize}, After={newBounds.size}, ScaleFactor={scaleFactor}"
             );
         }
+    }
+
+    private Vector3 GetScaleFactorByLabel(string label, Vector3 targetSize, Vector3 currentBoundsSize)
+    {
+        string lower = SafeLower(label);
+
+        bool forceNonUniform = ShouldForceNonUniformSize(lower);
+        bool preserveRatio = preserveFanAndChairMeshRatio && ShouldPreserveMeshRatio(lower);
+
+        if (forceNonUniform && nonUniformScale)
+        {
+            return new Vector3(
+                targetSize.x / currentBoundsSize.x,
+                targetSize.y / currentBoundsSize.y,
+                targetSize.z / currentBoundsSize.z
+            );
+        }
+
+        if (preserveRatio)
+        {
+            float referenceFactor = targetSize.y / currentBoundsSize.y;
+            if (!float.IsFinite(referenceFactor) || referenceFactor <= 0f)
+            {
+                referenceFactor = Mathf.Min(
+                    targetSize.x / currentBoundsSize.x,
+                    targetSize.y / currentBoundsSize.y,
+                    targetSize.z / currentBoundsSize.z
+                );
+            }
+
+            return new Vector3(referenceFactor, referenceFactor, referenceFactor);
+        }
+
+        if (nonUniformScale)
+        {
+            return new Vector3(
+                targetSize.x / currentBoundsSize.x,
+                targetSize.y / currentBoundsSize.y,
+                targetSize.z / currentBoundsSize.z
+            );
+        }
+
+        float factor = Mathf.Min(
+            targetSize.x / currentBoundsSize.x,
+            targetSize.y / currentBoundsSize.y,
+            targetSize.z / currentBoundsSize.z
+        );
+
+        return new Vector3(factor, factor, factor);
+    }
+
+    private Vector3 FixTargetSizeByLabel(string label, Vector3 targetSize)
+    {
+        string lower = SafeLower(label);
+
+        if (targetSize.x <= 0f || targetSize.y <= 0f || targetSize.z <= 0f)
+            return targetSize;
+
+        if (lower == "bed" || lower.Contains("bed"))
+        {
+            float width = Mathf.Max(targetSize.x, 0.85f);
+            float height = Mathf.Clamp(Mathf.Max(targetSize.y, 0.35f), 0.30f, 0.85f);
+            float minLength = Mathf.Max(width * bedMinLengthWidthRatio, 1.65f);
+            float length = Mathf.Max(targetSize.z, minLength);
+
+            if (clampBedLengthStretch)
+            {
+                float maxLength = Mathf.Max(width * bedMaxLengthWidthRatio, minLength);
+                length = Mathf.Min(length, maxLength);
+            }
+
+            // Keep server axis convention: X=width, Z=length.
+            // This corrects square SAM3D beds but prevents over-stretching.
+            return new Vector3(width, height, length);
+        }
+
+        if (lower == "tv" || lower.Contains("television"))
+        {
+            return new Vector3(
+                Mathf.Max(targetSize.x, 0.50f),
+                Mathf.Max(targetSize.y, 0.28f),
+                Mathf.Clamp(targetSize.z, 0.04f, 0.18f)
+            );
+        }
+
+        if (lower == "picture_frame" || lower.Contains("picture") || lower.Contains("frame"))
+        {
+            return new Vector3(
+                Mathf.Max(targetSize.x, 0.25f),
+                Mathf.Max(targetSize.y, 0.25f),
+                0.035f
+            );
+        }
+
+        if (lower == "wall_clock" || lower.Contains("clock"))
+        {
+            float d = Mathf.Max(targetSize.x, targetSize.y, 0.25f);
+            return new Vector3(d, d, 0.04f);
+        }
+
+        if (lower == "standing_air_conditioner" || lower.Contains("air_conditioner"))
+        {
+            return new Vector3(
+                Mathf.Clamp(targetSize.x, 0.25f, 0.90f),
+                Mathf.Clamp(targetSize.y, 1.00f, 2.20f),
+                Mathf.Clamp(targetSize.z, 0.20f, 0.90f)
+            );
+        }
+
+        if (lower == "bookshelf" || lower.Contains("bookshelf") || lower.Contains("shelf"))
+        {
+            return new Vector3(
+                Mathf.Clamp(targetSize.x, 0.35f, 1.80f),
+                Mathf.Clamp(targetSize.y, 0.80f, 2.60f),
+                Mathf.Clamp(targetSize.z, 0.20f, 0.90f)
+            );
+        }
+
+        if (lower == "cabinet" || lower.Contains("cabinet"))
+        {
+            return new Vector3(
+                Mathf.Clamp(targetSize.x, 0.35f, 2.00f),
+                Mathf.Clamp(targetSize.y, 0.35f, 2.40f),
+                Mathf.Clamp(targetSize.z, 0.20f, 1.10f)
+            );
+        }
+
+        return targetSize;
+    }
+
+    private bool ShouldForceNonUniformSize(string lowerLabel)
+    {
+        return lowerLabel.Contains("bed") ||
+               lowerLabel.Contains("tv") ||
+               lowerLabel.Contains("television") ||
+               lowerLabel.Contains("cabinet") ||
+               lowerLabel.Contains("bookshelf") ||
+               lowerLabel.Contains("shelf") ||
+               lowerLabel.Contains("air_conditioner") ||
+               lowerLabel.Contains("picture") ||
+               lowerLabel.Contains("frame") ||
+               lowerLabel.Contains("clock");
+    }
+
+    private bool ShouldPreserveMeshRatio(string lowerLabel)
+    {
+        return lowerLabel.Contains("fan") || lowerLabel.Contains("chair");
+    }
+
+
+    private bool ShouldTryMeshColliderForLabel(string label)
+    {
+        if (!meshColliderOnlyForFanAndChair)
+            return true;
+
+        string lower = SafeLower(label);
+        return lower.Contains("fan") || lower.Contains("chair");
     }
 
     private bool TryGetLocalRendererBounds(GameObject root, out Bounds localBounds)
     {
         localBounds = new Bounds();
-
         Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
-
         bool hasBounds = false;
 
         foreach (Renderer renderer in renderers)
@@ -390,12 +548,11 @@ public class FurnitureObjectFactory : MonoBehaviour
             if (renderer == null)
                 continue;
 
-            Bounds worldBounds = renderer.bounds;
+            Bounds rendererLocalBounds = renderer.localBounds;
+            Vector3 min = rendererLocalBounds.min;
+            Vector3 max = rendererLocalBounds.max;
 
-            Vector3 min = worldBounds.min;
-            Vector3 max = worldBounds.max;
-
-            Vector3[] corners =
+            Vector3[] localCorners =
             {
                 new Vector3(min.x, min.y, min.z),
                 new Vector3(min.x, min.y, max.z),
@@ -407,18 +564,19 @@ public class FurnitureObjectFactory : MonoBehaviour
                 new Vector3(max.x, max.y, max.z)
             };
 
-            foreach (Vector3 worldCorner in corners)
+            foreach (Vector3 rendererLocalCorner in localCorners)
             {
-                Vector3 localCorner = root.transform.InverseTransformPoint(worldCorner);
+                Vector3 worldCorner = renderer.transform.TransformPoint(rendererLocalCorner);
+                Vector3 rootLocalCorner = root.transform.InverseTransformPoint(worldCorner);
 
                 if (!hasBounds)
                 {
-                    localBounds = new Bounds(localCorner, Vector3.zero);
+                    localBounds = new Bounds(rootLocalCorner, Vector3.zero);
                     hasBounds = true;
                 }
                 else
                 {
-                    localBounds.Encapsulate(localCorner);
+                    localBounds.Encapsulate(rootLocalCorner);
                 }
             }
         }
@@ -428,17 +586,31 @@ public class FurnitureObjectFactory : MonoBehaviour
 
     private Vector3 GetTargetSize(FurnitureObjectResult result)
     {
-        Vector3 targetSize = ToVector3(result.target_size, Vector3.zero);
+        Vector3 sizeWorld = ToVector3(result.size_world, Vector3.zero);
+        if (sizeWorld.x > 0f && sizeWorld.y > 0f && sizeWorld.z > 0f)
+            return sizeWorld;
 
+        Vector3 targetSize = ToVector3(result.target_size, Vector3.zero);
         if (targetSize.x > 0f && targetSize.y > 0f && targetSize.z > 0f)
             return targetSize;
 
         Vector3 colliderSize = ToVector3(result.collider_size, Vector3.zero);
-
         if (colliderSize.x > 0f && colliderSize.y > 0f && colliderSize.z > 0f)
             return colliderSize;
 
         return ToVector3(result.scale, Vector3.one);
+    }
+
+    private Vector3 GetRotationEuler(FurnitureObjectResult result)
+    {
+        Vector3 rotationEuler = ToVector3(result.rotation, Vector3.zero);
+
+        if ((result.rotation == null || result.rotation.Length < 3) && Mathf.Abs(result.rotation_yaw_deg) > 0.0001f)
+        {
+            rotationEuler = new Vector3(0f, result.rotation_yaw_deg, 0f);
+        }
+
+        return rotationEuler;
     }
 
     private Vector3 ToVector3(float[] arr, Vector3 fallback)
@@ -447,6 +619,11 @@ public class FurnitureObjectFactory : MonoBehaviour
             return fallback;
 
         return new Vector3(arr[0], arr[1], arr[2]);
+    }
+
+    private string SafeLower(string value)
+    {
+        return string.IsNullOrEmpty(value) ? string.Empty : value.ToLowerInvariant();
     }
 
     private float EstimateMass(Vector3 size)

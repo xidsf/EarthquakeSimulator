@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -11,72 +12,243 @@ using UnityEngine.Windows.WebCam;
 #endif
 
 /// <summary>
-/// HoloLens2 실제 RGB/PV 카메라 사진 촬영, 디버그 저장, 서버 전송을 담당하는 단일 컴포넌트입니다.
+/// HoloLens2 실제 RGB/PV 카메라 사진 촬영, 디버그 저장, scan session 기반 서버 전송을 담당하는 컴포넌트입니다.
 ///
-/// 책임 범위:
-/// - HoloLens2 PhotoCapture로 실제 환경 사진 촬영
-/// - JPG + metadata JSON을 Application.persistentDataPath에 저장
-/// - 저장된 JPG + metadata JSON을 서버로 Multipart 전송
-/// - 외부에서 전달받은 floor / ceiling / walls 정보를 metadata에 포함
-///
-/// 책임 범위가 아닌 것:
-/// - 방 생성 로직 자체
-/// - 서버의 SAM3 추론 로직
-/// - 서버 응답을 이용한 실제 가구 Prefab 배치 로직
-///
-/// 중요:
-/// - 이 스크립트는 이름 기반 GameObject.Find / prefix search를 사용하지 않습니다.
-/// - 방 생성 완료 시점에 SetRoomObjects(...)로 실제 생성된 Floor/Ceiling/Wall Transform들을 직접 넘겨주세요.
+/// 서버 흐름:
+/// 1. StartScanSession() -> POST /scan-session/start
+/// 2. CapturePhotoAndUpload() -> POST /scan-frame, multipart: image, metadata
+/// 3. StartDetectionForCurrentSession() -> POST /detect-session/{scan_session_id}?mode=auto
+/// 4. GetDetectionsForCurrentSession() -> GET /detections/{scan_session_id}
+/// 5. ProcessScanForCurrentSession() -> POST /process-scan/{scan_session_id}?use_confirmed=1
+/// 6. GetResultForCurrentSession() -> GET /result/{scan_session_id}
 /// </summary>
 public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
 {
-    [Header("Server")]
-    [SerializeField] private string detectUrl = "https://api.earquake.xyz/detect";
-    [SerializeField] private int requestTimeoutSeconds = 20;
+    [Header("Server Endpoints")]
+    [SerializeField] private string serverBaseUrl = "https://api.earquake.xyz";
+    [SerializeField] private string startScanSessionPath = "/scan-session/start";
+    [SerializeField] private string uploadScanFramePath = "/scan-frame";
+    [SerializeField] private string detectSessionPathFormat = "/detect-session/{0}?mode=auto";
+    [SerializeField] private string detectionsPathFormat = "/detections/{0}";
+    [SerializeField] private string processScanPathFormat = "/process-scan/{0}?use_confirmed=1";
+    [SerializeField] private string resultPathFormat = "/result/{0}";
+    [SerializeField] private int requestTimeoutSeconds = 30;
+    [SerializeField] private int longRequestTimeoutSeconds = 300;
+
+    [Header("Scan Session State")]
+    [SerializeField] private string currentScanSessionId = string.Empty;
+    [SerializeField] private string currentScanSessionStatus = string.Empty;
+    [SerializeField] private int nextFrameNumber = 1;
+    [SerializeField] private bool currentScanSessionCreatedByServer = false;
+
+    [Tooltip("로컬 저장만 하는 테스트에서 scan_session_id가 없으면 local_scan_... 값을 만들어 metadata에 넣습니다. 서버 업로드에는 사용할 수 없습니다.")]
+    [SerializeField] private bool autoCreateLocalSessionForSaveOnly = true;
 
     [Header("Debug Save")]
     [SerializeField] private string outputFolderName = "FurnitureCaptureDebug";
     [SerializeField, Range(1, 100)] private int jpegQuality = 90;
 
     [Header("Room Objects - Explicit References")]
-    [Tooltip("선택 사항입니다. Confirmed Room 전체 Root를 알고 있다면 넣어주세요. 이름 기반 자동 탐색에는 사용하지 않고 metadata 기록용으로만 사용합니다.")]
     [SerializeField] private Transform roomRoot;
-
-    [Tooltip("동적으로 생성된 ConfirmedRoom_Floor 오브젝트의 Transform을 방 생성 완료 시점에 직접 넣어주세요.")]
     [SerializeField] private Transform floorObject;
-
-    [Tooltip("동적으로 생성된 ConfirmedRoom_Ceiling 오브젝트의 Transform을 방 생성 완료 시점에 직접 넣어주세요.")]
     [SerializeField] private Transform ceilingObject;
-
-    [Tooltip("동적으로 생성된 ConfirmedRoom_Wall 오브젝트들의 Transform을 방 생성 완료 시점에 직접 넣어주세요.")]
     [SerializeField] private List<Transform> wallObjects = new List<Transform>();
 
     [Header("Room Metadata Option")]
-    [Tooltip("서버에서 2D mask/bbox를 월드 위치로 되돌릴 때 사용할 수 있도록 Mesh vertex world 좌표를 포함합니다.")]
     [SerializeField] private bool includeMeshVertices = true;
-
-    [Tooltip("triangle index까지 포함하면 JSON 크기가 커질 수 있습니다. 처음에는 꺼두는 것을 권장합니다.")]
     [SerializeField] private bool includeMeshTriangles = false;
 
+    [Header("Depth Samples Option")]
+    [Tooltip("/scan-frame metadata 안에 픽셀 -> Unity world raycast sample을 포함합니다.")]
+    [SerializeField] private bool includeDepthSamples = true;
+
+    [Tooltip("가로 depth sample 개수입니다. 16이면 16x9 grid 기준 144개 sample을 생성합니다.")]
+    [SerializeField, Range(1, 64)] private int depthSampleGridX = 16;
+
+    [Tooltip("세로 depth sample 개수입니다. 9이면 16x9 grid 기준 144개 sample을 생성합니다.")]
+    [SerializeField, Range(1, 64)] private int depthSampleGridY = 9;
+
+    [Tooltip("Raycast 최대 거리입니다. 단위는 Unity meter입니다.")]
+    [SerializeField] private float depthRaycastMaxDistance = 8.0f;
+
+    [Tooltip("PhotoCaptureFrame.TryGetProjectionMatrix(near, far, out projection)에 사용할 near clip입니다. 너무 작으면 ray 복원 오차가 커질 수 있어 0.05m를 기본값으로 둡니다.")]
+    [SerializeField] private float depthProjectionNearClip = 0.05f;
+
+    [Tooltip("Depth sample raycast 대상 Layer입니다. 가능하면 Spatial Mesh Collider 전용 Layer만 지정하세요.")]
+    [SerializeField] private LayerMask depthRaycastLayerMask = Physics.DefaultRaycastLayers;
+
+    [Tooltip("true이면 Raycast miss도 metadata에 hit=false로 포함합니다. 서버가 bbox 안 hit 분포를 판단하기 쉽도록 기본 true를 권장합니다.")]
+    [SerializeField] private bool includeMissedDepthSamples = true;
+
     [Header("Capture Option")]
-    [Tooltip("true이면 촬영 후 저장이 끝나자마자 서버로 전송합니다. false이면 저장만 합니다.")]
+    [Tooltip("true이면 촬영 후 저장이 끝나자마자 /scan-frame으로 전송합니다. false이면 저장만 합니다.")]
     [SerializeField] private bool uploadImmediatelyAfterCapture = false;
+
+    [Header("Room Object Auto Binding")]
+    [SerializeField] private bool autoBindRoomObjectsBeforeCapture = true;
+    [SerializeField] private bool autoFindConfirmRoomManager = true;
+    [SerializeField] private ConfirmRoomManager confirmRoomManager;
+    [SerializeField] private RoomGeometrySnapshotProvider roomSnapshotProvider;
+
+    [Header("Editor / Remote Test Capture")]
+    [Tooltip("Unity Editor / Holographic Remoting / Standalone 테스트에서 GameView 스크린샷을 JPG로 저장/업로드합니다. 실제 HoloLens PV 카메라 사진이 아닙니다.")]
+    [SerializeField] private bool enableEditorOrRemoteTestCapture = true;
+    [SerializeField] private Texture2D testImageOverride;
+    [SerializeField] private int fallbackTestImageWidth = 1280;
+    [SerializeField] private int fallbackTestImageHeight = 720;
 
     private bool isCapturing = false;
     private bool isUploading = false;
+    private bool isStartingScanSession = false;
+    private bool isAutoStartingSessionAndCapturing = false;
+    private bool isServerRequestRunning = false;
 
 #if UNITY_WSA && !UNITY_EDITOR
     private PhotoCapture photoCaptureObject;
     private Resolution selectedResolution;
 #endif
 
+    public string CurrentScanSessionId => currentScanSessionId;
+    public string CurrentScanSessionStatus => currentScanSessionStatus;
+    public int NextFrameNumber => nextFrameNumber;
+    public bool HasActiveScanSession => !string.IsNullOrEmpty(currentScanSessionId);
+    public bool HasActiveServerScanSession => HasActiveScanSession && currentScanSessionCreatedByServer;
+
+    // ----------------------------------------------------------------------
+    // Server session entry points
+    // ----------------------------------------------------------------------
+
+    /// <summary>
+    /// 촬영 세션 시작 버튼에 연결합니다.
+    /// POST /scan-session/start를 호출하고, 이후 모든 frame 업로드에 같은 scan_session_id를 사용합니다.
+    /// </summary>
+    public void StartScanSession()
+    {
+        if (isStartingScanSession)
+        {
+            Debug.LogWarning("[FurnitureCapture] scan session 시작 요청이 이미 진행 중입니다.");
+            return;
+        }
+
+        StartCoroutine(StartScanSessionCoroutine());
+    }
+
+    public void ClearScanSession()
+    {
+        currentScanSessionId = string.Empty;
+        currentScanSessionStatus = string.Empty;
+        currentScanSessionCreatedByServer = false;
+        nextFrameNumber = 1;
+        Debug.Log("[FurnitureCapture] scan session 상태를 초기화했습니다.");
+    }
+
+    public void StartDetectionForCurrentSession()
+    {
+        if (!EnsureServerScanSession("가구 후보 탐지"))
+            return;
+
+        string path = string.Format(detectSessionPathFormat, UnityWebRequest.EscapeURL(currentScanSessionId));
+        StartCoroutine(PostEmptyCoroutine(BuildUrl(path), "detect-session", longRequestTimeoutSeconds));
+    }
+
+    public void GetDetectionsForCurrentSession()
+    {
+        if (!EnsureScanSession("가구 후보 조회"))
+            return;
+
+        string path = string.Format(detectionsPathFormat, UnityWebRequest.EscapeURL(currentScanSessionId));
+        StartCoroutine(GetCoroutine(BuildUrl(path), "detections", requestTimeoutSeconds));
+    }
+
+    public void ProcessScanForCurrentSession()
+    {
+        if (!EnsureServerScanSession("Unity 배치 결과 생성"))
+            return;
+
+        string path = string.Format(processScanPathFormat, UnityWebRequest.EscapeURL(currentScanSessionId));
+        StartCoroutine(PostEmptyCoroutine(BuildUrl(path), "process-scan", longRequestTimeoutSeconds));
+    }
+
+    public void GetResultForCurrentSession()
+    {
+        if (!EnsureScanSession("Unity 배치 결과 조회"))
+            return;
+
+        string path = string.Format(resultPathFormat, UnityWebRequest.EscapeURL(currentScanSessionId));
+        StartCoroutine(GetCoroutine(BuildUrl(path), "result", requestTimeoutSeconds));
+    }
+
+    private IEnumerator StartScanSessionCoroutine()
+    {
+        isStartingScanSession = true;
+
+        string url = BuildUrl(startScanSessionPath);
+        byte[] bodyRaw = Encoding.UTF8.GetBytes("{}");
+
+        using (UnityWebRequest request = new UnityWebRequest(url, UnityWebRequest.kHttpVerbPOST))
+        {
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.timeout = requestTimeoutSeconds;
+
+            Debug.Log($"[FurnitureCapture] scan session 시작 요청: {url}");
+            yield return request.SendWebRequest();
+
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogError(
+                    "[FurnitureCapture] scan session 시작 실패\n" +
+                    $"responseCode: {request.responseCode}\n" +
+                    $"error: {request.error}\n" +
+                    $"body: {request.downloadHandler.text}"
+                );
+                isStartingScanSession = false;
+                yield break;
+            }
+
+            string responseText = request.downloadHandler.text;
+            StartScanSessionResponse response = null;
+
+            try
+            {
+                response = JsonUtility.FromJson<StartScanSessionResponse>(responseText);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[FurnitureCapture] scan session 응답 파싱 실패: {e.Message}\nbody: {responseText}");
+                isStartingScanSession = false;
+                yield break;
+            }
+
+            if (response == null || string.IsNullOrEmpty(response.scan_session_id))
+            {
+                Debug.LogError($"[FurnitureCapture] scan_session_id가 없는 응답입니다. body: {responseText}");
+                isStartingScanSession = false;
+                yield break;
+            }
+
+            currentScanSessionId = response.scan_session_id;
+            currentScanSessionStatus = response.status;
+            currentScanSessionCreatedByServer = true;
+            nextFrameNumber = 1;
+
+            Debug.Log(
+                "[FurnitureCapture] scan session 시작 완료\n" +
+                $"scan_session_id: {currentScanSessionId}\n" +
+                $"status: {currentScanSessionStatus}"
+            );
+        }
+
+        isStartingScanSession = false;
+    }
+
     // ----------------------------------------------------------------------
     // Button entry points
     // ----------------------------------------------------------------------
 
     /// <summary>
-    /// 촬영 후 JPG + JSON만 저장합니다.
-    /// UI 촬영 버튼에는 우선 이 함수를 연결하는 것을 권장합니다.
+    /// 촬영 후 JPG + JSON만 저장합니다. 서버 업로드는 하지 않습니다.
     /// </summary>
     public void CapturePhotoForDebug()
     {
@@ -85,18 +257,69 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
     }
 
     /// <summary>
-    /// 촬영 후 JPG + JSON을 저장하고, 저장된 파일을 즉시 서버로 전송합니다.
-    /// 촬영/저장 테스트가 끝난 뒤 이 함수를 버튼에 연결하세요.
+    /// 촬영 후 JPG + JSON을 저장하고, /scan-frame으로 즉시 업로드합니다.
+    /// 이 함수 호출 전 StartScanSession()이 성공해 있어야 합니다.
+    /// 디버그용으로 세션 시작과 촬영을 분리해서 테스트할 때 사용합니다.
     /// </summary>
     public void CapturePhotoAndUpload()
     {
+        if (!EnsureServerScanSession("사진 업로드"))
+            return;
+
         uploadImmediatelyAfterCapture = true;
         StartCapture();
     }
 
     /// <summary>
-    /// 가장 최근에 저장된 capture 패키지 하나를 서버로 전송합니다.
+    /// 사용자용 사진 촬영 버튼에 연결하기 위한 함수입니다.
+    /// 서버 scan_session_id가 없으면 먼저 /scan-session/start를 호출하고, 성공한 뒤 첫 frame을 촬영/업로드합니다.
+    /// 이미 서버 scan_session_id가 있으면 새 session을 만들지 않고 다음 frame만 촬영/업로드합니다.
     /// </summary>
+    public void CapturePhotoAndUploadWithAutoSession()
+    {
+        if (isAutoStartingSessionAndCapturing)
+        {
+            Debug.LogWarning("[FurnitureCapture] scan session 자동 시작 후 촬영 요청이 이미 진행 중입니다.");
+            return;
+        }
+
+        if (HasActiveServerScanSession)
+        {
+            CapturePhotoAndUpload();
+            return;
+        }
+
+        StartCoroutine(CapturePhotoAndUploadWithAutoSessionCoroutine());
+    }
+
+    private IEnumerator CapturePhotoAndUploadWithAutoSessionCoroutine()
+    {
+        isAutoStartingSessionAndCapturing = true;
+
+        if (isStartingScanSession)
+        {
+            Debug.Log("[FurnitureCapture] 기존 scan session 시작 요청 완료를 기다린 뒤 촬영합니다.");
+            while (isStartingScanSession)
+                yield return null;
+        }
+
+        if (!HasActiveServerScanSession)
+        {
+            yield return StartScanSessionCoroutine();
+        }
+
+        if (HasActiveServerScanSession)
+        {
+            CapturePhotoAndUpload();
+        }
+        else
+        {
+            Debug.LogError("[FurnitureCapture] scan session 자동 생성에 실패하여 사진 촬영 + 업로드를 중단했습니다.");
+        }
+
+        isAutoStartingSessionAndCapturing = false;
+    }
+
     public void UploadLatestSavedCapture()
     {
         if (isUploading)
@@ -105,40 +328,17 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
             return;
         }
 
-        string debugRoot = GetDebugRootFolderPath();
-
-        if (!Directory.Exists(debugRoot))
+        List<CapturePackage> packages = FindSavedCapturePackages();
+        if (packages.Count == 0)
         {
-            Debug.LogError($"[FurnitureCapture] 디버그 폴더가 없습니다: {debugRoot}");
+            Debug.LogWarning($"[FurnitureCapture] 업로드할 JPG/JSON 캡처 패키지가 없습니다: {GetDebugRootFolderPath()}");
             return;
         }
 
-        DirectoryInfo rootInfo = new DirectoryInfo(debugRoot);
-        DirectoryInfo[] captureFolders = rootInfo.GetDirectories();
-
-        if (captureFolders.Length == 0)
-        {
-            Debug.LogWarning($"[FurnitureCapture] 업로드할 캡처 폴더가 없습니다: {debugRoot}");
-            return;
-        }
-
-        Array.Sort(captureFolders, (a, b) => b.LastWriteTimeUtc.CompareTo(a.LastWriteTimeUtc));
-
-        for (int i = 0; i < captureFolders.Length; i++)
-        {
-            if (TryFindCapturePackage(captureFolders[i].FullName, out CapturePackage package))
-            {
-                StartCoroutine(UploadCapturePackageCoroutine(package, 0, 1));
-                return;
-            }
-        }
-
-        Debug.LogError($"[FurnitureCapture] JPG/JSON 쌍을 가진 캡처 폴더를 찾지 못했습니다: {debugRoot}");
+        packages.Sort((a, b) => b.lastWriteTimeUtc.CompareTo(a.lastWriteTimeUtc));
+        StartCoroutine(UploadCapturePackageCoroutine(packages[0], 0, 1));
     }
 
-    /// <summary>
-    /// 저장된 모든 capture 패키지를 서버로 전송합니다.
-    /// </summary>
     public void UploadAllSavedCaptures()
     {
         if (isUploading)
@@ -154,22 +354,94 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
     // Room object reference setup
     // ----------------------------------------------------------------------
 
-    /// <summary>
-    /// 방 생성 완료 시점에 생성된 방 오브젝트들을 직접 넘겨주세요.
-    /// 이름 기반 탐색을 하지 않으므로 이 함수 호출이 가장 안전합니다.
-    /// </summary>
-    public void SetRoomObjects(
-        Transform root,
-        Transform floor,
-        Transform ceiling,
-        IList<Transform> walls)
+    public bool SetRoomObjectsFromConfirmRoomManager(ConfirmRoomManager manager)
+    {
+        if (manager == null)
+        {
+            Debug.LogWarning("[FurnitureCapture] ConfirmRoomManager가 null입니다.");
+            return false;
+        }
+
+        confirmRoomManager = manager;
+
+        if (manager.ConfirmedRoomFloorObject == null || manager.ConfirmedRoomCeilingObject == null)
+        {
+            Debug.LogWarning("[FurnitureCapture] Confirmed room floor/ceiling이 아직 생성되지 않았습니다.");
+            return false;
+        }
+
+        List<Transform> wallTransforms = new List<Transform>();
+        IReadOnlyList<GameObject> sourceWalls = manager.ConfirmedRoomWallObjects;
+
+        if (sourceWalls != null)
+        {
+            for (int i = 0; i < sourceWalls.Count; i++)
+            {
+                if (sourceWalls[i] != null)
+                    wallTransforms.Add(sourceWalls[i].transform);
+            }
+        }
+
+        if (wallTransforms.Count == 0)
+        {
+            Debug.LogWarning("[FurnitureCapture] Confirmed room wall 목록이 비어 있습니다.");
+            return false;
+        }
+
+        SetRoomObjects(
+            manager.confirmedRoomRoot,
+            manager.ConfirmedRoomFloorObject.transform,
+            manager.ConfirmedRoomCeilingObject.transform,
+            wallTransforms
+        );
+
+        return true;
+    }
+
+    private bool TryAutoBindRoomObjectsFromConfirmRoom()
+    {
+        if (!autoBindRoomObjectsBeforeCapture)
+            return HasCompleteRoomObjects();
+
+        if (HasCompleteRoomObjects())
+        {
+            if (roomSnapshotProvider != null)
+                roomSnapshotProvider.SetRoomObjects(roomRoot, floorObject, ceilingObject, wallObjects);
+
+            return true;
+        }
+
+        if (confirmRoomManager == null && autoFindConfirmRoomManager)
+        {
+            ConfirmRoomManager[] managers = FindObjectsByType<ConfirmRoomManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            if (managers != null && managers.Length > 0)
+                confirmRoomManager = managers[0];
+        }
+
+        if (confirmRoomManager != null && SetRoomObjectsFromConfirmRoomManager(confirmRoomManager))
+            return true;
+
+        Debug.LogWarning("[FurnitureCapture] Confirmed room objects 자동 등록에 실패했습니다. metadata의 floor/ceiling/wall이 비어 있을 수 있습니다.");
+        return false;
+    }
+
+    private bool HasCompleteRoomObjects()
+    {
+        return floorObject != null &&
+               ceilingObject != null &&
+               wallObjects != null &&
+               wallObjects.Any(wall => wall != null);
+    }
+
+    public void SetRoomObjects(Transform root, Transform floor, Transform ceiling, IList<Transform> walls)
     {
         roomRoot = root;
         floorObject = floor;
         ceilingObject = ceiling;
-        wallObjects = walls != null
-            ? walls.Where(wall => wall != null).ToList()
-            : new List<Transform>();
+        wallObjects = walls != null ? walls.Where(wall => wall != null).ToList() : new List<Transform>();
+
+        if (roomSnapshotProvider != null)
+            roomSnapshotProvider.SetRoomObjects(roomRoot, floorObject, ceilingObject, wallObjects);
 
         Debug.Log(
             "[FurnitureCapture] Room objects set\n" +
@@ -180,25 +452,12 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         );
     }
 
-    /// <summary>
-    /// Root가 필요 없거나 아직 모를 때 사용할 수 있는 간단 버전입니다.
-    /// </summary>
-    public void SetRoomObjects(
-        Transform floor,
-        Transform ceiling,
-        IList<Transform> walls)
+    public void SetRoomObjects(Transform floor, Transform ceiling, IList<Transform> walls)
     {
         SetRoomObjects(null, floor, ceiling, walls);
     }
 
-    /// <summary>
-    /// 방 생성 코드가 GameObject를 관리하고 있을 때 쓰기 위한 편의 함수입니다.
-    /// </summary>
-    public void SetRoomGameObjects(
-        GameObject root,
-        GameObject floor,
-        GameObject ceiling,
-        IList<GameObject> walls)
+    public void SetRoomGameObjects(GameObject root, GameObject floor, GameObject ceiling, IList<GameObject> walls)
     {
         List<Transform> wallTransforms = new List<Transform>();
 
@@ -222,28 +481,21 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
     public void SetRoomRoot(Transform root)
     {
         roomRoot = root;
-        Debug.Log($"[FurnitureCapture] Room root set: {(roomRoot != null ? roomRoot.name : "null")}");
     }
 
     public void SetFloorObject(Transform floor)
     {
         floorObject = floor;
-        Debug.Log($"[FurnitureCapture] Floor object set: {(floorObject != null ? floorObject.name : "null")}");
     }
 
     public void SetCeilingObject(Transform ceiling)
     {
         ceilingObject = ceiling;
-        Debug.Log($"[FurnitureCapture] Ceiling object set: {(ceilingObject != null ? ceilingObject.name : "null")}");
     }
 
     public void SetWallObjects(IList<Transform> walls)
     {
-        wallObjects = walls != null
-            ? walls.Where(wall => wall != null).ToList()
-            : new List<Transform>();
-
-        Debug.Log($"[FurnitureCapture] Wall objects set: {wallObjects.Count}");
+        wallObjects = walls != null ? walls.Where(wall => wall != null).ToList() : new List<Transform>();
     }
 
     public void AddWallObject(Transform wall)
@@ -267,6 +519,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         floorObject = null;
         ceilingObject = null;
         wallObjects = new List<Transform>();
+        roomSnapshotProvider?.ClearRoomObjects();
         Debug.Log("[FurnitureCapture] Room object references cleared.");
     }
 
@@ -282,18 +535,34 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
             return;
         }
 
+        if (uploadImmediatelyAfterCapture && !EnsureServerScanSession("사진 업로드"))
+            return;
+
+        if (!uploadImmediatelyAfterCapture && !HasActiveScanSession && autoCreateLocalSessionForSaveOnly)
+            StartLocalDebugScanSession();
+
         isCapturing = true;
+        TryAutoBindRoomObjectsFromConfirmRoom();
 
 #if UNITY_WSA && !UNITY_EDITOR
         Debug.Log("[FurnitureCapture] HoloLens2 PhotoCapture 경로 실행: 실제 RGB/PV 카메라 촬영");
         StartHoloLensPhotoCapture();
 #else
-        Debug.LogError(
-            "[FurnitureCapture] 현재 실행 환경에서는 실제 HoloLens2 RGB/PV 카메라 촬영을 수행하지 않습니다.\n" +
-            "Unity Editor / Holographic Remoting / Standalone에서는 GameView 캡처를 하지 않도록 막아두었습니다.\n" +
-            "실제 환경 사진은 HoloLens2 UWP 빌드에서 CapturePhotoForDebug() 또는 CapturePhotoAndUpload()를 실행해야 얻을 수 있습니다."
-        );
-        isCapturing = false;
+        if (enableEditorOrRemoteTestCapture)
+        {
+            Debug.LogWarning(
+                "[FurnitureCapture] Editor/Remote 테스트 캡처 경로 실행. " +
+                "실제 HoloLens PV 카메라 사진이 아니라 GameView/테스트 이미지로 저장 및 업로드를 검증합니다."
+            );
+            StartCoroutine(CaptureEditorOrRemoteTestCoroutine());
+        }
+        else
+        {
+            FinishCaptureWithError(
+                "현재 실행 환경에서는 실제 HoloLens2 RGB/PV 카메라 촬영을 수행하지 않습니다. " +
+                "테스트 전송이 필요하면 enableEditorOrRemoteTestCapture를 켜세요."
+            );
+        }
 #endif
     }
 
@@ -344,8 +613,6 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
             return;
         }
 
-        // Unity PhotoCapture 메모리 캡처 API입니다.
-        // CapturePhotoToMemoryAsync가 아니라 TakePhotoAsync를 사용해야 합니다.
         photoCaptureObject.TakePhotoAsync(OnCapturedPhotoToMemory);
     }
 
@@ -361,7 +628,15 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         Matrix4x4 projection = Matrix4x4.identity;
 
         bool hasCameraToWorld = frame.TryGetCameraToWorldMatrix(out cameraToWorld);
-        bool hasProjection = frame.TryGetProjectionMatrix(out projection);
+
+        // 중요:
+        // TryGetProjectionMatrix(out projection)으로 받은 raw HoloLens projection은
+        // Unity Physics ray 복원에 필요한 near/far clip이 인코딩되어 있지 않아
+        // 빌드 환경에서 pixel -> world ray가 엉뚱한 방향으로 나갈 수 있습니다.
+        // depth sample용 raycast에는 near/far를 명시한 projection을 사용합니다.
+        float depthNearClip = Mathf.Max(0.01f, depthProjectionNearClip);
+        float depthFarClip = Mathf.Max(depthNearClip + 0.01f, depthRaycastMaxDistance);
+        bool hasProjection = frame.TryGetProjectionMatrix(depthNearClip, depthFarClip, out projection);
 
         Texture2D texture = new Texture2D(
             selectedResolution.width,
@@ -374,29 +649,20 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         byte[] jpgBytes = texture.EncodeToJPG(jpegQuality);
         Destroy(texture);
 
-        string captureId = CreateCaptureId();
-        string imageFileName = captureId + ".jpg";
-
-        CaptureMetadata metadata = BuildCaptureMetadata(
-            captureId,
-            imageFileName,
+        SaveFrameAndMaybeUpload(
+            jpgBytes,
             selectedResolution.width,
             selectedResolution.height,
             hasCameraToWorld,
             cameraToWorld,
             hasProjection,
-            projection
+            projection,
+            "HoloLens2_PhotoCapture"
         );
 
         StopPhotoModeThen(() =>
         {
-            CapturePackage package = SaveCaptureDebugFiles(captureId, jpgBytes, metadata);
             isCapturing = false;
-
-            if (uploadImmediatelyAfterCapture && package != null)
-            {
-                StartCoroutine(UploadCapturePackageCoroutine(package, 0, 1));
-            }
         });
     }
 
@@ -426,6 +692,137 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
 
 #endif
 
+#if !UNITY_WSA || UNITY_EDITOR
+    private IEnumerator CaptureEditorOrRemoteTestCoroutine()
+    {
+        yield return new WaitForEndOfFrame();
+
+        Texture2D texture = null;
+
+        if (testImageOverride != null)
+        {
+            texture = DuplicateTexture(testImageOverride);
+        }
+        else
+        {
+            try
+            {
+                texture = ScreenCapture.CaptureScreenshotAsTexture();
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[FurnitureCapture] GameView 캡처 실패. fallback 이미지 생성: {e.Message}");
+                texture = CreateFallbackTestTexture();
+            }
+        }
+
+        if (texture == null)
+            texture = CreateFallbackTestTexture();
+
+        byte[] jpgBytes = texture.EncodeToJPG(jpegQuality);
+        int imageWidth = texture.width;
+        int imageHeight = texture.height;
+        Destroy(texture);
+
+        Matrix4x4 cameraToWorld = Matrix4x4.identity;
+        Matrix4x4 projection = Matrix4x4.identity;
+        bool hasCameraToWorld = false;
+        bool hasProjection = false;
+
+        if (Camera.main != null)
+        {
+            cameraToWorld = Camera.main.cameraToWorldMatrix;
+            projection = Camera.main.projectionMatrix;
+            hasCameraToWorld = true;
+            hasProjection = true;
+        }
+
+        SaveFrameAndMaybeUpload(
+            jpgBytes,
+            imageWidth,
+            imageHeight,
+            hasCameraToWorld,
+            cameraToWorld,
+            hasProjection,
+            projection,
+            "UnityEditorOrRemote_TestCapture"
+        );
+
+        isCapturing = false;
+    }
+
+    private Texture2D DuplicateTexture(Texture2D source)
+    {
+        RenderTexture temporary = RenderTexture.GetTemporary(source.width, source.height, 0, RenderTextureFormat.Default, RenderTextureReadWrite.Linear);
+        Graphics.Blit(source, temporary);
+
+        RenderTexture previous = RenderTexture.active;
+        RenderTexture.active = temporary;
+
+        Texture2D readable = new Texture2D(source.width, source.height, TextureFormat.RGB24, false);
+        readable.ReadPixels(new Rect(0, 0, source.width, source.height), 0, 0);
+        readable.Apply();
+
+        RenderTexture.active = previous;
+        RenderTexture.ReleaseTemporary(temporary);
+        return readable;
+    }
+
+    private Texture2D CreateFallbackTestTexture()
+    {
+        int width = Mathf.Max(16, fallbackTestImageWidth);
+        int height = Mathf.Max(16, fallbackTestImageHeight);
+        Texture2D texture = new Texture2D(width, height, TextureFormat.RGB24, false);
+        Color32[] pixels = new Color32[width * height];
+
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                byte value = (byte)(((x / 32) + (y / 32)) % 2 == 0 ? 96 : 160);
+                pixels[y * width + x] = new Color32(value, value, value, 255);
+            }
+        }
+
+        texture.SetPixels32(pixels);
+        texture.Apply();
+        return texture;
+    }
+#endif
+
+    private void SaveFrameAndMaybeUpload(
+        byte[] jpgBytes,
+        int imageWidth,
+        int imageHeight,
+        bool hasCameraToWorld,
+        Matrix4x4 cameraToWorld,
+        bool hasProjection,
+        Matrix4x4 projection,
+        string source)
+    {
+        string frameId = ReserveNextFrameId();
+        string imageFileName = frameId + ".jpg";
+        string captureId = BuildCaptureId(currentScanSessionId, frameId);
+
+        CaptureMetadata metadata = BuildCaptureMetadata(
+            captureId,
+            frameId,
+            imageFileName,
+            imageWidth,
+            imageHeight,
+            hasCameraToWorld,
+            cameraToWorld,
+            hasProjection,
+            projection,
+            source
+        );
+
+        CapturePackage package = SaveCaptureDebugFiles(captureId, jpgBytes, metadata);
+
+        if (uploadImmediatelyAfterCapture && package != null)
+            StartCoroutine(UploadCapturePackageCoroutine(package, 0, 1));
+    }
+
     private void FinishCaptureWithError(string message)
     {
         Debug.LogError($"[FurnitureCapture] {message}");
@@ -436,10 +833,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
     // Save
     // ----------------------------------------------------------------------
 
-    private CapturePackage SaveCaptureDebugFiles(
-        string captureId,
-        byte[] jpgBytes,
-        CaptureMetadata metadata)
+    private CapturePackage SaveCaptureDebugFiles(string captureId, byte[] jpgBytes, CaptureMetadata metadata)
     {
         if (jpgBytes == null || jpgBytes.Length == 0)
         {
@@ -447,13 +841,16 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
             return null;
         }
 
+        string sessionFolderName = SanitizePathPart(string.IsNullOrEmpty(metadata.scan_session_id) ? "no_session" : metadata.scan_session_id);
+        string frameFolderName = SanitizePathPart(string.IsNullOrEmpty(metadata.frame_id) ? captureId : metadata.frame_id);
+
         string rootFolder = GetDebugRootFolderPath();
-        string captureFolder = Path.Combine(rootFolder, captureId);
+        string captureFolder = Path.Combine(rootFolder, sessionFolderName, frameFolderName);
 
         Directory.CreateDirectory(captureFolder);
 
-        string imagePath = Path.Combine(captureFolder, captureId + ".jpg");
-        string metadataPath = Path.Combine(captureFolder, captureId + ".json");
+        string imagePath = Path.Combine(captureFolder, frameFolderName + ".jpg");
+        string metadataPath = Path.Combine(captureFolder, frameFolderName + ".json");
 
         File.WriteAllBytes(imagePath, jpgBytes);
 
@@ -462,7 +859,8 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
 
         Debug.Log(
             "[FurnitureCapture] 촬영 디버그 파일 저장 완료\n" +
-            $"captureId: {captureId}\n" +
+            $"scan_session_id: {metadata.scan_session_id}\n" +
+            $"frame_id: {metadata.frame_id}\n" +
             $"imagePath: {imagePath}\n" +
             $"metadataPath: {metadataPath}"
         );
@@ -470,9 +868,12 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         return new CapturePackage
         {
             captureId = captureId,
+            scanSessionId = metadata.scan_session_id,
+            frameId = metadata.frame_id,
             folderPath = captureFolder,
             imagePath = imagePath,
-            metadataPath = metadataPath
+            metadataPath = metadataPath,
+            lastWriteTimeUtc = Directory.GetLastWriteTimeUtc(captureFolder)
         };
     }
 
@@ -481,9 +882,44 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         return Path.Combine(Application.persistentDataPath, outputFolderName);
     }
 
-    private string CreateCaptureId()
+    private string ReserveNextFrameId()
     {
-        return "capture_" + DateTime.UtcNow.ToString("yyyyMMdd_HHmmssfff");
+        int frameNumber = Mathf.Max(1, nextFrameNumber);
+        nextFrameNumber = frameNumber + 1;
+        return "frame_" + frameNumber.ToString("0000");
+    }
+
+    private string BuildCaptureId(string scanSessionId, string frameId)
+    {
+        string session = string.IsNullOrEmpty(scanSessionId) ? "no_session" : scanSessionId;
+        return session + "_" + frameId;
+    }
+
+    private void StartLocalDebugScanSession()
+    {
+        currentScanSessionId = "local_scan_" + DateTime.UtcNow.ToString("yyyyMMdd_HHmmssfff");
+        currentScanSessionStatus = "local_save_only";
+        currentScanSessionCreatedByServer = false;
+        nextFrameNumber = 1;
+
+        Debug.LogWarning(
+            "[FurnitureCapture] 서버 scan session 없이 로컬 저장용 session을 생성했습니다.\n" +
+            $"scan_session_id: {currentScanSessionId}\n" +
+            "이 session은 /scan-frame 업로드용으로 사용할 수 없습니다. 서버 업로드 전에는 StartScanSession()을 호출하세요."
+        );
+    }
+
+    private string SanitizePathPart(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return "empty";
+
+        char[] invalidChars = Path.GetInvalidFileNameChars();
+        string sanitized = value;
+        for (int i = 0; i < invalidChars.Length; i++)
+            sanitized = sanitized.Replace(invalidChars[i], '_');
+
+        return sanitized;
     }
 
     // ----------------------------------------------------------------------
@@ -494,52 +930,34 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
     {
         isUploading = true;
 
-        string debugRoot = GetDebugRootFolderPath();
-
-        if (!Directory.Exists(debugRoot))
-        {
-            Debug.LogError($"[FurnitureCapture] 디버그 폴더가 없습니다: {debugRoot}");
-            isUploading = false;
-            yield break;
-        }
-
-        DirectoryInfo rootInfo = new DirectoryInfo(debugRoot);
-        DirectoryInfo[] captureFolders = rootInfo.GetDirectories();
-        Array.Sort(captureFolders, (a, b) => a.Name.CompareTo(b.Name));
-
-        List<CapturePackage> packages = new List<CapturePackage>();
-
-        for (int i = 0; i < captureFolders.Length; i++)
-        {
-            if (TryFindCapturePackage(captureFolders[i].FullName, out CapturePackage package))
-            {
-                packages.Add(package);
-            }
-        }
+        List<CapturePackage> packages = FindSavedCapturePackages();
 
         if (packages.Count == 0)
         {
-            Debug.LogWarning($"[FurnitureCapture] 업로드할 JPG/JSON 캡처 패키지가 없습니다: {debugRoot}");
+            Debug.LogWarning($"[FurnitureCapture] 업로드할 JPG/JSON 캡처 패키지가 없습니다: {GetDebugRootFolderPath()}");
             isUploading = false;
             yield break;
         }
+
+        packages.Sort((a, b) =>
+        {
+            int sessionCompare = string.Compare(a.scanSessionId, b.scanSessionId, StringComparison.Ordinal);
+            if (sessionCompare != 0)
+                return sessionCompare;
+
+            return string.Compare(a.frameId, b.frameId, StringComparison.Ordinal);
+        });
 
         Debug.Log($"[FurnitureCapture] 전체 캡처 업로드 시작: {packages.Count}개");
 
         for (int i = 0; i < packages.Count; i++)
-        {
             yield return UploadCapturePackageCoroutine(packages[i], i, packages.Count, keepUploadingFlag: true);
-        }
 
         Debug.Log("[FurnitureCapture] 전체 캡처 업로드 완료");
         isUploading = false;
     }
 
-    private IEnumerator UploadCapturePackageCoroutine(
-        CapturePackage package,
-        int index,
-        int totalCount,
-        bool keepUploadingFlag = false)
+    private IEnumerator UploadCapturePackageCoroutine(CapturePackage package, int index, int totalCount, bool keepUploadingFlag = false)
     {
         if (package == null)
         {
@@ -574,11 +992,13 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
 
         byte[] imageBytes;
         string metadataJson;
+        CaptureMetadata metadata;
 
         try
         {
             imageBytes = File.ReadAllBytes(package.imagePath);
             metadataJson = File.ReadAllText(package.metadataPath);
+            metadata = JsonUtility.FromJson<CaptureMetadata>(metadataJson);
         }
         catch (Exception e)
         {
@@ -587,32 +1007,44 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
             yield break;
         }
 
+        if (metadata == null || string.IsNullOrEmpty(metadata.scan_session_id) || string.IsNullOrEmpty(metadata.frame_id))
+        {
+            Debug.LogError(
+                "[FurnitureCapture] metadata에 scan_session_id 또는 frame_id가 없습니다. " +
+                "새 서버 API에서는 metadata 필드 안에 두 값이 반드시 필요합니다."
+            );
+            if (!keepUploadingFlag) isUploading = false;
+            yield break;
+        }
+
+        if (metadata.scan_session_id.StartsWith("local_scan_", StringComparison.Ordinal))
+        {
+            Debug.LogError(
+                "[FurnitureCapture] local_scan_ 세션은 서버에 생성된 scan_session_id가 아니므로 /scan-frame 업로드를 중단합니다. " +
+                "StartScanSession()으로 서버 세션을 먼저 생성하세요."
+            );
+            if (!keepUploadingFlag) isUploading = false;
+            yield break;
+        }
+
         string imageFileName = Path.GetFileName(package.imagePath);
+        List<IMultipartFormSection> formData = new List<IMultipartFormSection>
+        {
+            new MultipartFormFileSection("image", imageBytes, imageFileName, GetMimeType(imageFileName)),
+            new MultipartFormDataSection("metadata", metadataJson)
+        };
 
-        List<IMultipartFormSection> formData = new List<IMultipartFormSection>();
+        string url = BuildUrl(uploadScanFramePath);
 
-        // Flask 서버의 request.files["image"]와 맞춥니다.
-        formData.Add(new MultipartFormFileSection(
-            "image",
-            imageBytes,
-            imageFileName,
-            GetMimeType(imageFileName)
-        ));
-
-        // Flask 서버에서는 request.form["metadata_json"]으로 받을 수 있습니다.
-        formData.Add(new MultipartFormDataSection("metadata_json", metadataJson));
-        formData.Add(new MultipartFormDataSection("capture_id", package.captureId));
-        formData.Add(new MultipartFormDataSection("source", "hololens2_furniture_capture"));
-        formData.Add(new MultipartFormDataSection("client_frame_index", index.ToString()));
-        formData.Add(new MultipartFormDataSection("client_total_count", totalCount.ToString()));
-
-        using (UnityWebRequest request = UnityWebRequest.Post(detectUrl, formData))
+        using (UnityWebRequest request = UnityWebRequest.Post(url, formData))
         {
             request.timeout = requestTimeoutSeconds;
 
             Debug.Log(
-                $"[FurnitureCapture] [{index + 1}/{totalCount}] 업로드 시작\n" +
-                $"url: {detectUrl}\n" +
+                $"[FurnitureCapture] [{index + 1}/{totalCount}] scan-frame 업로드 시작\n" +
+                $"url: {url}\n" +
+                $"scan_session_id: {metadata.scan_session_id}\n" +
+                $"frame_id: {metadata.frame_id}\n" +
                 $"image: {package.imagePath}\n" +
                 $"metadata: {package.metadataPath}"
             );
@@ -622,7 +1054,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
             if (request.result != UnityWebRequest.Result.Success)
             {
                 Debug.LogError(
-                    $"[FurnitureCapture] [{index + 1}/{totalCount}] 업로드 실패\n" +
+                    $"[FurnitureCapture] [{index + 1}/{totalCount}] scan-frame 업로드 실패\n" +
                     $"responseCode: {request.responseCode}\n" +
                     $"error: {request.error}\n" +
                     $"body: {request.downloadHandler.text}"
@@ -632,21 +1064,44 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
                 yield break;
             }
 
-            string responseText = request.downloadHandler.text;
-
             Debug.Log(
-                $"[FurnitureCapture] [{index + 1}/{totalCount}] 업로드 성공\n" +
+                $"[FurnitureCapture] [{index + 1}/{totalCount}] scan-frame 업로드 성공\n" +
                 $"responseCode: {request.responseCode}\n" +
-                $"response: {responseText}"
+                $"response: {request.downloadHandler.text}"
             );
-
-            TryLogDetectResponse(responseText);
         }
 
         if (!keepUploadingFlag)
-        {
             isUploading = false;
+    }
+
+    private List<CapturePackage> FindSavedCapturePackages()
+    {
+        List<CapturePackage> packages = new List<CapturePackage>();
+        string debugRoot = GetDebugRootFolderPath();
+
+        if (!Directory.Exists(debugRoot))
+            return packages;
+
+        List<string> candidateFolders = new List<string>();
+        candidateFolders.Add(debugRoot);
+        candidateFolders.AddRange(Directory.GetDirectories(debugRoot, "*", SearchOption.AllDirectories));
+
+        HashSet<string> usedFolders = new HashSet<string>();
+        for (int i = 0; i < candidateFolders.Count; i++)
+        {
+            string folder = candidateFolders[i];
+            if (usedFolders.Contains(folder))
+                continue;
+
+            if (TryFindCapturePackage(folder, out CapturePackage package))
+            {
+                packages.Add(package);
+                usedFolders.Add(folder);
+            }
         }
+
+        return packages;
     }
 
     private bool TryFindCapturePackage(string folderPath, out CapturePackage package)
@@ -657,25 +1112,48 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
             return false;
 
         string[] jpgFiles = Directory.GetFiles(folderPath, "*.jpg", SearchOption.TopDirectoryOnly);
+        string[] jpegFiles = Directory.GetFiles(folderPath, "*.jpeg", SearchOption.TopDirectoryOnly);
         string[] jsonFiles = Directory.GetFiles(folderPath, "*.json", SearchOption.TopDirectoryOnly);
 
-        if (jpgFiles.Length == 0 || jsonFiles.Length == 0)
+        List<string> imageFiles = new List<string>();
+        imageFiles.AddRange(jpgFiles);
+        imageFiles.AddRange(jpegFiles);
+
+        if (imageFiles.Count == 0 || jsonFiles.Length == 0)
             return false;
 
-        Array.Sort(jpgFiles);
-        Array.Sort(jsonFiles);
+        imageFiles.Sort(StringComparer.Ordinal);
+        Array.Sort(jsonFiles, StringComparer.Ordinal);
 
-        string imagePath = jpgFiles[0];
+        string imagePath = imageFiles[0];
         string imageNameNoExt = Path.GetFileNameWithoutExtension(imagePath);
         string expectedJsonPath = Path.Combine(folderPath, imageNameNoExt + ".json");
         string metadataPath = File.Exists(expectedJsonPath) ? expectedJsonPath : jsonFiles[0];
 
+        string metadataJson = File.ReadAllText(metadataPath);
+        CaptureMetadata metadata = null;
+
+        try
+        {
+            metadata = JsonUtility.FromJson<CaptureMetadata>(metadataJson);
+        }
+        catch
+        {
+            metadata = null;
+        }
+
+        string scanSessionId = metadata != null ? metadata.scan_session_id : string.Empty;
+        string frameId = metadata != null && !string.IsNullOrEmpty(metadata.frame_id) ? metadata.frame_id : imageNameNoExt;
+
         package = new CapturePackage
         {
             captureId = imageNameNoExt,
+            scanSessionId = scanSessionId,
+            frameId = frameId,
             folderPath = folderPath,
             imagePath = imagePath,
-            metadataPath = metadataPath
+            metadataPath = metadataPath,
+            lastWriteTimeUtc = Directory.GetLastWriteTimeUtc(folderPath)
         };
 
         return true;
@@ -684,44 +1162,122 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
     private string GetMimeType(string fileName)
     {
         string ext = Path.GetExtension(fileName).ToLowerInvariant();
-
-        switch (ext)
-        {
-            case ".png":
-                return "image/png";
-
-            case ".jpg":
-            case ".jpeg":
-            default:
-                return "image/jpeg";
-        }
+        return ext == ".png" ? "image/png" : "image/jpeg";
     }
 
-    private void TryLogDetectResponse(string responseText)
+    // ----------------------------------------------------------------------
+    // Generic server requests
+    // ----------------------------------------------------------------------
+
+    private IEnumerator PostEmptyCoroutine(string url, string label, int timeoutSeconds)
     {
-        try
+        if (isServerRequestRunning)
         {
-            UploadResponseDto response = JsonUtility.FromJson<UploadResponseDto>(responseText);
+            Debug.LogWarning("[FurnitureCapture] 다른 서버 요청이 이미 진행 중입니다.");
+            yield break;
+        }
 
-            if (response == null || response.objects == null)
-                return;
+        isServerRequestRunning = true;
+        byte[] bodyRaw = Encoding.UTF8.GetBytes("{}");
 
-            for (int i = 0; i < response.objects.Length; i++)
+        using (UnityWebRequest request = new UnityWebRequest(url, UnityWebRequest.kHttpVerbPOST))
+        {
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.timeout = timeoutSeconds;
+
+            Debug.Log($"[FurnitureCapture] {label} POST 요청: {url}");
+            yield return request.SendWebRequest();
+
+            if (request.result != UnityWebRequest.Result.Success)
             {
-                UploadDetectedObjectDto obj = response.objects[i];
-
+                Debug.LogError(
+                    $"[FurnitureCapture] {label} POST 실패\n" +
+                    $"responseCode: {request.responseCode}\n" +
+                    $"error: {request.error}\n" +
+                    $"body: {request.downloadHandler.text}"
+                );
+            }
+            else
+            {
                 Debug.Log(
-                    "[FurnitureCapture] Detected Object - " +
-                    $"id: {obj.id}, " +
-                    $"label: {obj.label}, " +
-                    $"confidence: {obj.confidence}"
+                    $"[FurnitureCapture] {label} POST 성공\n" +
+                    $"responseCode: {request.responseCode}\n" +
+                    $"response: {request.downloadHandler.text}"
                 );
             }
         }
-        catch (Exception e)
+
+        isServerRequestRunning = false;
+    }
+
+    private IEnumerator GetCoroutine(string url, string label, int timeoutSeconds)
+    {
+        if (isServerRequestRunning)
         {
-            Debug.LogWarning($"[FurnitureCapture] 응답 JSON 파싱 실패: {e.Message}");
+            Debug.LogWarning("[FurnitureCapture] 다른 서버 요청이 이미 진행 중입니다.");
+            yield break;
         }
+
+        isServerRequestRunning = true;
+
+        using (UnityWebRequest request = UnityWebRequest.Get(url))
+        {
+            request.timeout = timeoutSeconds;
+
+            Debug.Log($"[FurnitureCapture] {label} GET 요청: {url}");
+            yield return request.SendWebRequest();
+
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogError(
+                    $"[FurnitureCapture] {label} GET 실패\n" +
+                    $"responseCode: {request.responseCode}\n" +
+                    $"error: {request.error}\n" +
+                    $"body: {request.downloadHandler.text}"
+                );
+            }
+            else
+            {
+                Debug.Log(
+                    $"[FurnitureCapture] {label} GET 성공\n" +
+                    $"responseCode: {request.responseCode}\n" +
+                    $"response: {request.downloadHandler.text}"
+                );
+            }
+        }
+
+        isServerRequestRunning = false;
+    }
+
+    private string BuildUrl(string path)
+    {
+        string baseUrl = string.IsNullOrEmpty(serverBaseUrl) ? "https://api.earquake.xyz" : serverBaseUrl.TrimEnd('/');
+        string cleanPath = string.IsNullOrEmpty(path) ? string.Empty : path.TrimStart('/');
+        return baseUrl + "/" + cleanPath;
+    }
+
+    private bool EnsureScanSession(string actionName)
+    {
+        if (HasActiveScanSession)
+            return true;
+
+        Debug.LogError($"[FurnitureCapture] {actionName}을 수행하려면 먼저 StartScanSession()으로 scan_session_id를 받아야 합니다.");
+        return false;
+    }
+
+    private bool EnsureServerScanSession(string actionName)
+    {
+        if (HasActiveServerScanSession)
+            return true;
+
+        Debug.LogError(
+            $"[FurnitureCapture] {actionName}을 수행하려면 먼저 StartScanSession()으로 서버 scan_session_id를 받아야 합니다. " +
+            $"현재 scan_session_id: {(string.IsNullOrEmpty(currentScanSessionId) ? "null" : currentScanSessionId)}, " +
+            $"created_by_server: {currentScanSessionCreatedByServer}"
+        );
+        return false;
     }
 
     // ----------------------------------------------------------------------
@@ -730,19 +1286,39 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
 
     private CaptureMetadata BuildCaptureMetadata(
         string captureId,
+        string frameId,
         string imageFileName,
         int imageWidth,
         int imageHeight,
         bool hasCameraToWorld,
         Matrix4x4 cameraToWorld,
         bool hasProjection,
-        Matrix4x4 projection)
+        Matrix4x4 projection,
+        string source = "HoloLens2_PhotoCapture")
     {
+        List<DepthSample> depthSamples = BuildDepthSamples(
+            imageWidth,
+            imageHeight,
+            hasCameraToWorld,
+            cameraToWorld,
+            hasProjection,
+            projection
+        );
+
+        int depthHitCount = 0;
+        for (int i = 0; i < depthSamples.Count; i++)
+        {
+            if (depthSamples[i] != null && depthSamples[i].hit)
+                depthHitCount++;
+        }
+
         CaptureMetadata metadata = new CaptureMetadata
         {
+            scan_session_id = currentScanSessionId,
+            frame_id = frameId,
             capture_id = captureId,
             timestamp_utc = DateTime.UtcNow.ToString("o"),
-            source = "HoloLens2_PhotoCapture",
+            source = source,
             image_file_name = imageFileName,
             image_width = imageWidth,
             image_height = imageHeight,
@@ -753,14 +1329,160 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
             approx_intrinsics = hasProjection
                 ? BuildApproxIntrinsicsFromProjection(projection, imageWidth, imageHeight)
                 : null,
+            depth_sample_source = includeDepthSamples ? "Unity Physics.Raycast from PhotoCapture near/far projection + camera_to_world" : "disabled",
+            depth_sample_grid = includeDepthSamples
+                ? new DepthSampleGrid { x = Mathf.Max(1, depthSampleGridX), y = Mathf.Max(1, depthSampleGridY) }
+                : null,
+            depth_sample_count = depthSamples.Count,
+            depth_sample_hit_count = depthHitCount,
+            depth_samples = depthSamples,
             room = BuildRoomSnapshot()
         };
 
         return metadata;
     }
 
+    private List<DepthSample> BuildDepthSamples(
+        int imageWidth,
+        int imageHeight,
+        bool hasCameraToWorld,
+        Matrix4x4 cameraToWorld,
+        bool hasProjection,
+        Matrix4x4 projection)
+    {
+        List<DepthSample> samples = new List<DepthSample>();
+
+        if (!includeDepthSamples)
+            return samples;
+
+        if (imageWidth <= 0 || imageHeight <= 0)
+        {
+            Debug.LogWarning("[FurnitureCapture] depth_samples 생성 실패: image size가 유효하지 않습니다.");
+            return samples;
+        }
+
+        if (!hasCameraToWorld || !hasProjection)
+        {
+            Debug.LogWarning(
+                "[FurnitureCapture] depth_samples 생성 실패: camera_to_world 또는 projection matrix가 없습니다. " +
+                "PhotoCaptureFrame matrix가 있는 실제 HoloLens 촬영에서 depth_samples가 생성됩니다."
+            );
+            return samples;
+        }
+
+        int gridX = Mathf.Max(1, depthSampleGridX);
+        int gridY = Mathf.Max(1, depthSampleGridY);
+        float maxDistance = Mathf.Max(0.01f, depthRaycastMaxDistance);
+        Matrix4x4 inverseProjection = projection.inverse;
+
+        int hitCount = 0;
+
+        for (int y = 0; y < gridY; y++)
+        {
+            for (int x = 0; x < gridX; x++)
+            {
+                int pixelX = Mathf.Clamp(Mathf.RoundToInt(((x + 0.5f) / gridX) * imageWidth), 0, imageWidth - 1);
+                int pixelY = Mathf.Clamp(Mathf.RoundToInt(((y + 0.5f) / gridY) * imageHeight), 0, imageHeight - 1);
+
+                Ray ray = BuildWorldRayFromPhotoPixel(
+                    pixelX,
+                    pixelY,
+                    imageWidth,
+                    imageHeight,
+                    cameraToWorld,
+                    inverseProjection
+                );
+
+                bool hit = Physics.Raycast(
+                    ray,
+                    out RaycastHit hitInfo,
+                    maxDistance,
+                    depthRaycastLayerMask,
+                    QueryTriggerInteraction.Ignore
+                );
+
+                if (hit)
+                    hitCount++;
+
+                if (!hit && !includeMissedDepthSamples)
+                    continue;
+
+                DepthSample sample = new DepthSample
+                {
+                    pixel = new int[] { pixelX, pixelY },
+                    hit = hit,
+                    world = hit
+                        ? new float[] { hitInfo.point.x, hitInfo.point.y, hitInfo.point.z }
+                        : null,
+                    normal = hit
+                        ? new float[] { hitInfo.normal.x, hitInfo.normal.y, hitInfo.normal.z }
+                        : null,
+                    distance = hit ? hitInfo.distance : -1.0f
+                };
+
+                samples.Add(sample);
+            }
+        }
+
+        Debug.Log(
+            "[FurnitureCapture] depth_samples 생성 완료\n" +
+            $"grid: {gridX}x{gridY}, samples: {samples.Count}, hit: {hitCount}, maxDistance: {maxDistance}"
+        );
+
+        return samples;
+    }
+
+    private Ray BuildWorldRayFromPhotoPixel(
+        int pixelX,
+        int pixelY,
+        int imageWidth,
+        int imageHeight,
+        Matrix4x4 cameraToWorld,
+        Matrix4x4 inverseProjection)
+    {
+        float ndcX = (((pixelX + 0.5f) / imageWidth) * 2.0f) - 1.0f;
+        float ndcY = 1.0f - (((pixelY + 0.5f) / imageHeight) * 2.0f);
+
+        // PhotoCaptureFrame.TryGetProjectionMatrix(near, far, out projection)으로 받은
+        // Unity projection은 D3D 스타일 clip z [0, 1] 기준으로 near/far plane을 복원할 수 있습니다.
+        // 기존처럼 clip z 하나만 inverse projection 하면 raw projection/convention 차이로
+        // HoloLens 빌드에서 ray가 반대 방향 또는 엉뚱한 방향으로 나갈 수 있으므로,
+        // near/far 두 점을 unproject한 뒤 방향을 계산합니다.
+        Vector4 nearClip = new Vector4(ndcX, ndcY, 0.0f, 1.0f);
+        Vector4 farClip = new Vector4(ndcX, ndcY, 1.0f, 1.0f);
+
+        Vector4 nearCamera = inverseProjection * nearClip;
+        Vector4 farCamera = inverseProjection * farClip;
+
+        if (Mathf.Abs(nearCamera.w) > Mathf.Epsilon)
+            nearCamera /= nearCamera.w;
+
+        if (Mathf.Abs(farCamera.w) > Mathf.Epsilon)
+            farCamera /= farCamera.w;
+
+        Vector3 nearWorld = cameraToWorld.MultiplyPoint3x4(
+            new Vector3(nearCamera.x, nearCamera.y, nearCamera.z)
+        );
+
+        Vector3 farWorld = cameraToWorld.MultiplyPoint3x4(
+            new Vector3(farCamera.x, farCamera.y, farCamera.z)
+        );
+
+        Vector3 worldDirection = farWorld - nearWorld;
+
+        if (worldDirection.sqrMagnitude < 0.000001f)
+        {
+            worldDirection = cameraToWorld.MultiplyVector(Vector3.forward);
+        }
+
+        Vector3 worldOrigin = cameraToWorld.MultiplyPoint3x4(Vector3.zero);
+        return new Ray(worldOrigin, worldDirection.normalized);
+    }
+
     private RoomSnapshot BuildRoomSnapshot()
     {
+        TryAutoBindRoomObjectsFromConfirmRoom();
+
         RoomSnapshot snapshot = new RoomSnapshot
         {
             room_id = roomRoot != null ? roomRoot.name : "explicit_room_objects",
@@ -784,10 +1506,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning(
-                "[FurnitureCapture] floorObject가 설정되지 않았습니다. " +
-                "방 생성 완료 시점에 SetRoomObjects(...) 또는 SetFloorObject(...)를 호출하세요."
-            );
+            Debug.LogWarning("[FurnitureCapture] floorObject가 설정되지 않았습니다.");
         }
 
         if (ceilingObject != null)
@@ -797,10 +1516,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning(
-                "[FurnitureCapture] ceilingObject가 설정되지 않았습니다. " +
-                "방 생성 완료 시점에 SetRoomObjects(...) 또는 SetCeilingObject(...)를 호출하세요."
-            );
+            Debug.LogWarning("[FurnitureCapture] ceilingObject가 설정되지 않았습니다.");
         }
 
         if (wallObjects != null)
@@ -808,12 +1524,8 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
             for (int i = 0; i < wallObjects.Count; i++)
             {
                 Transform wall = wallObjects[i];
-
                 if (wall == null)
-                {
-                    Debug.LogWarning($"[FurnitureCapture] wallObjects[{i}]가 null입니다. 해당 wall은 metadata에서 제외합니다.");
                     continue;
-                }
 
                 snapshot.surfaces.Add(BuildSurfaceSnapshot("wall", wall, wallCount));
                 wallCount++;
@@ -821,12 +1533,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         }
 
         if (wallCount == 0)
-        {
-            Debug.LogWarning(
-                "[FurnitureCapture] 설정된 wallObject가 없습니다. " +
-                "방 생성 완료 시점에 SetRoomObjects(...) 또는 SetWallObjects(...)를 호출하세요."
-            );
-        }
+            Debug.LogWarning("[FurnitureCapture] 설정된 wallObject가 없습니다.");
 
         Debug.Log(
             "[FurnitureCapture] Room metadata 생성 완료\n" +
@@ -875,16 +1582,11 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         }
 
         Mesh mesh = null;
-
         MeshFilter meshFilter = target.GetComponent<MeshFilter>();
         if (meshFilter != null && meshFilter.sharedMesh != null)
-        {
             mesh = meshFilter.sharedMesh;
-        }
         else if (meshCollider != null && meshCollider.sharedMesh != null)
-        {
             mesh = meshCollider.sharedMesh;
-        }
 
         if (mesh != null)
         {
@@ -903,9 +1605,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
             }
 
             if (includeMeshTriangles)
-            {
                 surface.mesh_triangles = mesh.triangles;
-            }
         }
 
         return surface;
@@ -940,10 +1640,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         };
     }
 
-    private ApproxCameraIntrinsics BuildApproxIntrinsicsFromProjection(
-        Matrix4x4 projection,
-        int imageWidth,
-        int imageHeight)
+    private ApproxCameraIntrinsics BuildApproxIntrinsicsFromProjection(Matrix4x4 projection, int imageWidth, int imageHeight)
     {
         return new ApproxCameraIntrinsics
         {
@@ -955,21 +1652,34 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
     }
 
     // ----------------------------------------------------------------------
-    // DTO classes - 전부 내부 클래스로 두어 다른 테스트 코드의 DTO와 이름 충돌을 피합니다.
+    // DTO classes - 내부 클래스로 두어 다른 테스트 코드 DTO와 이름 충돌을 피합니다.
     // ----------------------------------------------------------------------
+
+    [Serializable]
+    private class StartScanSessionResponse
+    {
+        public string scan_session_id;
+        public string status;
+    }
 
     [Serializable]
     private class CapturePackage
     {
         public string captureId;
+        public string scanSessionId;
+        public string frameId;
         public string folderPath;
         public string imagePath;
         public string metadataPath;
+        public DateTime lastWriteTimeUtc;
     }
 
     [Serializable]
     private class CaptureMetadata
     {
+        public string scan_session_id;
+        public string frame_id;
+
         public string capture_id;
         public string timestamp_utc;
         public string source;
@@ -989,7 +1699,30 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         public string matrix_layout = "row-major: m00,m01,m02,m03,m10,...,m33";
         public string coordinate_space = "Unity world space";
 
+        public string depth_sample_source;
+        public DepthSampleGrid depth_sample_grid;
+        public int depth_sample_count;
+        public int depth_sample_hit_count;
+        public List<DepthSample> depth_samples = new List<DepthSample>();
+
         public RoomSnapshot room;
+    }
+
+    [Serializable]
+    private class DepthSampleGrid
+    {
+        public int x;
+        public int y;
+    }
+
+    [Serializable]
+    private class DepthSample
+    {
+        public int[] pixel;
+        public bool hit;
+        public float[] world;
+        public float[] normal;
+        public float distance;
     }
 
     [Serializable]
@@ -1092,23 +1825,5 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         {
             return new SerializableQuaternion(q.x, q.y, q.z, q.w);
         }
-    }
-
-    [Serializable]
-    private class UploadResponseDto
-    {
-        public string frame_id;
-        public UploadDetectedObjectDto[] objects;
-    }
-
-    [Serializable]
-    private class UploadDetectedObjectDto
-    {
-        public string id;
-        public string label;
-        public float confidence;
-        public int[] bbox;
-        public string mask_url;
-        public string mesh_url;
     }
 }

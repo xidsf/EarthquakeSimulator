@@ -5,6 +5,9 @@ using UnityEngine;
 [Serializable]
 public class FurnitureCaptureMetadata
 {
+    public string scan_session_id;
+    public string frame_id;
+
     public string capture_id;
     public string timestamp_utc;
     public string source;
@@ -24,7 +27,30 @@ public class FurnitureCaptureMetadata
     public string matrix_layout = "row-major: m00,m01,m02,m03,m10,...,m33";
     public string coordinate_space = "Unity world space";
 
+    public string depth_sample_source;
+    public DepthSampleGrid depth_sample_grid;
+    public int depth_sample_count;
+    public int depth_sample_hit_count;
+    public List<DepthSample> depth_samples = new List<DepthSample>();
+
     public RoomGeometrySnapshot room;
+}
+
+[Serializable]
+public class DepthSampleGrid
+{
+    public int x;
+    public int y;
+}
+
+[Serializable]
+public class DepthSample
+{
+    public int[] pixel;
+    public bool hit;
+    public float[] world;
+    public float[] normal;
+    public float distance;
 }
 
 [Serializable]

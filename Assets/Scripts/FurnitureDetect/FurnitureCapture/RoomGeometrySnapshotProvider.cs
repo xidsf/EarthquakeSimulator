@@ -127,6 +127,49 @@ public class RoomGeometrySnapshotProvider : MonoBehaviour
             walls.Add(wall);
     }
 
+
+    public bool SetRoomObjectsFromConfirmRoomManager(ConfirmRoomManager manager)
+    {
+        if (manager == null)
+        {
+            Debug.LogWarning("[RoomSnapshot] ConfirmRoomManager가 null입니다.");
+            return false;
+        }
+
+        if (manager.ConfirmedRoomFloorObject == null || manager.ConfirmedRoomCeilingObject == null)
+        {
+            Debug.LogWarning("[RoomSnapshot] Confirmed room floor/ceiling이 아직 생성되지 않았습니다.");
+            return false;
+        }
+
+        List<Transform> wallTransforms = new List<Transform>();
+        IReadOnlyList<GameObject> wallObjects = manager.ConfirmedRoomWallObjects;
+
+        if (wallObjects != null)
+        {
+            for (int i = 0; i < wallObjects.Count; i++)
+            {
+                if (wallObjects[i] != null)
+                    wallTransforms.Add(wallObjects[i].transform);
+            }
+        }
+
+        if (wallTransforms.Count == 0)
+        {
+            Debug.LogWarning("[RoomSnapshot] Confirmed room wall 목록이 비어 있습니다.");
+            return false;
+        }
+
+        SetRoomObjects(
+            manager.confirmedRoomRoot,
+            manager.ConfirmedRoomFloorObject.transform,
+            manager.ConfirmedRoomCeilingObject.transform,
+            wallTransforms
+        );
+
+        return true;
+    }
+
     public void ClearRoomObjects()
     {
         roomRoot = null;

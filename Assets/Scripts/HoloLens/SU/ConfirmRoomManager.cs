@@ -13,6 +13,15 @@ public class ConfirmRoomManager : MonoBehaviour
         public Vector2 end;
     }
 
+    private struct WallFootprint2D
+    {
+        public Vector2 center;
+        public Vector2 direction;
+        public Vector2 normal;
+        public float halfLength;
+        public float halfThickness;
+    }
+
     private struct EndpointRef
     {
         public int segmentIndex;
@@ -27,6 +36,13 @@ public class ConfirmRoomManager : MonoBehaviour
     [Tooltip("최종 확정 방 오브젝트들이 생성될 Root입니다. 보통 RoomBuildWorkflowManager의 ConfirmedRoomRoot를 연결합니다.")]
     public Transform confirmedRoomRoot;
 
+    [Header("Furniture Placement")]
+    [Tooltip("확정된 벽/바닥/천장 정보를 가구 배치/이동 검증 시스템에 전달합니다.")]
+    public ConfirmedRoomGeometryProvider confirmedRoomGeometryProvider;
+
+    [Tooltip("방 확정 성공 시 ConfirmedRoomGeometryProvider를 자동 초기화합니다.")]
+    public bool bindFurniturePlacementGeometryOnConfirm = true;
+
     [Header("Boundary Sources")]
     public bool includeDetectedWallsInClosedCheck = true;
     public bool includeClosureEdgesInClosedCheck = true;
@@ -39,12 +55,48 @@ public class ConfirmRoomManager : MonoBehaviour
     public float collinearMergeDistance = 0.10f;
     public float boundaryMinSegmentLength = 0.05f;
 
+    [Header("Corner Gap Tolerance")]
+    [Tooltip("벽 endpoint가 다른 벽 segment의 중간 근처에 닿아 있는데 endpoint끼리는 맞지 않는 T-junction/코너 오차를 보정합니다.")]
+    public bool snapEndpointsToNearbySegments = true;
+
+    [Tooltip("endpoint를 주변 segment 위로 붙일 최대 거리입니다. 자동 인식 벽 모서리가 살짝 어긋나는 경우 이 값 안에서 같은 코너로 봅니다.")]
+    public float endpointToSegmentSnapDistance = 0.18f;
+
+    [Tooltip("정규화 후에도 남은 열린 endpoint끼리 거리가 가까우면 검증용 짧은 bridge segment를 추가해 코너 gap을 닫습니다.")]
+    public bool bridgeSmallOpenEndpointGaps = true;
+
+    [Tooltip("열린 endpoint 사이를 자동 bridge로 닫을 최대 거리입니다. 문/통로까지 닫지 않도록 너무 크게 두지 않는 것을 권장합니다.")]
+    public float openEndpointBridgeDistance = 0.24f;
+
+    [Tooltip("endpoint-to-segment 보정 시 segment를 나누지 않을 endpoint 근처 t 여유값입니다.")]
+    public float endpointProjectionSplitEpsilon = 0.03f;
+
     [Header("User Room Flood Fill Validation")]
     public float gridCellSize = 0.12f;
     public float gridBoundsMargin = 0.75f;
     public float wallBlockDistance = 0.08f;
     public int maxGridCellsPerAxis = 220;
     public int nearestFreeCellSearchRadius = 8;
+
+    [Header("Cube Footprint Flood Fill Validation")]
+    [Tooltip("벽을 얇은 선분이 아니라 Cube의 XZ footprint 사각형 장애물로 보고 flood fill을 수행합니다. 모서리 endpoint가 완전히 붙지 않아도 실제 벽 두께/끝단 패딩으로 막히면 닫힌 공간으로 판단합니다.")]
+    public bool useCubeFootprintFloodFill = true;
+
+    [Tooltip("닫힘 검증에 사용할 최소 벽 footprint 두께입니다. 실제 ConfirmedRoom 벽 두께, ManualWallBuilder.wallThickness, wallBlockDistance*2보다 작은 경우 자동으로 더 큰 값을 사용합니다.")]
+    public float cubeFootprintWallThickness = 0.16f;
+
+    [Tooltip("벽 segment 양 끝을 이 거리만큼 길이 방향으로 확장해서 Cube 끝단이 코너에서 살짝 맞물리는 것으로 판단합니다. 자동 인식 벽끼리 코너가 조금 벌어지는 문제를 완화합니다.")]
+    public float cubeFootprintEndPadding = 0.10f;
+
+    [Tooltip("grid cell center와 이동 선분을 footprint와 비교할 때 사각형을 추가로 확장하는 여유값입니다.")]
+    public float cubeFootprintCollisionPadding = 0.01f;
+
+    [Tooltip("Cube footprint 검증을 사용할 때도 open endpoint가 하나라도 있으면 실패 처리합니다. 기본값 false이면 open endpoint는 gap marker/debug 용도로만 사용합니다.")]
+    public bool openEndpointsBlockCubeFootprintValidation = false;
+
+    [Tooltip("Cube footprint 검증 중에도 작은 open endpoint gap을 bridge segment로 자동 추가합니다. 기본값 false이면 실제 segment에는 인공 bridge를 추가하지 않고, footprint 두께/끝단 패딩으로만 닫힘을 판단합니다.")]
+    public bool useAutoBridgeSegmentsForCubeFootprintValidation = false;
+
 
     [Header("Confirmed Room Visualization")]
     public Material confirmedRoomWallMaterial;
@@ -78,6 +130,21 @@ public class ConfirmRoomManager : MonoBehaviour
 
     [Tooltip("마지막 Confirm Room 미리보기로 생성한 wall cube 개수입니다.")]
     public int lastReviewWallSegmentCount;
+
+    [Tooltip("마지막 정규화에서 endpoint를 주변 segment 위로 붙인 횟수입니다.")]
+    public int lastEndpointToSegmentSnapCount;
+
+    [Tooltip("마지막 정규화에서 열린 코너 gap을 닫기 위해 자동 추가한 bridge segment 개수입니다.")]
+    public int lastAutoBridgeSegmentCount;
+
+    [Tooltip("마지막 Cube footprint flood fill에 사용한 벽 footprint 개수입니다.")]
+    public int lastCubeFootprintCount;
+
+    [Tooltip("마지막 Cube footprint flood fill에서 벽 footprint에 막힌 cell 판정 횟수입니다. Debug 확인용입니다.")]
+    public int lastCubeBlockedCellCheckCount;
+
+    [Tooltip("마지막 Cube footprint flood fill에서 이동 경로가 벽 footprint를 가로질러 차단된 횟수입니다. Debug 확인용입니다.")]
+    public int lastCubeBlockedMovementCheckCount;
 
     [Header("Gap Markers")]
     public bool showGapMarkers = true;
@@ -114,47 +181,10 @@ public class ConfirmRoomManager : MonoBehaviour
             return;
         }
 
+        // WorkflowManager는 상태 전환만 담당합니다.
+        // Confirm Room 검증/시각화 옵션은 ConfirmRoomManager Inspector에서 직접 관리합니다.
         scanner = workflow.scanner;
         manualWallBuilder = workflow.manualWallBuilder;
-
-        if (workflow.confirmedRoomRoot != null)
-        {
-            confirmedRoomRoot = workflow.confirmedRoomRoot;
-        }
-
-        includeDetectedWallsInClosedCheck = workflow.includeDetectedWallsInClosedCheck;
-        includeClosureEdgesInClosedCheck = workflow.includeClosureEdgesInClosedCheck;
-        includeManualWallsInClosedCheck = workflow.includeManualWallsInClosedCheck;
-
-        normalizeBoundarySegmentsBeforeConfirm = workflow.normalizeBoundarySegmentsBeforeConfirm;
-        endpointSnapDistance = workflow.endpointSnapDistance;
-        collinearMergeAngle = workflow.collinearMergeAngle;
-        collinearMergeDistance = workflow.collinearMergeDistance;
-        boundaryMinSegmentLength = workflow.boundaryMinSegmentLength;
-
-        gridCellSize = workflow.gridCellSize;
-        gridBoundsMargin = workflow.gridBoundsMargin;
-        wallBlockDistance = workflow.wallBlockDistance;
-        maxGridCellsPerAxis = workflow.maxGridCellsPerAxis;
-        nearestFreeCellSearchRadius = workflow.nearestFreeCellSearchRadius;
-
-        confirmedRoomWallMaterial = workflow.confirmedRoomWallMaterial;
-        confirmedRoomHorizontalMaterial = workflow.confirmedRoomHorizontalMaterial;
-        confirmedWallThickness = workflow.confirmedWallThickness;
-        confirmedFloorYOffset = workflow.confirmedFloorYOffset;
-        confirmedCeilingYOffset = workflow.confirmedCeilingYOffset;
-        useConfirmedHorizontalBoxSlabs = workflow.useConfirmedHorizontalBoxSlabs;
-        confirmedHorizontalSlabThickness = workflow.confirmedHorizontalSlabThickness;
-        confirmedHorizontalSlabPadding = workflow.confirmedHorizontalSlabPadding;
-
-        showGapMarkers = workflow.showConfirmRoomGapMarkers;
-        if (workflow.confirmRoomMarkerRoot != null)
-        {
-            gapMarkerRoot = workflow.confirmRoomMarkerRoot;
-        }
-        gapMarkerMaterial = workflow.confirmRoomGapMarkerMaterial;
-        gapMarkerSize = workflow.confirmRoomGapMarkerSize;
-        gapMarkerYOffset = workflow.confirmRoomGapMarkerYOffset;
 
         EnsureRoots(workflow.transform);
     }
@@ -225,14 +255,21 @@ public class ConfirmRoomManager : MonoBehaviour
             return false;
         }
 
-        if (openEndpointCount > 0)
+        // 선분 기반 검증에서는 open endpoint가 곧 실패 조건입니다.
+        // Cube footprint 기반 검증에서는 실제 벽 Cube의 두께/끝단 패딩으로 막혀 있으면 닫힌 방으로 인정하므로,
+        // open endpoint는 기본적으로 gap marker/debug 용도로만 사용합니다.
+        if (openEndpointCount > 0 && (!useCubeFootprintFloodFill || openEndpointsBlockCubeFootprintValidation))
         {
             floodReachedOutside = true;
             validationStatus = $"Confirm Room blocked. Open endpoints:{openEndpointCount}. Close the highlighted gaps first.";
             return false;
         }
 
-        if (!TryRunUserRoomFloodFill(allSegments))
+        bool floodFillSucceeded = useCubeFootprintFloodFill
+            ? TryRunCubeFootprintFloodFill(allSegments)
+            : TryRunUserRoomFloodFill(allSegments);
+
+        if (!floodFillSucceeded)
         {
             finalRoomClosed = false;
             validationStatus = "Confirm Room blocked. User position is not inside a valid room area.";
@@ -244,11 +281,25 @@ public class ConfirmRoomManager : MonoBehaviour
 
         if (!finalRoomClosed)
         {
-            validationStatus = "Confirm Room blocked. Flood fill escaped outside boundary. Room is not closed.";
+            validationStatus = useCubeFootprintFloodFill
+                ? "Confirm Room blocked. Cube footprint flood fill escaped outside boundary. Room is not closed."
+                : "Confirm Room blocked. Flood fill escaped outside boundary. Room is not closed.";
             return false;
         }
 
-        BuildConfirmedBoundarySegments(allSegments);
+        if (useCubeFootprintFloodFill)
+        {
+            // Cube footprint 방식에서는 endpoint graph가 아니라 벽 Cube footprint가 닫힘 판정의 기준입니다.
+            // 따라서 선택 cell 인접 선분만 다시 추리는 기존 line 기반 boundary 추출 대신,
+            // 검증에 사용한 normalized segment 전체를 최종 벽 후보로 유지합니다.
+            confirmedBoundarySegments.Clear();
+            confirmedBoundarySegments.AddRange(allSegments);
+        }
+        else
+        {
+            BuildConfirmedBoundarySegments(allSegments);
+        }
+
         confirmedBoundarySegmentCount = confirmedBoundarySegments.Count;
 
         if (confirmedBoundarySegmentCount < 3)
@@ -259,7 +310,11 @@ public class ConfirmRoomManager : MonoBehaviour
         }
 
         roomReady = true;
-        validationStatus = $"Confirm Room ready. cells:{selectedCellCount}, boundary:{confirmedBoundarySegmentCount}, manual walls:{manualWallCount}";
+        string algorithm = useCubeFootprintFloodFill ? "cube footprint" : "line segment";
+        validationStatus =
+            $"Confirm Room ready ({algorithm}). cells:{selectedCellCount}, boundary:{confirmedBoundarySegmentCount}, " +
+            $"manual walls:{manualWallCount}, open endpoints:{openEndpointCount}, " +
+            $"footprints:{lastCubeFootprintCount}, corner snaps:{lastEndpointToSegmentSnapCount}, bridges:{lastAutoBridgeSegmentCount}";
         return true;
     }
 
@@ -303,7 +358,8 @@ public class ConfirmRoomManager : MonoBehaviour
         Debug.Log(
             "[ConfirmRoom] Review visualization built. " +
             $"detected:{lastDetectedWallSourceCount}, closure:{lastClosureEdgeSourceCount}, " +
-            $"manual:{lastManualWallSourceCount}, preview walls:{confirmedRoomWallObjects.Count}"
+            $"manual:{lastManualWallSourceCount}, snap:{lastEndpointToSegmentSnapCount}, " +
+            $"bridge:{lastAutoBridgeSegmentCount}, preview walls:{confirmedRoomWallObjects.Count}"
         );
 
         return confirmedRoomWallObjects.Count > 0;
@@ -357,9 +413,41 @@ public class ConfirmRoomManager : MonoBehaviour
         BuildConfirmedWallCubesFromSegments(wallSegments, floorY, ceilingY);
 
         validationStatus = $"Confirmed room visualization built. walls:{confirmedRoomWallObjects.Count}";
-        return confirmedRoomFloorObject != null &&
-               confirmedRoomCeilingObject != null &&
-               confirmedRoomWallObjects.Count > 0;
+
+        bool success =
+            confirmedRoomFloorObject != null &&
+            confirmedRoomCeilingObject != null &&
+            confirmedRoomWallObjects.Count > 0;
+
+        if (success && bindFurniturePlacementGeometryOnConfirm)
+        {
+            BindConfirmedRoomToFurniturePlacement();
+        }
+
+        validationStatus = $"Confirmed room visualization built. walls:{confirmedRoomWallObjects.Count}";
+        return success;
+    }
+
+    private void BindConfirmedRoomToFurniturePlacement()
+    {
+        if (confirmedRoomGeometryProvider == null)
+        {
+            Debug.LogWarning("[ConfirmRoomManager] ConfirmedRoomGeometryProvider is not assigned.");
+            return;
+        }
+
+        bool bound = confirmedRoomGeometryProvider.SetConfirmedRoom(
+            confirmedRoomWallObjects,
+            confirmedRoomFloorObject,
+            confirmedRoomCeilingObject
+        );
+
+        Debug.Log(
+            $"[ConfirmRoomManager] Furniture placement geometry bind result:{bound}, " +
+            $"walls:{confirmedRoomWallObjects.Count}, " +
+            $"floor:{confirmedRoomFloorObject != null}, " +
+            $"ceiling:{confirmedRoomCeilingObject != null}"
+        );
     }
 
     public void ClearConfirmedRoomObjectsOnly()
@@ -409,6 +497,11 @@ public class ConfirmRoomManager : MonoBehaviour
         lastClosureEdgeSourceCount = 0;
         lastManualWallSourceCount = 0;
         lastReviewWallSegmentCount = 0;
+        lastEndpointToSegmentSnapCount = 0;
+        lastAutoBridgeSegmentCount = 0;
+        lastCubeFootprintCount = 0;
+        lastCubeBlockedCellCheckCount = 0;
+        lastCubeBlockedMovementCheckCount = 0;
         ClearGapMarkers();
     }
 
@@ -426,6 +519,11 @@ public class ConfirmRoomManager : MonoBehaviour
         lastClosureEdgeSourceCount = 0;
         lastManualWallSourceCount = 0;
         lastReviewWallSegmentCount = 0;
+        lastEndpointToSegmentSnapCount = 0;
+        lastAutoBridgeSegmentCount = 0;
+        lastCubeFootprintCount = 0;
+        lastCubeBlockedCellCheckCount = 0;
+        lastCubeBlockedMovementCheckCount = 0;
         selectedCells.Clear();
         confirmedBoundarySegments.Clear();
         normalizedBoundarySegmentsForConfirm.Clear();
@@ -519,6 +617,9 @@ public class ConfirmRoomManager : MonoBehaviour
 
     private List<Segment2D> NormalizeBoundarySegments(List<Segment2D> source)
     {
+        lastEndpointToSegmentSnapCount = 0;
+        lastAutoBridgeSegmentCount = 0;
+
         List<Segment2D> cleaned = new List<Segment2D>();
 
         foreach (Segment2D segment in source)
@@ -529,11 +630,39 @@ public class ConfirmRoomManager : MonoBehaviour
             }
         }
 
+        // 1. 실제로 교차하는 선분은 교차점에서 나눕니다.
         cleaned = SplitSegmentsAtIntersections(cleaned);
+
+        // 2. 자동 인식 벽에서 자주 생기는 "endpoint가 다른 벽 중간 근처에 닿아 있는" 코너 오차를 보정합니다.
+        //    이 단계가 없으면 벽은 시각적으로 닫혀 보여도 endpoint graph에서는 열린 endpoint로 남습니다.
+        if (snapEndpointsToNearbySegments)
+        {
+            cleaned = SnapEndpointsToNearbySegmentsAndSplit(cleaned, out lastEndpointToSegmentSnapCount);
+        }
+
+        // 3. endpoint끼리 가까운 점은 같은 코너로 합칩니다.
         SnapCloseEndpoints(cleaned);
         RemoveShortSegments(cleaned);
+
+        // 4. 같은 선 위에서 닿거나 겹친 segment를 합칩니다.
         MergeCollinearTouchingSegments(cleaned);
         RemoveShortSegments(cleaned);
+
+        // 5. 그래도 남은 작은 코너 gap은 검증/미리보기용 bridge segment로 닫습니다.
+        //    문/통로를 닫지 않도록 openEndpointBridgeDistance는 endpointSnapDistance보다 약간 큰 정도로만 둡니다.
+        if (bridgeSmallOpenEndpointGaps && (!useCubeFootprintFloodFill || useAutoBridgeSegmentsForCubeFootprintValidation))
+        {
+            AddBridgeSegmentsForNearbyOpenEndpoints(cleaned, out lastAutoBridgeSegmentCount);
+
+            if (lastAutoBridgeSegmentCount > 0)
+            {
+                cleaned = SplitSegmentsAtIntersections(cleaned);
+                SnapCloseEndpoints(cleaned);
+                RemoveShortSegments(cleaned);
+                MergeCollinearTouchingSegments(cleaned);
+                RemoveShortSegments(cleaned);
+            }
+        }
 
         return cleaned;
     }
@@ -602,6 +731,11 @@ public class ConfirmRoomManager : MonoBehaviour
 
     private void SnapCloseEndpoints(List<Segment2D> segments)
     {
+        if (segments == null || segments.Count == 0)
+        {
+            return;
+        }
+
         List<EndpointRef> endpoints = new List<EndpointRef>();
 
         for (int i = 0; i < segments.Count; i++)
@@ -610,43 +744,56 @@ public class ConfirmRoomManager : MonoBehaviour
             endpoints.Add(new EndpointRef { segmentIndex = i, isStart = false, point = segments[i].end });
         }
 
-        bool[] visited = new bool[endpoints.Count];
+        int endpointCount = endpoints.Count;
+        int[] parent = new int[endpointCount];
+
+        for (int i = 0; i < endpointCount; i++)
+        {
+            parent[i] = i;
+        }
+
         float snapDistance = Mathf.Max(0.001f, endpointSnapDistance);
 
-        for (int i = 0; i < endpoints.Count; i++)
+        for (int i = 0; i < endpointCount; i++)
         {
-            if (visited[i])
+            for (int j = i + 1; j < endpointCount; j++)
             {
-                continue;
-            }
-
-            List<int> cluster = new List<int> { i };
-            visited[i] = true;
-            Vector2 sum = endpoints[i].point;
-
-            for (int j = i + 1; j < endpoints.Count; j++)
-            {
-                if (visited[j])
-                {
-                    continue;
-                }
-
                 if (Vector2.Distance(endpoints[i].point, endpoints[j].point) <= snapDistance)
                 {
-                    cluster.Add(j);
-                    visited[j] = true;
-                    sum += endpoints[j].point;
+                    Union(parent, i, j);
                 }
             }
+        }
 
-            if (cluster.Count <= 1)
+        Dictionary<int, List<int>> clusters = new Dictionary<int, List<int>>();
+
+        for (int i = 0; i < endpointCount; i++)
+        {
+            int root = Find(parent, i);
+            if (!clusters.TryGetValue(root, out List<int> cluster))
+            {
+                cluster = new List<int>();
+                clusters.Add(root, cluster);
+            }
+            cluster.Add(i);
+        }
+
+        foreach (KeyValuePair<int, List<int>> pair in clusters)
+        {
+            if (pair.Value.Count <= 1)
             {
                 continue;
             }
 
-            Vector2 snappedPoint = sum / cluster.Count;
+            Vector2 sum = Vector2.zero;
+            foreach (int endpointIndex in pair.Value)
+            {
+                sum += endpoints[endpointIndex].point;
+            }
 
-            foreach (int endpointIndex in cluster)
+            Vector2 snappedPoint = sum / pair.Value.Count;
+
+            foreach (int endpointIndex in pair.Value)
             {
                 EndpointRef endpoint = endpoints[endpointIndex];
                 Segment2D segment = segments[endpoint.segmentIndex];
@@ -770,6 +917,19 @@ public class ConfirmRoomManager : MonoBehaviour
     private List<Vector2> FindOpenEndpointPoints(List<Segment2D> segments)
     {
         List<Vector2> result = new List<Vector2>();
+        List<EndpointRef> refs = FindOpenEndpointRefs(segments);
+
+        foreach (EndpointRef endpointRef in refs)
+        {
+            result.Add(endpointRef.point);
+        }
+
+        return result;
+    }
+
+    private List<EndpointRef> FindOpenEndpointRefs(List<Segment2D> segments)
+    {
+        List<EndpointRef> result = new List<EndpointRef>();
 
         if (segments == null || segments.Count == 0)
         {
@@ -789,42 +949,512 @@ public class ConfirmRoomManager : MonoBehaviour
             endpoints.Add(new EndpointRef { segmentIndex = i, isStart = false, point = segments[i].end });
         }
 
-        bool[] visited = new bool[endpoints.Count];
-        float snapDistance = Mathf.Max(0.01f, endpointSnapDistance);
-
-        for (int i = 0; i < endpoints.Count; i++)
+        int endpointCount = endpoints.Count;
+        if (endpointCount == 0)
         {
-            if (visited[i])
+            return result;
+        }
+
+        float snapDistance = Mathf.Max(0.01f, endpointSnapDistance);
+        int[] parent = new int[endpointCount];
+
+        for (int i = 0; i < endpointCount; i++)
+        {
+            parent[i] = i;
+        }
+
+        for (int i = 0; i < endpointCount; i++)
+        {
+            for (int j = i + 1; j < endpointCount; j++)
             {
-                continue;
-            }
-
-            Vector2 sum = endpoints[i].point;
-            int count = 1;
-            visited[i] = true;
-
-            for (int j = i + 1; j < endpoints.Count; j++)
-            {
-                if (visited[j])
-                {
-                    continue;
-                }
-
                 if (Vector2.Distance(endpoints[i].point, endpoints[j].point) <= snapDistance)
                 {
-                    sum += endpoints[j].point;
-                    count++;
-                    visited[j] = true;
+                    Union(parent, i, j);
                 }
             }
+        }
 
-            if (count <= 1)
+        Dictionary<int, List<int>> clusters = new Dictionary<int, List<int>>();
+        for (int i = 0; i < endpointCount; i++)
+        {
+            int root = Find(parent, i);
+            if (!clusters.TryGetValue(root, out List<int> cluster))
             {
-                result.Add(sum / count);
+                cluster = new List<int>();
+                clusters.Add(root, cluster);
+            }
+            cluster.Add(i);
+        }
+
+        foreach (KeyValuePair<int, List<int>> pair in clusters)
+        {
+            if (pair.Value.Count == 1)
+            {
+                result.Add(endpoints[pair.Value[0]]);
             }
         }
 
         return result;
+    }
+
+    private List<Segment2D> SnapEndpointsToNearbySegmentsAndSplit(List<Segment2D> source, out int snapCount)
+    {
+        snapCount = 0;
+
+        if (source == null || source.Count == 0)
+        {
+            return new List<Segment2D>();
+        }
+
+        List<Segment2D> working = new List<Segment2D>(source);
+        List<List<float>> splitTs = new List<List<float>>();
+
+        for (int i = 0; i < working.Count; i++)
+        {
+            splitTs.Add(new List<float> { 0.0f, 1.0f });
+        }
+
+        float snapDistance = Mathf.Max(0.001f, endpointToSegmentSnapDistance);
+        float splitEpsilon = Mathf.Clamp(endpointProjectionSplitEpsilon, 0.001f, 0.45f);
+
+        for (int segmentIndex = 0; segmentIndex < working.Count; segmentIndex++)
+        {
+            TrySnapEndpointToNearestSegment(working, splitTs, segmentIndex, isStart: true, snapDistance, splitEpsilon, ref snapCount);
+            TrySnapEndpointToNearestSegment(working, splitTs, segmentIndex, isStart: false, snapDistance, splitEpsilon, ref snapCount);
+        }
+
+        List<Segment2D> result = new List<Segment2D>();
+
+        for (int i = 0; i < working.Count; i++)
+        {
+            List<float> ts = splitTs[i];
+            ts.Sort();
+
+            for (int tIndex = 0; tIndex < ts.Count - 1; tIndex++)
+            {
+                float t0 = ts[tIndex];
+                float t1 = ts[tIndex + 1];
+
+                if (t1 - t0 < 0.001f)
+                {
+                    continue;
+                }
+
+                Vector2 start = Vector2.Lerp(working[i].start, working[i].end, t0);
+                Vector2 end = Vector2.Lerp(working[i].start, working[i].end, t1);
+
+                if (Vector2.Distance(start, end) >= boundaryMinSegmentLength)
+                {
+                    result.Add(new Segment2D { start = start, end = end });
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private bool TrySnapEndpointToNearestSegment(
+        List<Segment2D> segments,
+        List<List<float>> splitTs,
+        int endpointSegmentIndex,
+        bool isStart,
+        float snapDistance,
+        float splitEpsilon,
+        ref int snapCount)
+    {
+        Segment2D endpointSegment = segments[endpointSegmentIndex];
+        Vector2 endpoint = isStart ? endpointSegment.start : endpointSegment.end;
+
+        float bestDistance = snapDistance;
+        int bestSegmentIndex = -1;
+        float bestT = 0.0f;
+        Vector2 bestPoint = endpoint;
+
+        for (int i = 0; i < segments.Count; i++)
+        {
+            if (i == endpointSegmentIndex)
+            {
+                continue;
+            }
+
+            Segment2D candidate = segments[i];
+            if (Vector2.Distance(candidate.start, candidate.end) < boundaryMinSegmentLength)
+            {
+                continue;
+            }
+
+            float t = ProjectPointToSegment01(endpoint, candidate.start, candidate.end);
+            Vector2 projected = Vector2.Lerp(candidate.start, candidate.end, t);
+            float distance = Vector2.Distance(endpoint, projected);
+
+            if (distance <= bestDistance)
+            {
+                bestDistance = distance;
+                bestSegmentIndex = i;
+                bestT = t;
+                bestPoint = projected;
+            }
+        }
+
+        if (bestSegmentIndex < 0)
+        {
+            return false;
+        }
+
+        if (Vector2.Distance(endpoint, bestPoint) < 0.0001f)
+        {
+            return false;
+        }
+
+        if (isStart)
+        {
+            endpointSegment.start = bestPoint;
+        }
+        else
+        {
+            endpointSegment.end = bestPoint;
+        }
+
+        segments[endpointSegmentIndex] = endpointSegment;
+        snapCount++;
+
+        if (bestT > splitEpsilon && bestT < 1.0f - splitEpsilon)
+        {
+            AddUniqueSplitT(splitTs[bestSegmentIndex], bestT);
+        }
+
+        return true;
+    }
+
+    private void AddBridgeSegmentsForNearbyOpenEndpoints(List<Segment2D> segments, out int bridgeCount)
+    {
+        bridgeCount = 0;
+
+        if (segments == null || segments.Count == 0)
+        {
+            return;
+        }
+
+        List<EndpointRef> openEndpoints = FindOpenEndpointRefs(segments);
+        bool[] used = new bool[openEndpoints.Count];
+        float bridgeDistance = Mathf.Max(endpointSnapDistance, openEndpointBridgeDistance);
+
+        for (int i = 0; i < openEndpoints.Count; i++)
+        {
+            if (used[i])
+            {
+                continue;
+            }
+
+            int bestIndex = -1;
+            float bestDistance = bridgeDistance;
+
+            for (int j = i + 1; j < openEndpoints.Count; j++)
+            {
+                if (used[j])
+                {
+                    continue;
+                }
+
+                if (openEndpoints[i].segmentIndex == openEndpoints[j].segmentIndex)
+                {
+                    continue;
+                }
+
+                float distance = Vector2.Distance(openEndpoints[i].point, openEndpoints[j].point);
+                if (distance <= bestDistance && distance >= boundaryMinSegmentLength)
+                {
+                    bestDistance = distance;
+                    bestIndex = j;
+                }
+            }
+
+            if (bestIndex < 0)
+            {
+                continue;
+            }
+
+            segments.Add(new Segment2D
+            {
+                start = openEndpoints[i].point,
+                end = openEndpoints[bestIndex].point
+            });
+
+            used[i] = true;
+            used[bestIndex] = true;
+            bridgeCount++;
+        }
+    }
+
+    private bool TryRunCubeFootprintFloodFill(List<Segment2D> segments)
+    {
+        selectedCells.Clear();
+        lastCubeFootprintCount = 0;
+        lastCubeBlockedCellCheckCount = 0;
+        lastCubeBlockedMovementCheckCount = 0;
+
+        if (Camera.main == null)
+        {
+            floodReachedOutside = true;
+            return false;
+        }
+
+        if (segments == null || segments.Count == 0)
+        {
+            floodReachedOutside = true;
+            return false;
+        }
+
+        List<WallFootprint2D> footprints = BuildWallFootprints(segments);
+        lastCubeFootprintCount = footprints.Count;
+
+        if (footprints.Count == 0)
+        {
+            floodReachedOutside = true;
+            return false;
+        }
+
+        BuildGridBounds(segments);
+
+        Vector3 cameraPosition = Camera.main.transform.position;
+        Vector2 seed = new Vector2(cameraPosition.x, cameraPosition.z);
+
+        if (!TryWorldToCell(seed, out Vector2Int startCell))
+        {
+            floodReachedOutside = true;
+            return false;
+        }
+
+        if (IsBlockedCellByFootprints(startCell, footprints))
+        {
+            if (!TryFindNearestFreeCellByFootprints(startCell, footprints, out startCell))
+            {
+                floodReachedOutside = true;
+                return false;
+            }
+        }
+
+        Queue<Vector2Int> queue = new Queue<Vector2Int>();
+        HashSet<Vector2Int> visited = new HashSet<Vector2Int>();
+
+        queue.Enqueue(startCell);
+        visited.Add(startCell);
+        floodReachedOutside = false;
+
+        Vector2Int[] directions =
+        {
+            new Vector2Int(1, 0),
+            new Vector2Int(-1, 0),
+            new Vector2Int(0, 1),
+            new Vector2Int(0, -1)
+        };
+
+        while (queue.Count > 0)
+        {
+            Vector2Int current = queue.Dequeue();
+            selectedCells.Add(current);
+
+            if (IsBorderCell(current))
+            {
+                floodReachedOutside = true;
+            }
+
+            Vector2 currentWorld = CellToWorld(current);
+
+            foreach (Vector2Int direction in directions)
+            {
+                Vector2Int next = current + direction;
+
+                if (!IsInsideGrid(next))
+                {
+                    floodReachedOutside = true;
+                    continue;
+                }
+
+                if (visited.Contains(next))
+                {
+                    continue;
+                }
+
+                if (IsBlockedCellByFootprints(next, footprints))
+                {
+                    continue;
+                }
+
+                Vector2 nextWorld = CellToWorld(next);
+
+                if (MovementCrossesAnyFootprint(currentWorld, nextWorld, footprints))
+                {
+                    continue;
+                }
+
+                visited.Add(next);
+                queue.Enqueue(next);
+            }
+        }
+
+        return selectedCells.Count > 0;
+    }
+
+    private List<WallFootprint2D> BuildWallFootprints(List<Segment2D> segments)
+    {
+        List<WallFootprint2D> footprints = new List<WallFootprint2D>();
+        float thickness = GetEffectiveCubeFootprintThickness();
+        float halfThickness = Mathf.Max(0.001f, thickness * 0.5f);
+        float endPadding = Mathf.Max(0.0f, cubeFootprintEndPadding);
+
+        foreach (Segment2D segment in segments)
+        {
+            Vector2 delta = segment.end - segment.start;
+            float length = delta.magnitude;
+
+            if (length < boundaryMinSegmentLength)
+            {
+                continue;
+            }
+
+            Vector2 direction = delta / length;
+            Vector2 normal = new Vector2(direction.y, -direction.x);
+
+            footprints.Add(new WallFootprint2D
+            {
+                center = (segment.start + segment.end) * 0.5f,
+                direction = direction,
+                normal = normal,
+                halfLength = length * 0.5f + endPadding,
+                halfThickness = halfThickness
+            });
+        }
+
+        return footprints;
+    }
+
+    private float GetEffectiveCubeFootprintThickness()
+    {
+        float thickness = Mathf.Max(0.001f, cubeFootprintWallThickness);
+        thickness = Mathf.Max(thickness, confirmedWallThickness);
+        thickness = Mathf.Max(thickness, wallBlockDistance * 2.0f);
+
+        if (manualWallBuilder != null)
+        {
+            thickness = Mathf.Max(thickness, manualWallBuilder.wallThickness);
+        }
+
+        return thickness;
+    }
+
+    private bool IsBlockedCellByFootprints(Vector2Int cell, List<WallFootprint2D> footprints)
+    {
+        Vector2 point = CellToWorld(cell);
+
+        foreach (WallFootprint2D footprint in footprints)
+        {
+            if (IsPointInsideFootprint(point, footprint, cubeFootprintCollisionPadding))
+            {
+                lastCubeBlockedCellCheckCount++;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryFindNearestFreeCellByFootprints(
+        Vector2Int center,
+        List<WallFootprint2D> footprints,
+        out Vector2Int freeCell)
+    {
+        for (int radius = 1; radius <= nearestFreeCellSearchRadius; radius++)
+        {
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                for (int dy = -radius; dy <= radius; dy++)
+                {
+                    Vector2Int candidate = center + new Vector2Int(dx, dy);
+
+                    if (!IsInsideGrid(candidate))
+                    {
+                        continue;
+                    }
+
+                    if (!IsBlockedCellByFootprints(candidate, footprints))
+                    {
+                        freeCell = candidate;
+                        return true;
+                    }
+                }
+            }
+        }
+
+        freeCell = default;
+        return false;
+    }
+
+    private bool MovementCrossesAnyFootprint(
+        Vector2 from,
+        Vector2 to,
+        List<WallFootprint2D> footprints)
+    {
+        foreach (WallFootprint2D footprint in footprints)
+        {
+            if (SegmentIntersectsFootprint(from, to, footprint, cubeFootprintCollisionPadding))
+            {
+                lastCubeBlockedMovementCheckCount++;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsPointInsideFootprint(
+        Vector2 point,
+        WallFootprint2D footprint,
+        float padding)
+    {
+        Vector2 relative = point - footprint.center;
+        float along = Vector2.Dot(relative, footprint.direction);
+        float side = Vector2.Dot(relative, footprint.normal);
+
+        return Mathf.Abs(along) <= footprint.halfLength + padding &&
+               Mathf.Abs(side) <= footprint.halfThickness + padding;
+    }
+
+    private static bool SegmentIntersectsFootprint(
+        Vector2 from,
+        Vector2 to,
+        WallFootprint2D footprint,
+        float padding)
+    {
+        if (IsPointInsideFootprint(from, footprint, padding) ||
+            IsPointInsideFootprint(to, footprint, padding))
+        {
+            return true;
+        }
+
+        GetFootprintCorners(footprint, padding, out Vector2 a, out Vector2 b, out Vector2 c, out Vector2 d);
+
+        return SegmentsIntersect(from, to, a, b) ||
+               SegmentsIntersect(from, to, b, c) ||
+               SegmentsIntersect(from, to, c, d) ||
+               SegmentsIntersect(from, to, d, a);
+    }
+
+    private static void GetFootprintCorners(
+        WallFootprint2D footprint,
+        float padding,
+        out Vector2 a,
+        out Vector2 b,
+        out Vector2 c,
+        out Vector2 d)
+    {
+        Vector2 along = footprint.direction * (footprint.halfLength + padding);
+        Vector2 side = footprint.normal * (footprint.halfThickness + padding);
+
+        a = footprint.center + along + side;
+        b = footprint.center + along - side;
+        c = footprint.center - along - side;
+        d = footprint.center - along + side;
     }
 
     private bool TryRunUserRoomFloodFill(List<Segment2D> segments)
@@ -1443,6 +2073,53 @@ public class ConfirmRoomManager : MonoBehaviour
         }
 
         return null;
+    }
+
+    private static float ProjectPointToSegment01(Vector2 point, Vector2 a, Vector2 b)
+    {
+        Vector2 ab = b - a;
+        float abSqr = ab.sqrMagnitude;
+
+        if (abSqr < 0.0001f)
+        {
+            return 0.0f;
+        }
+
+        return Mathf.Clamp01(Vector2.Dot(point - a, ab) / abSqr);
+    }
+
+    private static void AddUniqueSplitT(List<float> splitTs, float t)
+    {
+        for (int i = 0; i < splitTs.Count; i++)
+        {
+            if (Mathf.Abs(splitTs[i] - t) < 0.001f)
+            {
+                return;
+            }
+        }
+
+        splitTs.Add(t);
+    }
+
+    private static int Find(int[] parent, int index)
+    {
+        if (parent[index] != index)
+        {
+            parent[index] = Find(parent, parent[index]);
+        }
+
+        return parent[index];
+    }
+
+    private static void Union(int[] parent, int a, int b)
+    {
+        int rootA = Find(parent, a);
+        int rootB = Find(parent, b);
+
+        if (rootA != rootB)
+        {
+            parent[rootB] = rootA;
+        }
     }
 
     private static float DistancePointToSegment(Vector2 point, Vector2 a, Vector2 b)

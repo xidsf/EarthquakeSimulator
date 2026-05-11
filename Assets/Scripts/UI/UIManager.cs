@@ -12,10 +12,13 @@ public class UIManager : MonoBehaviour
         public RoomBuildWorkflowManager.WorkflowState state;
         public GameObject mainPanel;
 
-        [Tooltip("해당 상태에서 추가로 켤 버튼입니다. 버튼이 상태별 패널의 자식이면 비워도 됩니다.")]
+        [Tooltip("해당 상태에서 MainPlate(메인 UI 판넬)를 활성화할지 여부입니다.")]
+        public bool showMainPlate = true; // 기본값은 true
+
+        [Tooltip("해당 상태에서 추가로 켤 버튼입니다.")]
         public PressableButton[] visibleButtons;
 
-        [Tooltip("해당 상태에서 추가로 켤 오브젝트입니다. 버튼이 아닌 상태별 안내문/그룹을 켤 때 사용합니다.")]
+        [Tooltip("해당 상태에서 추가로 켤 오브젝트입니다.")]
         public GameObject[] visibleObjects;
 
         [Tooltip("상태 진입 시 Numpad/Slider 같은 서브패널을 닫습니다.")]
@@ -43,6 +46,10 @@ public class UIManager : MonoBehaviour
 
     [Tooltip("WorkflowManager가 없을 때만 기존처럼 BuildingInfo 패널로 시작합니다.")]
     public bool useLegacyStartPanelWhenWorkflowMissing = true;
+
+    [Header("Main UI Plate")]
+    [Tooltip("단계별로 제어할 메인 UI의 부모판넬(MainPlate)입니다.")]
+    public GameObject panel_MainPlate;
 
     [Header("1. Opening / RoomInfoInput 패널")]
     [Tooltip("앱 시작 시 가장 먼저 보여줄 Opening 패널입니다. 비워두면 Opening 패널 단계는 사용하지 않습니다.")]
@@ -332,14 +339,22 @@ public class UIManager : MonoBehaviour
 
     public void ShowWorkflowState(RoomBuildWorkflowManager.WorkflowState state)
     {
-        if (!useWorkflowDrivenPanels)
-        {
-            return;
-        }
+        if (!useWorkflowDrivenPanels) return;
 
         WorkflowStateUiConfig config = GetWorkflowStateUiConfig(state);
 
+        // 1. 메인 패널 전환
         ShowMainPanel(GetPanelForWorkflowState(state, config));
+
+        // 2. [추가] MainPlate 활성화 제어
+        if (panel_MainPlate != null)
+        {
+            // 설정이 있으면 설정값에 따르고, 설정이 없으면 기본적으로 켭니다.
+            bool shouldShowMainPlate = (config != null) ? config.showMainPlate : true;
+            panel_MainPlate.SetActive(shouldShowMainPlate);
+        }
+
+        // 3. 버튼 및 오브젝트 가시성 적용
         ApplyWorkflowStateVisibleObjects(config);
         UpdateWorkflowButtonVisibility(state);
 

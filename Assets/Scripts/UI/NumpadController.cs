@@ -1,6 +1,6 @@
 using UnityEngine;
 using TMPro;
-using MixedReality.Toolkit.UX; // MRTK3 버튼을 사용하기 위한 네임스페이스
+using MixedReality.Toolkit.UX;
 
 public class NumpadController : MonoBehaviour
 {
@@ -52,8 +52,21 @@ public class NumpadController : MonoBehaviour
     {
         targetText = textComponentToUpdate;
 
-        // 넘버패드가 열릴 때 무조건 '첫 입력 대기' 상태로 세팅
-        isFirstInput = true;
+        // 1. 기존 UI 텍스트 가져오기
+        string existingText = targetText.text;
+
+        // 2. 안내 문구이거나 비어있는 경우 첫 입력 상태로 세팅
+        if (string.IsNullOrEmpty(existingText) || existingText == placeholderText)
+        {
+            isFirstInput = true;
+            targetText.text = placeholderText; // 만약을 위해 안내 문구로 확실히 초기화
+        }
+        else
+        {
+            // 3. 기존에 입력된 층수가 있다면 "층" 글자 및 공백을 제거하고 첫 입력 상태 해제
+            isFirstInput = false;
+            targetText.text = existingText.Replace("층", "").Trim();
+        }
 
         uiManager.ToggleNumpad(true);
     }
@@ -80,15 +93,18 @@ public class NumpadController : MonoBehaviour
 
     private void OnClick_Backspace()
     {
-        if (targetText != null && targetText.text.Length > 0)
+        if (targetText != null)
         {
-            // 안내 문구가 떠있는 상태일 때 지우기 버튼을 누르면 무시 (안내 문구를 지우지 못하게)
+            // 안내 문구가 떠있는 상태(첫 입력 대기 상태)일 때 지우기 버튼을 누르면 무시
             if (isFirstInput) return;
 
-            // 글자 하나 지우기
-            targetText.text = targetText.text.Substring(0, targetText.text.Length - 1);
+            // 텍스트가 남아있을 경우 글자 하나 지우기
+            if (targetText.text.Length > 0)
+            {
+                targetText.text = targetText.text.Substring(0, targetText.text.Length - 1);
+            }
 
-            // 다 지워서 빈칸이 되었다면, 다시 안내 문구를 띄워주기
+            // 하나를 지웠는데 다 지워져서 빈칸이 되었다면, 다시 안내 문구를 띄워주기
             if (targetText.text.Length == 0)
             {
                 targetText.text = placeholderText;

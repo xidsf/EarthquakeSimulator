@@ -19,6 +19,11 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
     [Tooltip("MainPlate 위에서 계속 표시되어야 하는 안내 문구(ForCapture) 오브젝트입니다.")]
     public GameObject obj_ForCaptureText;
 
+    // [추가] 뷰파인더 UI 제어를 위한 변수
+    [Header("Camera Viewport")]
+    [Tooltip("사용자 시선을 따라다니는 CameraViewPortUI 오브젝트를 연결해주세요.")]
+    public GameObject obj_CameraViewPortUI;
+
     [Header("Loading UI Elements")]
     [Tooltip("가구 생성 로딩 화면의 부모 오브젝트(배경 패널 등)를 연결해주세요.")]
     public GameObject loadingUIParent;
@@ -64,13 +69,19 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
         CreateActions();
         RegisterButtons();
 
-        // [추가] 패널이 다시 켜질 때 모든 버튼의 상태를 활성화(초기화)합니다.
+        // 패널이 다시 켜질 때 모든 버튼의 상태를 활성화(초기화)합니다.
         SetAllButtonsEnabled(true);
 
         // 단계 진입 시 ForCapture 텍스트 활성화
         if (obj_ForCaptureText != null)
         {
             obj_ForCaptureText.SetActive(true);
+        }
+
+        // [추가] 단계 진입 시 CameraViewPortUI 활성화
+        if (obj_CameraViewPortUI != null)
+        {
+            obj_CameraViewPortUI.SetActive(true);
         }
 
         // 단계 진입 시 로딩 UI 초기 숨김
@@ -89,6 +100,12 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
         if (obj_ForCaptureText != null)
         {
             obj_ForCaptureText.SetActive(false);
+        }
+
+        // [추가] 단계가 강제로 종료되거나 다른 상태로 넘어갈 때 뷰파인더도 안전하게 꺼줌
+        if (obj_CameraViewPortUI != null)
+        {
+            obj_CameraViewPortUI.SetActive(false);
         }
     }
 
@@ -116,7 +133,6 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
         RemoveClick(btn_Complete, completeAction);
     }
 
-    // [추가] 모든 버튼의 활성화 상태를 한 번에 제어하는 편의용 함수
     private void SetAllButtonsEnabled(bool isEnabled)
     {
         if (btn_Capture != null) btn_Capture.enabled = isEnabled;
@@ -194,13 +210,19 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
 
     public void OnClickComplete()
     {
-        // [수정] 완료 버튼을 누르는 즉시 모든 버튼 비활성화 처리
+        // 완료 버튼을 누르는 즉시 모든 버튼 비활성화 처리
         SetAllButtonsEnabled(false);
 
         // 가구 배치 단계로 넘어가는 즉시 안내 텍스트 비활성화
         if (obj_ForCaptureText != null)
         {
             obj_ForCaptureText.SetActive(false);
+        }
+
+        // [추가] 가구 생성 코루틴이 시작되기 직전에 뷰파인더(CameraViewPortUI)를 즉시 숨김
+        if (obj_CameraViewPortUI != null)
+        {
+            obj_CameraViewPortUI.SetActive(false);
         }
 
         StartCoroutine(FurnitureGenerationRoutine());
@@ -216,8 +238,8 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
         float dotTimer = 0f;
         int dotCount = 1;
 
-        // 임시 가구 생성 대기 시간 (3초)
-        float mockGenerationTime = 3.0f;
+        // 임시 가구 생성 대기 시간 (5초)
+        float mockGenerationTime = 5.0f;
 
         while (generationTimer < mockGenerationTime)
         {
@@ -252,8 +274,6 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
 
         // 4. 상태 초기화 및 실제 다음 워크플로우로 이동
         if (loadingUIParent != null) loadingUIParent.SetActive(false);
-
-        // 버튼은 OnEnable에서 다시 켜주므로 여기서 다시 켤 필요는 없지만 명시적으로 두어도 상관없음.
 
         RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteRoomCapture);
     }

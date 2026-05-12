@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using MixedReality.Toolkit;
 using MixedReality.Toolkit.SpatialManipulation;
 using UnityEngine;
 
@@ -42,6 +43,7 @@ public class RuntimeFurnitureInteractionSetup : MonoBehaviour
     public bool addPlacedFurnitureToRoot = true;
     public bool addObjectManipulatorToRoot = true;
     public bool addObjectManipulatorBridgeToRoot = true;
+    public bool addYawOnlyRotationConstraintToRoot = true;
 
     [Tooltip("자동 추가된 ObjectManipulator는 PlacedFurniture.moveBehaviours에 등록되고 Move Mode가 켜질 때만 enabled 됩니다.")]
     public bool disableManipulatorInitially = true;
@@ -102,6 +104,8 @@ public class RuntimeFurnitureInteractionSetup : MonoBehaviour
             manipulator = EnsureObjectManipulator(root);
             if (manipulator != null)
             {
+                manipulator.AllowedManipulations = TransformFlags.Move;
+
                 if (disableManipulatorInitially)
                 {
                     manipulator.enabled = false;
@@ -112,6 +116,11 @@ public class RuntimeFurnitureInteractionSetup : MonoBehaviour
                     AppendMoveBehaviour(placedFurniture, manipulator);
                 }
             }
+        }
+
+        if (addYawOnlyRotationConstraintToRoot)
+        {
+            EnsureYawOnlyRotationConstraint(root);
         }
 
         FurnitureObjectManipulatorBridge bridge = null;
@@ -228,6 +237,19 @@ public class RuntimeFurnitureInteractionSetup : MonoBehaviour
         }
 
         return root.AddComponent<ObjectManipulator>();
+    }
+
+    private RotationAxisConstraint EnsureYawOnlyRotationConstraint(GameObject root)
+    {
+        RotationAxisConstraint constraint = root.GetComponent<RotationAxisConstraint>();
+        if (constraint == null)
+        {
+            constraint = root.AddComponent<RotationAxisConstraint>();
+        }
+
+        constraint.ConstraintOnRotation = AxisFlags.XAxis | AxisFlags.ZAxis;
+        constraint.UseLocalSpaceForConstraint = false;
+        return constraint;
     }
 
     private FurnitureObjectManipulatorBridge EnsureObjectManipulatorBridge(

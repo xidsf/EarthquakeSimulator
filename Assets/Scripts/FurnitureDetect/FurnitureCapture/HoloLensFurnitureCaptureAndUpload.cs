@@ -31,6 +31,8 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
     [SerializeField] private string detectSessionPathFormat = "/detect-session/{0}?mode=auto";
     [SerializeField] private string detectionsPathFormat = "/detections/{0}";
     [SerializeField] private string processScanPathFormat = "/process-scan/{0}?use_confirmed=1";
+    [SerializeField] private string finishScanSessionPathFormat = "/scan-session/{0}/finish";
+    [SerializeField] private string scanJobPathFormat = "/scan-job/{0}";
     [SerializeField] private string resultPathFormat = "/result/{0}";
     [SerializeField] private int requestTimeoutSeconds = 30;
     [SerializeField] private int longRequestTimeoutSeconds = 300;
@@ -73,6 +75,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
 
     [Tooltip("PhotoCaptureFrame.TryGetProjectionMatrix(near, far, out projection)에 사용할 near clip입니다. 너무 작으면 ray 복원 오차가 커질 수 있어 0.05m를 기본값으로 둡니다.")]
     [SerializeField] private float depthProjectionNearClip = 0.05f;
+    private float DepthProjectionNearClip => Mathf.Max(0.01f, depthProjectionNearClip);
 
     [Tooltip("Depth sample raycast 대상 Layer입니다. 가능하면 Spatial Mesh Collider 전용 Layer만 지정하세요.")]
     [SerializeField] private LayerMask depthRaycastLayerMask = Physics.DefaultRaycastLayers;
@@ -142,6 +145,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         Debug.Log("[FurnitureCapture] scan session 상태를 초기화했습니다.");
     }
 
+    [Obsolete("Use FinishScanForCurrentSession. The current server flow does not call /detect-session directly.")]
     public void StartDetectionForCurrentSession()
     {
         if (!EnsureServerScanSession("가구 후보 탐지"))
@@ -151,6 +155,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         StartCoroutine(PostEmptyCoroutine(BuildUrl(path), "detect-session", longRequestTimeoutSeconds));
     }
 
+    [Obsolete("Use GetScanJobForCurrentSession. The current server flow does not call /detections directly.")]
     public void GetDetectionsForCurrentSession()
     {
         if (!EnsureScanSession("가구 후보 조회"))
@@ -160,6 +165,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         StartCoroutine(GetCoroutine(BuildUrl(path), "detections", requestTimeoutSeconds));
     }
 
+    [Obsolete("Use FinishScanForCurrentSession. The current server flow does not call /process-scan.")]
     public void ProcessScanForCurrentSession()
     {
         if (!EnsureServerScanSession("Unity 배치 결과 생성"))
@@ -176,6 +182,24 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
 
         string path = string.Format(resultPathFormat, UnityWebRequest.EscapeURL(currentScanSessionId));
         StartCoroutine(GetCoroutine(BuildUrl(path), "result", requestTimeoutSeconds));
+    }
+
+    public void FinishScanForCurrentSession()
+    {
+        if (!EnsureServerScanSession("GLB generation start"))
+            return;
+
+        string path = string.Format(finishScanSessionPathFormat, UnityWebRequest.EscapeURL(currentScanSessionId));
+        StartCoroutine(PostEmptyCoroutine(BuildUrl(path), "finish-scan-session", longRequestTimeoutSeconds));
+    }
+
+    public void GetScanJobForCurrentSession()
+    {
+        if (!EnsureScanSession("GLB generation status"))
+            return;
+
+        string path = string.Format(scanJobPathFormat, UnityWebRequest.EscapeURL(currentScanSessionId));
+        StartCoroutine(GetCoroutine(BuildUrl(path), "scan-job", requestTimeoutSeconds));
     }
 
     private IEnumerator StartScanSessionCoroutine()
@@ -634,7 +658,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         // Unity Physics ray 복원에 필요한 near/far clip이 인코딩되어 있지 않아
         // 빌드 환경에서 pixel -> world ray가 엉뚱한 방향으로 나갈 수 있습니다.
         // depth sample용 raycast에는 near/far를 명시한 projection을 사용합니다.
-        float depthNearClip = Mathf.Max(0.01f, depthProjectionNearClip);
+        float depthNearClip = DepthProjectionNearClip;
         float depthFarClip = Mathf.Max(depthNearClip + 0.01f, depthRaycastMaxDistance);
         bool hasProjection = frame.TryGetProjectionMatrix(depthNearClip, depthFarClip, out projection);
 

@@ -204,6 +204,16 @@ public class FurniturePlacementManager : MonoBehaviour
             return false;
         }
 
+        if (roomGeometryProvider != null)
+        {
+            bool valid = roomGeometryProvider.ValidateAndCorrectFurniturePose(selected, out string reason);
+            if (!valid)
+            {
+                Debug.LogWarning($"[FurniturePlacementManager] Confirm selected failed. {selected.DisplayName} / {reason}", selected);
+                return false;
+            }
+        }
+
         selected.SetState(FurniturePlacementState.Confirmed);
         selected.SaveCurrentPoseAsValid();
         Debug.Log($"[FurniturePlacementManager] Furniture confirmed. {selected.DisplayName}", selected);

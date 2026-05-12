@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using MixedReality.Toolkit;
+using MixedReality.Toolkit.SpatialManipulation;
 using UnityEngine;
 
 /// <summary>
@@ -18,6 +20,10 @@ public class PlacedFurniture : MonoBehaviour
     [SerializeField] private string label;
     [SerializeField] private string displayName;
     [SerializeField] private string source;
+    [SerializeField] private string physicsMode;
+    [SerializeField] private bool simulationEnabled = true;
+    [SerializeField] private string rigidbodyMode;
+    [SerializeField] private bool simulationUseGravity;
 
     [Header("Move Control")]
     [Tooltip("MRTK ObjectManipulator, BoundsControl 등 이동 모드에서만 켤 Behaviour들을 연결합니다. RuntimeFurnitureInteractionSetup이 ObjectManipulator를 자동 추가하면 여기에 자동 등록합니다.")]
@@ -62,6 +68,7 @@ public class PlacedFurniture : MonoBehaviour
     private bool initialized;
     private bool isMovable;
     private bool isMoving;
+    private FurnitureManipulationMode manipulationMode = FurnitureManipulationMode.None;
 
     public event Action<PlacedFurniture> MoveStarted;
     public event Action<PlacedFurniture> MoveEnded;
@@ -74,6 +81,7 @@ public class PlacedFurniture : MonoBehaviour
     public string Source => source;
     public bool IsMovable => isMovable;
     public bool IsMoving => isMoving;
+    public FurnitureManipulationMode ManipulationMode => manipulationMode;
 
     public void Initialize(FurniturePlacementManager manager, FurniturePlacementMetadata metadata)
     {
@@ -89,6 +97,10 @@ public class PlacedFurniture : MonoBehaviour
         label = metadata.label;
         displayName = metadata.displayName;
         source = metadata.source;
+        physicsMode = metadata.physicsMode;
+        simulationEnabled = metadata.simulationEnabled;
+        rigidbodyMode = metadata.rigidbodyMode;
+        simulationUseGravity = metadata.useGravity;
 
         CollectPlacementColliders();
         ConfigureRigidbody();
@@ -139,12 +151,19 @@ public class PlacedFurniture : MonoBehaviour
 
     public void SetMovable(bool movable)
     {
-        if (isMovable && !movable && isMoving)
+        SetManipulationMode(movable ? FurnitureManipulationMode.Move : FurnitureManipulationMode.None);
+    }
+
+    public void SetManipulationMode(FurnitureManipulationMode mode)
+    {
+        if (manipulationMode != FurnitureManipulationMode.None && mode == FurnitureManipulationMode.None && isMoving)
         {
             EndMove("MoveDisabled");
         }
 
-        isMovable = movable;
+        manipulationMode = mode;
+        isMovable = mode != FurnitureManipulationMode.None;
+        TransformFlags allowedManipulations = ToTransformFlags(mode);
 
         if (moveBehaviours != null)
         {
@@ -152,12 +171,31 @@ public class PlacedFurniture : MonoBehaviour
             {
                 if (behaviour != null)
                 {
-                    behaviour.enabled = movable;
+                    ObjectManipulator manipulator = behaviour as ObjectManipulator;
+                    if (manipulator != null)
+                    {
+                        manipulator.AllowedManipulations = allowedManipulations;
+                    }
+
+                    behaviour.enabled = isMovable;
                 }
             }
         }
 
         ResetTransformMonitor();
+    }
+
+    private static TransformFlags ToTransformFlags(FurnitureManipulationMode mode)
+    {
+        switch (mode)
+        {
+            case FurnitureManipulationMode.Move:
+                return TransformFlags.Move;
+            case FurnitureManipulationMode.Rotate:
+                return TransformFlags.Rotate;
+            default:
+                return TransformFlags.None;
+        }
     }
 
     public void NotifyTouched()
@@ -214,6 +252,7 @@ public class PlacedFurniture : MonoBehaviour
     {
         SetMovable(false);
         SetHeavyCollidersEnabled(true);
+        ApplySimulationRigidbodyMode();
     }
 
     public Collider[] GetActivePlacementColliders()
@@ -325,6 +364,31 @@ public class PlacedFurniture : MonoBehaviour
         rb.isKinematic = true;
         rb.useGravity = false;
         rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
+    }
+
+    private void ApplySimulationRigidbodyMode()
+    {
+        Rigidbody rb = GetComponent<Rigidbody>();
+        if (rb == null)
+        {
+            return;
+        }
+
+        string normalizedRigidbodyMode = string.IsNullOrWhiteSpace(rigidbodyMode)
+            ? string.Empty
+            : rigidbodyMode.Trim().ToLowerInvariant();
+        string normalizedPhysicsMode = string.IsNullOrWhiteSpace(physicsMode)
+            ? string.Empty
+            : physicsMode.Trim().ToLowerInvariant();
+
+        bool shouldBeDynamic =
+            simulationEnabled &&
+            (normalizedRigidbodyMode == "dynamic" ||
+             normalizedPhysicsMode == "dynamic_hazard" ||
+             normalizedPhysicsMode == "dynamic");
+
+        rb.isKinematic = !shouldBeDynamic;
+        rb.useGravity = shouldBeDynamic && simulationUseGravity;
     }
 
     private void WarnIfMeshCollidersAreNotConvex()

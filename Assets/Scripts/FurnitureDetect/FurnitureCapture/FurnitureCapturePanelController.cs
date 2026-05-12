@@ -47,13 +47,13 @@ public class FurnitureCapturePanelController : WorkflowPanelControllerBase
     public PressableButton uploadLatestSavedCaptureButton;
     public PressableButton uploadAllSavedCapturesButton;
 
-    [Tooltip("디버그용: POST /detect-session/{scan_session_id}?mode=auto")]
+    [Tooltip("Deprecated. Current server flow uses /scan-session/{scan_session_id}/finish.")]
     public PressableButton detectSessionButton;
 
-    [Tooltip("디버그용: GET /detections/{scan_session_id}")]
+    [Tooltip("Debug: GET /scan-job/{scan_session_id}")]
     public PressableButton getDetectionsButton;
 
-    [Tooltip("디버그용: POST /process-scan/{scan_session_id}?use_confirmed=1")]
+    [Tooltip("Debug: POST /scan-session/{scan_session_id}/finish")]
     public PressableButton processScanButton;
 
     [Tooltip("디버그용: GET /result/{scan_session_id}")]
@@ -383,8 +383,7 @@ public class FurnitureCapturePanelController : WorkflowPanelControllerBase
         if (!EnsureFurnitureCaptureManagerAvailable())
             return;
 
-        furnitureCaptureManager.StartDetectionForCurrentSession();
-        LogPanel("가구 후보 탐지 요청: POST /detect-session/{scan_session_id}?mode=auto");
+        LogPanel("Deprecated button ignored. Current server flow uses POST /scan-session/{scan_session_id}/finish, not /detect-session.");
     }
 
     public void OnClickGetDetections()
@@ -394,8 +393,8 @@ public class FurnitureCapturePanelController : WorkflowPanelControllerBase
         if (!EnsureFurnitureCaptureManagerAvailable())
             return;
 
-        furnitureCaptureManager.GetDetectionsForCurrentSession();
-        LogPanel("가구 후보 조회 요청: GET /detections/{scan_session_id}");
+        furnitureCaptureManager.GetScanJobForCurrentSession();
+        LogPanel("GLB generation status requested: GET /scan-job/{scan_session_id}");
     }
 
     public void OnClickProcessScan()
@@ -405,8 +404,8 @@ public class FurnitureCapturePanelController : WorkflowPanelControllerBase
         if (!EnsureFurnitureCaptureManagerAvailable())
             return;
 
-        furnitureCaptureManager.ProcessScanForCurrentSession();
-        LogPanel("Unity 배치 결과 생성 요청: POST /process-scan/{scan_session_id}?use_confirmed=1");
+        furnitureCaptureManager.FinishScanForCurrentSession();
+        LogPanel("GLB generation requested: POST /scan-session/{scan_session_id}/finish");
     }
 
     public void OnClickGetResult()

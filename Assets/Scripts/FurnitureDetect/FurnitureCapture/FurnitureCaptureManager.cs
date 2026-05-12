@@ -162,19 +162,34 @@ public class FurnitureCaptureManager : MonoBehaviour
     public void StartDetectionForCurrentSession()
     {
         EnsureReferences();
-        furnitureCapture?.StartDetectionForCurrentSession();
+        Debug.LogWarning("[FurnitureCaptureManager] StartDetectionForCurrentSession is deprecated. Use FinishScanForCurrentSession instead.");
+        furnitureCapture?.FinishScanForCurrentSession();
     }
 
     public void GetDetectionsForCurrentSession()
     {
         EnsureReferences();
-        furnitureCapture?.GetDetectionsForCurrentSession();
+        Debug.LogWarning("[FurnitureCaptureManager] GetDetectionsForCurrentSession is deprecated. Use GetScanJobForCurrentSession instead.");
+        furnitureCapture?.GetScanJobForCurrentSession();
     }
 
     public void ProcessScanForCurrentSession()
     {
         EnsureReferences();
-        furnitureCapture?.ProcessScanForCurrentSession();
+        Debug.LogWarning("[FurnitureCaptureManager] ProcessScanForCurrentSession is deprecated. Use FinishScanForCurrentSession instead.");
+        furnitureCapture?.FinishScanForCurrentSession();
+    }
+
+    public void FinishScanForCurrentSession()
+    {
+        EnsureReferences();
+        furnitureCapture?.FinishScanForCurrentSession();
+    }
+
+    public void GetScanJobForCurrentSession()
+    {
+        EnsureReferences();
+        furnitureCapture?.GetScanJobForCurrentSession();
     }
 
     public void GetResultForCurrentSession()

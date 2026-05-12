@@ -9,8 +9,46 @@ public class FurnitureServerStatusResponse
 {
     public string scan_session_id;
     public string status;
+    public string stage;
     public string message;
     public string error;
+    public string stderr_tail;
+    public string status_url;
+    public string result_url;
+    public int image_count;
+    public int metadata_count;
+    public int object_count;
+
+    public bool IsProcessingStatus()
+    {
+        string normalized = NormalizeStatus(status);
+        return normalized == "queued" ||
+               normalized == "processing" ||
+               normalized == "collecting_frames" ||
+               normalized == "running" ||
+               normalized == "pending";
+    }
+
+    public bool IsDoneStatus()
+    {
+        string normalized = NormalizeStatus(status);
+        return normalized == "done" ||
+               normalized == "completed" ||
+               normalized == "success" ||
+               normalized == "ready";
+    }
+
+    public bool IsFailedStatus()
+    {
+        string normalized = NormalizeStatus(status);
+        return normalized == "failed" ||
+               normalized == "error";
+    }
+
+    private static string NormalizeStatus(string raw)
+    {
+        return string.IsNullOrWhiteSpace(raw) ? string.Empty : raw.Trim().ToLowerInvariant();
+    }
 }
 
 [Serializable]
@@ -30,11 +68,20 @@ public class FurnitureServerResultResponse
     public string scan_session_id;
     public string status;
     public string mode;
+    public bool manual_placement_required;
+    public bool server_auto_placement_enabled;
+    public int object_count;
     public string message;
     public string error;
     public int frame_count;
     public string[] frames;
     public FurnitureServerResultObject[] objects;
+    public string[] skipped_objects;
+    public string detector_mode;
+    public int detection_count;
+    public bool used_confirmed_detections;
+    public FurnitureServerPlacementItem[] placement_items;
+    public string placement_metadata_source;
 
     public bool HasObjects => objects != null && objects.Length > 0;
 
@@ -97,10 +144,17 @@ public class FurnitureServerResultObject
 
     public string mesh_url;
     public string mesh_filename;
+    public string mesh_format;
     public string mesh_source;
     public string mesh_strategy;
     public string mesh_strategy_reason;
     public string sam3d_status;
+    public string source;
+    public string detection_id;
+    public string frame_id;
+    public string thumbnail_url;
+    public string image_url;
+    public int instance_index;
 
     public float[] position;
     public float[] rotation;
@@ -115,6 +169,7 @@ public class FurnitureServerResultObject
     public float[] collider_size;
 
     public string placement_mode;
+    public bool manual_placement_required;
     public string placement_status;
     public float placement_confidence;
 
@@ -142,4 +197,21 @@ public class FurnitureServerResultObject
     public string joint_type;
     public bool joint_required;
     public string connected_wall_policy;
+    public float[] placement_pixel;
+    public float width_estimate;
+}
+
+[Serializable]
+public class FurnitureServerPlacementItem
+{
+    public string label;
+    public float[] bbox;
+    public string frame_id;
+    public string image_filename;
+    public string metadata_filename;
+    public float confidence;
+    public string source;
+    public string detection_id;
+    public string raw_label;
+    public int instance_index;
 }

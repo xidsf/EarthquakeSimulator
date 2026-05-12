@@ -64,6 +64,10 @@ public class FurnitureServerResultPlacer : MonoBehaviour
     [Header("Placement")]
     [Tooltip("기존 서버 결과 가구를 지우고 새 result를 배치합니다.")]
     public bool clearPreviousServerResultFurniture = true;
+    public bool ignoreServerTransformForManualPlacement = true;
+    public bool spawnManualObjectAtRoomCenter = true;
+    public bool enableMoveModeAfterManualObjectLoad = true;
+    public bool validateManualObjectOnRegister = false;
 
     [Tooltip("result 객체별 로딩 실패 시 다음 객체를 계속 처리합니다.")]
     public bool continueWhenSingleObjectFails = true;
@@ -88,6 +92,38 @@ public class FurnitureServerResultPlacer : MonoBehaviour
     public void PlaceResult(FurnitureServerResultResponse result)
     {
         StartCoroutine(PlaceResultRoutine(result, null));
+    }
+
+    public IEnumerator PlaceSingleObjectRoutine(FurnitureServerResultObject serverObject, Action<bool, GameObject, string> onComplete)
+    {
+        EnsureReferences();
+
+        if (serverObject == null)
+        {
+            onComplete?.Invoke(false, null, "serverObject is null");
+            yield break;
+        }
+
+        if (meshLoader == null || furniturePlacementManager == null)
+        {
+            onComplete?.Invoke(false, null, "Required references are missing.");
+            yield break;
+        }
+
+        IsPlacing = true;
+        bool placed = false;
+        GameObject instance = null;
+        string error = string.Empty;
+
+        yield return PlaceServerObjectRoutine(serverObject, (ok, placedObject, placeError) =>
+        {
+            placed = ok;
+            instance = placedObject;
+            error = placeError;
+        });
+
+        IsPlacing = false;
+        onComplete?.Invoke(placed, instance, error);
     }
 
     public IEnumerator PlaceResultRoutine(FurnitureServerResultResponse result, Action<int, int> onComplete)
@@ -127,22 +163,19 @@ public class FurnitureServerResultPlacer : MonoBehaviour
 
         foreach (FurnitureServerResultObject serverObject in result.objects)
         {
-            bool loaded = false;
-            GameObject instance = null;
-            string loadError = string.Empty;
+            bool placed = false;
+            string placeError = string.Empty;
 
-            yield return meshLoader.LoadFurnitureObject(serverObject, (loadedObject, error) =>
+            yield return PlaceServerObjectRoutine(serverObject, (ok, placedObject, error) =>
             {
-                instance = loadedObject;
-                loadError = error;
-                loaded = loadedObject != null;
+                placed = ok;
+                placeError = error;
             });
 
-            if (!loaded || instance == null)
+            if (!placed)
             {
                 LastFailedCount++;
-                Debug.LogWarning($"[FurnitureServerResultPlacer] Mesh load failed. id:{serverObject?.id}, label:{serverObject?.label}, error:{loadError}");
-
+                Debug.LogWarning($"[FurnitureServerResultPlacer] Server object placement failed. id:{serverObject?.id}, label:{serverObject?.label}, error:{placeError}");
                 if (!continueWhenSingleObjectFails)
                 {
                     break;
@@ -151,61 +184,113 @@ public class FurnitureServerResultPlacer : MonoBehaviour
                 continue;
             }
 
-            if (serverSpawnRoot != null)
-            {
-                instance.transform.SetParent(serverSpawnRoot, true);
-            }
-
-            if (configureRuntimeInteractionBeforeTargetSize)
-            {
-                RuntimeFurnitureInteractionSetup setup = runtimeInteractionSetup != null
-                    ? runtimeInteractionSetup
-                    : furniturePlacementManager.runtimeInteractionSetup;
-
-                if (setup != null)
-                {
-                    setup.ConfigureFurnitureObject(instance);
-                }
-            }
-
-            ApplyServerTransform(instance, serverObject);
-            NormalizeModelIfNeeded(instance);
-            ApplyTargetSize(instance, serverObject);
-            NormalizeModelIfNeeded(instance);
-
-            FurniturePlacementMetadata metadata = new FurniturePlacementMetadata
-            {
-                furnitureId = string.IsNullOrWhiteSpace(serverObject.id) ? Guid.NewGuid().ToString("N") : serverObject.id,
-                label = serverObject.label,
-                source = "server_result",
-                displayName = string.IsNullOrWhiteSpace(serverObject.label) ? instance.name : serverObject.label,
-                serverObjectId = serverObject.id,
-                meshUrl = serverObject.mesh_url,
-                confidence = serverObject.confidence
-            };
-
-            bool registered = furniturePlacementManager.RegisterRecognizedFurniture(instance, metadata);
-            if (registered)
-            {
-                LastPlacedCount++;
-                if (logPlacement)
-                {
-                    Debug.Log($"[FurnitureServerResultPlacer] Server object placed. id:{serverObject.id}, label:{serverObject.label}, confidence:{serverObject.confidence}", instance);
-                }
-            }
-            else
-            {
-                LastFailedCount++;
-                if (instance != null)
-                {
-                    Destroy(instance);
-                }
-            }
+            LastPlacedCount++;
         }
 
         IsPlacing = false;
         Debug.Log($"[FurnitureServerResultPlacer] Placement finished. placed:{LastPlacedCount}, failed:{LastFailedCount}");
         onComplete?.Invoke(LastPlacedCount, LastFailedCount);
+    }
+
+    private IEnumerator PlaceServerObjectRoutine(FurnitureServerResultObject serverObject, Action<bool, GameObject, string> onComplete)
+    {
+        bool loaded = false;
+        GameObject instance = null;
+        string loadError = string.Empty;
+
+        yield return meshLoader.LoadFurnitureObject(serverObject, (loadedObject, error) =>
+        {
+            instance = loadedObject;
+            loadError = error;
+            loaded = loadedObject != null;
+        });
+
+        if (!loaded || instance == null)
+        {
+            onComplete?.Invoke(false, null, $"Mesh load failed. {loadError}");
+            yield break;
+        }
+
+        if (serverSpawnRoot != null)
+        {
+            instance.transform.SetParent(serverSpawnRoot, true);
+        }
+
+        if (configureRuntimeInteractionBeforeTargetSize)
+        {
+            RuntimeFurnitureInteractionSetup setup = runtimeInteractionSetup != null
+                ? runtimeInteractionSetup
+                : furniturePlacementManager.runtimeInteractionSetup;
+
+            if (setup != null)
+            {
+                setup.ConfigureFurnitureObject(instance);
+            }
+        }
+
+        ApplyInitialTransform(instance, serverObject);
+        NormalizeModelIfNeeded(instance);
+        ApplyTargetSize(instance, serverObject);
+        NormalizeModelIfNeeded(instance);
+        ApplyServerCollider(instance, serverObject);
+
+        FurniturePlacementMetadata metadata = new FurniturePlacementMetadata
+        {
+            furnitureId = string.IsNullOrWhiteSpace(serverObject.id) ? Guid.NewGuid().ToString("N") : serverObject.id,
+            label = serverObject.label,
+            source = "server_result",
+            displayName = string.IsNullOrWhiteSpace(serverObject.label) ? instance.name : serverObject.label,
+            serverObjectId = serverObject.id,
+            meshUrl = serverObject.mesh_url,
+            confidence = serverObject.confidence,
+            detectionId = serverObject.detection_id,
+            frameId = serverObject.frame_id,
+            placementMode = serverObject.placement_mode,
+            rawLabel = serverObject.raw_label,
+            thumbnailUrl = !string.IsNullOrWhiteSpace(serverObject.thumbnail_url) ? serverObject.thumbnail_url : serverObject.image_url,
+            physicsMode = serverObject.physics_mode,
+            simulationEnabled = serverObject.simulation_enabled,
+            rigidbodyMode = serverObject.rigidbody_mode,
+            useGravity = serverObject.use_gravity
+        };
+
+        bool shouldSkipValidation = IsManualPlacement(serverObject) && !validateManualObjectOnRegister;
+        bool originalValidateOnRegister = furniturePlacementManager.validateOnRegister;
+        if (shouldSkipValidation)
+        {
+            furniturePlacementManager.validateOnRegister = false;
+        }
+
+        bool registered = furniturePlacementManager.RegisterRecognizedFurniture(instance, metadata);
+        furniturePlacementManager.validateOnRegister = originalValidateOnRegister;
+
+        if (!registered)
+        {
+            Destroy(instance);
+            onComplete?.Invoke(false, null, "FurniturePlacementManager rejected the object.");
+            yield break;
+        }
+
+        ApplyPhysicsMetadata(instance, serverObject);
+        SelectForManualPlacementIfNeeded(instance, serverObject);
+
+        if (logPlacement)
+        {
+            Debug.Log($"[FurnitureServerResultPlacer] Server object placed. id:{serverObject.id}, label:{serverObject.label}, confidence:{serverObject.confidence}", instance);
+        }
+
+        onComplete?.Invoke(true, instance, string.Empty);
+    }
+
+    private void ApplyInitialTransform(GameObject instance, FurnitureServerResultObject serverObject)
+    {
+        if (ignoreServerTransformForManualPlacement && IsManualPlacement(serverObject))
+        {
+            ApplyManualSpawnTransform(instance);
+            return;
+        }
+
+        ApplyServerTransform(instance, serverObject);
     }
 
     private void ApplyServerTransform(GameObject instance, FurnitureServerResultObject serverObject)
@@ -249,6 +334,42 @@ public class FurnitureServerResultPlacer : MonoBehaviour
                 instance.transform.SetPositionAndRotation(position, rotation);
                 break;
         }
+    }
+
+    private void ApplyManualSpawnTransform(GameObject instance)
+    {
+        Vector3 position = Vector3.zero;
+        Quaternion rotation = Quaternion.identity;
+
+        ConfirmedRoomGeometryProvider geometryProvider = furniturePlacementManager != null
+            ? furniturePlacementManager.roomGeometryProvider
+            : null;
+
+        if (spawnManualObjectAtRoomCenter && geometryProvider != null && geometryProvider.IsInitialized)
+        {
+            Bounds roomBounds = geometryProvider.RoomBounds;
+            position = new Vector3(roomBounds.center.x, geometryProvider.FloorTopY, roomBounds.center.z);
+        }
+        else
+        {
+            Camera mainCamera = Camera.main;
+            if (mainCamera != null)
+            {
+                Vector3 forward = Vector3.ProjectOnPlane(mainCamera.transform.forward, Vector3.up);
+                if (forward.sqrMagnitude < 0.0001f)
+                {
+                    forward = mainCamera.transform.forward;
+                }
+
+                position = mainCamera.transform.position + forward.normalized * 1.5f;
+                position.y = geometryProvider != null && geometryProvider.IsInitialized
+                    ? geometryProvider.FloorTopY
+                    : 0f;
+                rotation = Quaternion.Euler(0f, mainCamera.transform.eulerAngles.y, 0f);
+            }
+        }
+
+        instance.transform.SetPositionAndRotation(position, rotation);
     }
 
     private Quaternion ConvertRotation(float[] serverRotation)
@@ -339,6 +460,86 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         instance.transform.localScale = scale;
     }
 
+    private void ApplyServerCollider(GameObject instance, FurnitureServerResultObject serverObject)
+    {
+        if (instance == null || serverObject == null)
+        {
+            return;
+        }
+
+        string colliderType = string.IsNullOrWhiteSpace(serverObject.collider_type)
+            ? "box"
+            : serverObject.collider_type.Trim().ToLowerInvariant();
+
+        if (colliderType != "box")
+        {
+            return;
+        }
+
+        Vector3 colliderSize = ToVector3(serverObject.collider_size, Vector3.zero);
+        if (!HasAllPositiveComponents(colliderSize))
+        {
+            return;
+        }
+
+        BoxCollider boxCollider = instance.GetComponent<BoxCollider>();
+        if (boxCollider == null)
+        {
+            boxCollider = instance.AddComponent<BoxCollider>();
+        }
+
+        boxCollider.center = ToVector3(serverObject.collider_center, new Vector3(0f, colliderSize.y * 0.5f, 0f));
+        boxCollider.size = colliderSize;
+        boxCollider.enabled = true;
+    }
+
+    private void ApplyPhysicsMetadata(GameObject instance, FurnitureServerResultObject serverObject)
+    {
+        Rigidbody rb = instance != null ? instance.GetComponent<Rigidbody>() : null;
+        if (rb == null || serverObject == null)
+        {
+            return;
+        }
+
+        string rigidbodyMode = string.IsNullOrWhiteSpace(serverObject.rigidbody_mode)
+            ? string.Empty
+            : serverObject.rigidbody_mode.Trim().ToLowerInvariant();
+        string physicsMode = string.IsNullOrWhiteSpace(serverObject.physics_mode)
+            ? string.Empty
+            : serverObject.physics_mode.Trim().ToLowerInvariant();
+
+        bool wantsDynamicSimulation =
+            serverObject.simulation_enabled &&
+            (rigidbodyMode == "dynamic" ||
+             physicsMode == "dynamic_hazard" ||
+             physicsMode == "dynamic");
+
+        rb.isKinematic = true;
+        rb.useGravity = false;
+
+        if (wantsDynamicSimulation && logPlacement)
+        {
+            Debug.Log($"[FurnitureServerResultPlacer] Dynamic simulation metadata stored. id:{serverObject.id}, physics:{serverObject.physics_mode}, rigidbody:{serverObject.rigidbody_mode}");
+        }
+    }
+
+    private void SelectForManualPlacementIfNeeded(GameObject instance, FurnitureServerResultObject serverObject)
+    {
+        if (!enableMoveModeAfterManualObjectLoad || !IsManualPlacement(serverObject) || furniturePlacementManager == null)
+        {
+            return;
+        }
+
+        PlacedFurniture placedFurniture = instance.GetComponent<PlacedFurniture>();
+        if (placedFurniture == null || furniturePlacementManager.moveModeController == null)
+        {
+            return;
+        }
+
+        furniturePlacementManager.moveModeController.SetMoveMode(true);
+        furniturePlacementManager.moveModeController.SelectFurniture(placedFurniture);
+    }
+
     private void NormalizeModelIfNeeded(GameObject root)
     {
         if (!normalizeModelToGround || root == null)
@@ -388,6 +589,22 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         }
 
         return ToVector3(serverObject.scale, Vector3.zero);
+    }
+
+    private static bool IsManualPlacement(FurnitureServerResultObject serverObject)
+    {
+        if (serverObject == null)
+        {
+            return false;
+        }
+
+        if (serverObject.manual_placement_required)
+        {
+            return true;
+        }
+
+        return !string.IsNullOrWhiteSpace(serverObject.placement_mode) &&
+               serverObject.placement_mode.Trim().Equals("manual", StringComparison.OrdinalIgnoreCase);
     }
 
     private static Vector3 ToVector3(float[] values, Vector3 fallback)

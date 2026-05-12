@@ -2,6 +2,13 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
+public enum FurnitureManipulationMode
+{
+    None,
+    Move,
+    Rotate
+}
+
 /// <summary>
 /// HoloLens2 손 조작 오류를 줄이기 위한 이동 모드 컨트롤러입니다.
 ///
@@ -13,6 +20,7 @@ public class FurnitureMoveModeController : MonoBehaviour
 {
     [Header("Move Mode")]
     [SerializeField] private bool isMoveModeEnabled;
+    [SerializeField] private FurnitureManipulationMode currentMode = FurnitureManipulationMode.None;
 
     [Tooltip("true면 Move Mode ON일 때 모든 가구가 직접 터치/이동 가능합니다. false면 선택된 가구 1개만 이동 가능합니다.")]
     public bool allowAllFurnitureMovableInMoveMode = true;
@@ -27,6 +35,8 @@ public class FurnitureMoveModeController : MonoBehaviour
     public event Action<PlacedFurniture> SelectionChanged;
 
     public bool IsMoveModeEnabled => isMoveModeEnabled;
+    public bool IsRotateModeEnabled => currentMode == FurnitureManipulationMode.Rotate;
+    public FurnitureManipulationMode CurrentMode => currentMode;
     public PlacedFurniture SelectedFurniture => IsValidIndex(selectedIndex) ? furnitures[selectedIndex] : null;
     public IReadOnlyList<PlacedFurniture> RegisteredFurnitures => furnitures;
 
@@ -80,18 +90,34 @@ public class FurnitureMoveModeController : MonoBehaviour
 
     public void ToggleMoveMode()
     {
-        SetMoveMode(!isMoveModeEnabled);
+        SetMoveMode(currentMode != FurnitureManipulationMode.Move);
     }
 
     public void SetMoveMode(bool enabled)
     {
-        if (isMoveModeEnabled == enabled)
+        SetManipulationMode(enabled ? FurnitureManipulationMode.Move : FurnitureManipulationMode.None);
+    }
+
+    public void ToggleRotateMode()
+    {
+        SetRotateMode(currentMode != FurnitureManipulationMode.Rotate);
+    }
+
+    public void SetRotateMode(bool enabled)
+    {
+        SetManipulationMode(enabled ? FurnitureManipulationMode.Rotate : FurnitureManipulationMode.None);
+    }
+
+    public void SetManipulationMode(FurnitureManipulationMode mode)
+    {
+        if (currentMode == mode)
         {
             ApplyMovableState();
             return;
         }
 
-        isMoveModeEnabled = enabled;
+        currentMode = mode;
+        isMoveModeEnabled = currentMode != FurnitureManipulationMode.None;
 
         if (isMoveModeEnabled && !allowAllFurnitureMovableInMoveMode && autoSelectFirstFurnitureWhenMoveModeEnabled && !IsValidIndex(selectedIndex) && furnitures.Count > 0)
         {
@@ -101,7 +127,7 @@ public class FurnitureMoveModeController : MonoBehaviour
 
         ApplyMovableState();
         MoveModeChanged?.Invoke(isMoveModeEnabled);
-        Debug.Log($"[FurnitureMoveModeController] Move Mode {(isMoveModeEnabled ? "ON" : "OFF")}, allowAll:{allowAllFurnitureMovableInMoveMode}");
+        Debug.Log($"[FurnitureMoveModeController] Manipulation mode:{currentMode}, allowAll:{allowAllFurnitureMovableInMoveMode}");
     }
 
     public void SelectNext()
@@ -168,13 +194,14 @@ public class FurnitureMoveModeController : MonoBehaviour
                 continue;
             }
 
-            bool movable = false;
+            FurnitureManipulationMode mode = FurnitureManipulationMode.None;
             if (isMoveModeEnabled)
             {
-                movable = allowAllFurnitureMovableInMoveMode || i == selectedIndex;
+                bool active = allowAllFurnitureMovableInMoveMode || i == selectedIndex;
+                mode = active ? currentMode : FurnitureManipulationMode.None;
             }
 
-            furniture.SetMovable(movable);
+            furniture.SetManipulationMode(mode);
         }
     }
 

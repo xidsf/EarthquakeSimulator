@@ -32,8 +32,20 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     [Tooltip("촬영 단계에서 만들어진 scan_session_id로 detect/process/result를 실행하고 서버 결과를 배치합니다.")]
     public PressableButton userPlaceFurnitureFromServerButton;
 
+    [Tooltip("Selects the next furniture item from the cached server result.")]
+    public PressableButton userSelectNextServerFurnitureButton;
+
+    [Tooltip("Selects the previous furniture item from the cached server result.")]
+    public PressableButton userSelectPreviousServerFurnitureButton;
+
+    [Tooltip("Places only the currently selected furniture item from the cached server result.")]
+    public PressableButton userPlaceSelectedServerFurnitureButton;
+
     [Tooltip("가구 이동 모드를 켜거나 끕니다. Move Mode가 켜져 있을 때만 터치 선택/이동이 가능합니다.")]
     public PressableButton userToggleMoveModeButton;
+
+    [Tooltip("Toggles furniture rotate mode. Rotate mode only allows Y-axis rotation on the selected/active furniture.")]
+    public PressableButton userToggleRotateModeButton;
 
     [Tooltip("현재 터치로 선택된 가구의 위치를 확정합니다.")]
     public PressableButton userConfirmSelectedFurnitureButton;
@@ -70,6 +82,9 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     [Tooltip("디버깅용 Move Mode 토글입니다. 사용자 버튼과 같은 기능입니다.")]
     public PressableButton debugToggleMoveModeButton;
 
+    [Tooltip("Debug-only Rotate Mode toggle. Same behavior as the user rotate mode button.")]
+    public PressableButton debugToggleRotateModeButton;
+
     [Tooltip("직접 터치 선택이 어려울 때 디버깅용으로 다음 가구를 선택합니다. 실제 사용자 UI에는 노출하지 않습니다.")]
     public PressableButton debugSelectNextFurnitureButton;
 
@@ -83,7 +98,11 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     [Min(1)] public int debugMultiplePlacementCount = 3;
 
     private UnityAction userPlaceFurnitureFromServerAction;
+    private UnityAction userSelectNextServerFurnitureAction;
+    private UnityAction userSelectPreviousServerFurnitureAction;
+    private UnityAction userPlaceSelectedServerFurnitureAction;
     private UnityAction userToggleMoveModeAction;
+    private UnityAction userToggleRotateModeAction;
     private UnityAction userConfirmSelectedFurnitureAction;
     private UnityAction userCompleteFurniturePlacementAction;
 
@@ -94,6 +113,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     private UnityAction debugSimulatedCaptureAction;
     private UnityAction debugClearPlacedFurnitureAction;
     private UnityAction debugToggleMoveModeAction;
+    private UnityAction debugToggleRotateModeAction;
     private UnityAction debugSelectNextFurnitureAction;
     private UnityAction debugSelectPreviousFurnitureAction;
     private UnityAction debugConfirmSelectedFurnitureAction;
@@ -194,7 +214,11 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     private void CreateActions()
     {
         userPlaceFurnitureFromServerAction ??= OnClickPlaceFurnitureFromServer;
+        userSelectNextServerFurnitureAction ??= OnClickSelectNextServerFurniture;
+        userSelectPreviousServerFurnitureAction ??= OnClickSelectPreviousServerFurniture;
+        userPlaceSelectedServerFurnitureAction ??= OnClickPlaceSelectedServerFurniture;
         userToggleMoveModeAction ??= OnClickToggleMoveMode;
+        userToggleRotateModeAction ??= OnClickToggleRotateMode;
         userConfirmSelectedFurnitureAction ??= OnClickConfirmSelectedFurniture;
         userCompleteFurniturePlacementAction ??= OnClickCompleteFurniturePlacement;
 
@@ -205,6 +229,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         debugSimulatedCaptureAction ??= OnClickDebugSimulatedCapture;
         debugClearPlacedFurnitureAction ??= OnClickDebugClearPlacedFurniture;
         debugToggleMoveModeAction ??= OnClickToggleMoveMode;
+        debugToggleRotateModeAction ??= OnClickToggleRotateMode;
         debugSelectNextFurnitureAction ??= OnClickDebugSelectNextFurniture;
         debugSelectPreviousFurnitureAction ??= OnClickDebugSelectPreviousFurniture;
         debugConfirmSelectedFurnitureAction ??= OnClickConfirmSelectedFurniture;
@@ -213,7 +238,11 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     private void RegisterButtons()
     {
         AddClick(userPlaceFurnitureFromServerButton, userPlaceFurnitureFromServerAction);
+        AddClick(userSelectNextServerFurnitureButton, userSelectNextServerFurnitureAction);
+        AddClick(userSelectPreviousServerFurnitureButton, userSelectPreviousServerFurnitureAction);
+        AddClick(userPlaceSelectedServerFurnitureButton, userPlaceSelectedServerFurnitureAction);
         AddClick(userToggleMoveModeButton, userToggleMoveModeAction);
+        AddClick(userToggleRotateModeButton, userToggleRotateModeAction);
         AddClick(userConfirmSelectedFurnitureButton, userConfirmSelectedFurnitureAction);
         AddClick(userCompleteFurniturePlacementButton, userCompleteFurniturePlacementAction);
 
@@ -225,6 +254,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         AddClick(debugSimulatedCaptureButton, debugSimulatedCaptureAction);
         AddClick(debugClearPlacedFurnitureButton, debugClearPlacedFurnitureAction);
         AddClick(debugToggleMoveModeButton, debugToggleMoveModeAction);
+        AddClick(debugToggleRotateModeButton, debugToggleRotateModeAction);
         AddClick(debugSelectNextFurnitureButton, debugSelectNextFurnitureAction);
         AddClick(debugSelectPreviousFurnitureButton, debugSelectPreviousFurnitureAction);
         AddClick(debugConfirmSelectedFurnitureButton, debugConfirmSelectedFurnitureAction);
@@ -233,7 +263,11 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     private void UnregisterButtons()
     {
         RemoveClick(userPlaceFurnitureFromServerButton, userPlaceFurnitureFromServerAction);
+        RemoveClick(userSelectNextServerFurnitureButton, userSelectNextServerFurnitureAction);
+        RemoveClick(userSelectPreviousServerFurnitureButton, userSelectPreviousServerFurnitureAction);
+        RemoveClick(userPlaceSelectedServerFurnitureButton, userPlaceSelectedServerFurnitureAction);
         RemoveClick(userToggleMoveModeButton, userToggleMoveModeAction);
+        RemoveClick(userToggleRotateModeButton, userToggleRotateModeAction);
         RemoveClick(userConfirmSelectedFurnitureButton, userConfirmSelectedFurnitureAction);
         RemoveClick(userCompleteFurniturePlacementButton, userCompleteFurniturePlacementAction);
 
@@ -244,6 +278,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         RemoveClick(debugSimulatedCaptureButton, debugSimulatedCaptureAction);
         RemoveClick(debugClearPlacedFurnitureButton, debugClearPlacedFurnitureAction);
         RemoveClick(debugToggleMoveModeButton, debugToggleMoveModeAction);
+        RemoveClick(debugToggleRotateModeButton, debugToggleRotateModeAction);
         RemoveClick(debugSelectNextFurnitureButton, debugSelectNextFurnitureAction);
         RemoveClick(debugSelectPreviousFurnitureButton, debugSelectPreviousFurnitureAction);
         RemoveClick(debugConfirmSelectedFurnitureButton, debugConfirmSelectedFurnitureAction);
@@ -260,7 +295,37 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         }
 
         serverPlacementPipeline.StartPlacementFromCurrentScanSession();
-        Debug.Log("[FurniturePlacementPanelController] Server furniture placement requested from current scan_session_id.");
+        Debug.Log("[FurniturePlacementPanelController] Server furniture list requested from current scan_session_id. Select and place an object after result is ready.");
+    }
+
+    public void OnClickSelectNextServerFurniture()
+    {
+        EnsureFurniturePlacementReferences();
+        serverPlacementPipeline?.SelectNextPendingObject();
+    }
+
+    public void OnClickSelectPreviousServerFurniture()
+    {
+        EnsureFurniturePlacementReferences();
+        serverPlacementPipeline?.SelectPreviousPendingObject();
+    }
+
+    public void OnClickPlaceSelectedServerFurniture()
+    {
+        EnsureFurniturePlacementReferences();
+        serverPlacementPipeline?.PlaceSelectedPendingObject();
+    }
+
+    public void SelectServerFurnitureByIndex(int index)
+    {
+        EnsureFurniturePlacementReferences();
+        serverPlacementPipeline?.SelectPendingObject(index);
+    }
+
+    public void PlaceServerFurnitureByIndex(int index)
+    {
+        EnsureFurniturePlacementReferences();
+        serverPlacementPipeline?.PlacePendingObject(index);
     }
 
     public void OnClickToggleMoveMode()
@@ -274,7 +339,21 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         }
 
         moveModeController.ToggleMoveMode();
-        Debug.Log($"[FurniturePlacementPanelController] Move Mode toggled. enabled:{moveModeController.IsMoveModeEnabled}");
+        Debug.Log($"[FurniturePlacementPanelController] Move Mode toggled. mode:{moveModeController.CurrentMode}");
+    }
+
+    public void OnClickToggleRotateMode()
+    {
+        EnsureFurniturePlacementReferences();
+
+        if (moveModeController == null)
+        {
+            Debug.LogWarning("[FurniturePlacementPanelController] Toggle Rotate Mode failed. MoveModeController is missing.");
+            return;
+        }
+
+        moveModeController.ToggleRotateMode();
+        Debug.Log($"[FurniturePlacementPanelController] Rotate Mode toggled. mode:{moveModeController.CurrentMode}");
     }
 
     public void OnClickConfirmSelectedFurniture()

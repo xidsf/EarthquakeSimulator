@@ -4,6 +4,7 @@ public class FurnitureScanTester : MonoBehaviour
 {
     public FurnitureScanClient scanClient;
     public FurnitureObjectFactory objectFactory;
+    public string debugScanSessionId;
 
     public void RunTest()
     {
@@ -25,7 +26,13 @@ public class FurnitureScanTester : MonoBehaviour
 
     public void RunLatestMeshTest()
     {
-        StartCoroutine(scanClient.LoadLatestResult(OnScanCompleted));
+        if (string.IsNullOrWhiteSpace(debugScanSessionId))
+        {
+            Debug.LogError("[FurnitureScanTester] debugScanSessionId is empty. /result/latest is not supported.");
+            return;
+        }
+
+        StartCoroutine(scanClient.LoadSessionResult(debugScanSessionId, OnScanCompleted));
     }
 
     private string CreateFakeMetadataJson()

@@ -87,9 +87,22 @@ public class FurnitureScanClient : MonoBehaviour
         Debug.LogError("[FurnitureScan] result polling timeout.");
     }
 
+    [Obsolete("Use LoadSessionResult(scanSessionId). /result/latest must not be used because it can return another scan session.")]
     public IEnumerator LoadLatestResult(Action<FurnitureResultResponse> onCompleted)
     {
-        string url = "https://api.earquake.xyz/result/latest";
+        Debug.LogError("[FurnitureScan] /result/latest is disabled. Use LoadSessionResult(scan_session_id).");
+        yield break;
+    }
+
+    public IEnumerator LoadSessionResult(string scanSessionId, Action<FurnitureResultResponse> onCompleted)
+    {
+        if (string.IsNullOrWhiteSpace(scanSessionId))
+        {
+            Debug.LogError("[FurnitureScan] scanSessionId is empty.");
+            yield break;
+        }
+
+        string url = resultBaseUrl + UnityWebRequest.EscapeURL(scanSessionId);
 
         using (UnityWebRequest request = UnityWebRequest.Get(url))
         {
@@ -99,20 +112,26 @@ public class FurnitureScanClient : MonoBehaviour
 
             if (request.result != UnityWebRequest.Result.Success)
             {
-                Debug.LogError($"[FurnitureScan] /result/latest failed: {request.error}");
+                Debug.LogError($"[FurnitureScan] /result/{{scan_session_id}} failed: {request.error}");
                 Debug.LogError(request.downloadHandler.text);
                 yield break;
             }
 
             string json = request.downloadHandler.text;
-            Debug.Log($"[FurnitureScan] Latest result response: {json}");
+            Debug.Log($"[FurnitureScan] Session result response: {json}");
 
             FurnitureResultResponse result =
                 JsonUtility.FromJson<FurnitureResultResponse>(json);
 
             if (result == null || result.objects == null)
             {
-                Debug.LogError("[FurnitureScan] Failed to parse latest result.");
+                Debug.LogError("[FurnitureScan] Failed to parse session result.");
+                yield break;
+            }
+
+            if (!string.IsNullOrWhiteSpace(result.scan_session_id) && result.scan_session_id != scanSessionId)
+            {
+                Debug.LogError($"[FurnitureScan] Wrong scan result received. expected:{scanSessionId}, actual:{result.scan_session_id}");
                 yield break;
             }
 

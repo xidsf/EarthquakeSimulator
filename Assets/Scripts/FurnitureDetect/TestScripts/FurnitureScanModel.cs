@@ -107,6 +107,11 @@ public class ProcessScanResponse
 {
     public string scan_session_id;
     public string status;
+    public string stage;
     public int frame_count;
+    public int object_count;
+    public string status_url;
     public string result_url;
+    public string error;
+    public string stderr_tail;
 }

@@ -21,16 +21,25 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
     public string debugOverrideScanSessionId;
 
     [Header("Server Flow")]
-    public bool callDetectSessionBeforeProcess = true;
-    public bool getDetectionsAfterDetect = true;
-    public bool callProcessScanBeforeResult = true;
+    [Tooltip("Calls POST /scan-session/{scan_session_id}/finish before polling. Keep this enabled for normal HoloLens capture flow.")]
+    public bool callFinishScanBeforePolling = true;
+
+    [Tooltip("Optional JSON body for /scan-session/{scan_session_id}/finish. Leave empty to use the server defaults.")]
+    [TextArea(2, 6)] public string finishScanRequestJson = string.Empty;
+
+    [HideInInspector] public bool callDetectSessionBeforeProcess = false;
+    [HideInInspector] public bool getDetectionsAfterDetect = false;
+    [HideInInspector] public bool callProcessScanBeforeResult = false;
+
+    [Tooltip("true이면 서버 result를 받자마자 모든 가구를 자동 배치합니다. false이면 result만 캐시하고 UI 선택 후 PlaceSelectedPendingObject/PlacePendingObject를 호출해야 합니다.")]
+    public bool autoPlaceResultObjects = false;
 
     [Tooltip("같은 scan_session_id에 detect/process를 다시 호출할 수 있는지 서버와 합의되기 전에는 true로 두고 버튼 연타를 막는 용도로만 사용합니다.")]
     public bool blockWhileRunning = true;
 
     [Header("Polling")]
-    [Min(1)] public int maxResultPollAttempts = 20;
-    [Min(0.1f)] public float resultPollIntervalSeconds = 2.0f;
+    [Min(1)] public int maxJobPollAttempts = 120;
+    [Min(0.1f)] public float jobPollIntervalSeconds = 2.0f;
 
     [Header("Log")]
     public bool logPipeline = true;
@@ -39,6 +48,9 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
     public string ActiveScanSessionId { get; private set; }
     public string LastStatus { get; private set; }
     public FurnitureServerResultResponse LastResult { get; private set; }
+    public int PendingObjectCount => LastResult != null && LastResult.objects != null ? LastResult.objects.Length : 0;
+    public int SelectedPendingObjectIndex { get; private set; } = -1;
+    public FurnitureServerResultObject SelectedPendingObject => GetPendingObject(SelectedPendingObjectIndex);
 
     private Coroutine runningCoroutine;
 
@@ -94,6 +106,137 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         Debug.Log("[FurnitureServerPlacementPipeline] Flow stopped.");
     }
 
+    public FurnitureServerResultObject GetPendingObject(int index)
+    {
+        if (LastResult == null || LastResult.objects == null || index < 0 || index >= LastResult.objects.Length)
+        {
+            return null;
+        }
+
+        return LastResult.objects[index];
+    }
+
+    public string GetPendingObjectLabel(int index)
+    {
+        FurnitureServerResultObject obj = GetPendingObject(index);
+        if (obj == null)
+        {
+            return string.Empty;
+        }
+
+        return string.IsNullOrWhiteSpace(obj.label) ? obj.id : obj.label;
+    }
+
+    public void SelectPendingObject(int index)
+    {
+        if (GetPendingObject(index) == null)
+        {
+            Debug.LogWarning($"[FurnitureServerPlacementPipeline] SelectPendingObject failed. index:{index}, count:{PendingObjectCount}");
+            return;
+        }
+
+        SelectedPendingObjectIndex = index;
+        FurnitureServerResultObject selected = SelectedPendingObject;
+        Debug.Log($"[FurnitureServerPlacementPipeline] Pending object selected. index:{index}, id:{selected.id}, label:{selected.label}");
+    }
+
+    public void SelectNextPendingObject()
+    {
+        if (PendingObjectCount == 0)
+        {
+            Debug.LogWarning("[FurnitureServerPlacementPipeline] No pending server objects to select.");
+            return;
+        }
+
+        int next = SelectedPendingObjectIndex < 0 ? 0 : (SelectedPendingObjectIndex + 1) % PendingObjectCount;
+        SelectPendingObject(next);
+    }
+
+    public void SelectPreviousPendingObject()
+    {
+        if (PendingObjectCount == 0)
+        {
+            Debug.LogWarning("[FurnitureServerPlacementPipeline] No pending server objects to select.");
+            return;
+        }
+
+        int previous = SelectedPendingObjectIndex < 0 ? 0 : (SelectedPendingObjectIndex - 1 + PendingObjectCount) % PendingObjectCount;
+        SelectPendingObject(previous);
+    }
+
+    public void PlaceSelectedPendingObject()
+    {
+        PlacePendingObject(SelectedPendingObjectIndex);
+    }
+
+    public void PlacePendingObject(int index)
+    {
+        FurnitureServerResultObject obj = GetPendingObject(index);
+        if (obj == null)
+        {
+            Debug.LogWarning($"[FurnitureServerPlacementPipeline] PlacePendingObject failed. index:{index}, count:{PendingObjectCount}");
+            return;
+        }
+
+        if (resultPlacer == null)
+        {
+            EnsureReferences();
+        }
+
+        if (resultPlacer == null)
+        {
+            Debug.LogWarning("[FurnitureServerPlacementPipeline] PlacePendingObject failed. FurnitureServerResultPlacer is missing.");
+            return;
+        }
+
+        StartCoroutine(PlacePendingObjectRoutine(index, obj));
+    }
+
+    public void PlacePendingObjectById(string objectId)
+    {
+        if (LastResult == null || LastResult.objects == null)
+        {
+            Debug.LogWarning("[FurnitureServerPlacementPipeline] PlacePendingObjectById failed. No cached server result.");
+            return;
+        }
+
+        for (int i = 0; i < LastResult.objects.Length; i++)
+        {
+            FurnitureServerResultObject obj = LastResult.objects[i];
+            if (obj != null && obj.id == objectId)
+            {
+                PlacePendingObject(i);
+                return;
+            }
+        }
+
+        Debug.LogWarning($"[FurnitureServerPlacementPipeline] PlacePendingObjectById failed. id:{objectId}");
+    }
+
+    private IEnumerator PlacePendingObjectRoutine(int index, FurnitureServerResultObject obj)
+    {
+        bool placed = false;
+        GameObject instance = null;
+        string error = string.Empty;
+
+        yield return resultPlacer.PlaceSingleObjectRoutine(obj, (ok, placedObject, placeError) =>
+        {
+            placed = ok;
+            instance = placedObject;
+            error = placeError;
+        });
+
+        LastStatus = placed ? "manual_object_placed" : "manual_object_place_failed";
+        if (placed)
+        {
+            Debug.Log($"[FurnitureServerPlacementPipeline] Manual server object placed. index:{index}, id:{obj.id}, label:{obj.label}", instance);
+        }
+        else
+        {
+            Debug.LogWarning($"[FurnitureServerPlacementPipeline] Manual server object placement failed. index:{index}, id:{obj.id}, label:{obj.label}, error:{error}");
+        }
+    }
+
     private IEnumerator RunPlacementFlow(string scanSessionId)
     {
         EnsureReferences();
@@ -108,133 +251,145 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         ActiveScanSessionId = scanSessionId;
         LastStatus = "started";
         LastResult = null;
+        SelectedPendingObjectIndex = -1;
 
         if (logPipeline)
         {
             Debug.Log($"[FurnitureServerPlacementPipeline] Start server placement flow. scan_session_id:{scanSessionId}");
         }
 
-        if (callDetectSessionBeforeProcess)
+        if (callFinishScanBeforePolling)
         {
-            bool detectOk = false;
-            FurnitureServerStatusResponse detectResponse = null;
-            string detectError = string.Empty;
+            bool finishOk = false;
+            FurnitureServerStatusResponse finishResponse = null;
+            string finishError = string.Empty;
 
-            yield return apiClient.PostDetectSession(scanSessionId, (ok, response, error) =>
+            if (string.IsNullOrWhiteSpace(finishScanRequestJson))
             {
-                detectOk = ok;
-                detectResponse = response;
-                detectError = error;
-            });
-
-            LastStatus = detectResponse != null && !string.IsNullOrWhiteSpace(detectResponse.status)
-                ? detectResponse.status
-                : (detectOk ? "detect_requested" : "detect_failed");
-
-            if (!detectOk)
-            {
-                FinishWithFailure($"detect-session failed. {detectError}");
-                yield break;
-            }
-
-            if (getDetectionsAfterDetect)
-            {
-                yield return apiClient.GetDetections(scanSessionId, (ok, response, error) =>
+                yield return apiClient.PostFinishScanSession(scanSessionId, (ok, response, error) =>
                 {
-                    if (ok && response != null)
-                    {
-                        int count = response.objects != null ? response.objects.Length : 0;
-                        Debug.Log($"[FurnitureServerPlacementPipeline] detections received. status:{response.status}, count:{count}");
-                    }
-                    else
-                    {
-                        Debug.LogWarning($"[FurnitureServerPlacementPipeline] get detections failed or not ready. {error}");
-                    }
+                    finishOk = ok;
+                    finishResponse = response;
+                    finishError = error;
                 });
             }
-        }
-
-        if (callProcessScanBeforeResult)
-        {
-            bool processOk = false;
-            FurnitureServerStatusResponse processResponse = null;
-            string processError = string.Empty;
-
-            yield return apiClient.PostProcessScan(scanSessionId, (ok, response, error) =>
+            else
             {
-                processOk = ok;
-                processResponse = response;
-                processError = error;
-            });
+                yield return apiClient.PostFinishScanSession(scanSessionId, finishScanRequestJson, (ok, response, error) =>
+                {
+                    finishOk = ok;
+                    finishResponse = response;
+                    finishError = error;
+                });
+            }
 
-            LastStatus = processResponse != null && !string.IsNullOrWhiteSpace(processResponse.status)
-                ? processResponse.status
-                : (processOk ? "process_requested" : "process_failed");
+            LastStatus = finishResponse != null && !string.IsNullOrWhiteSpace(finishResponse.status)
+                ? finishResponse.status
+                : (finishOk ? "finish_requested" : "finish_failed");
 
-            if (!processOk)
+            if (!finishOk)
             {
-                FinishWithFailure($"process-scan failed. {processError}");
+                FinishWithFailure($"finish scan-session failed. {finishError}");
                 yield break;
             }
         }
 
-        FurnitureServerResultResponse result = null;
-        bool resultReady = false;
+        bool jobCompleted = false;
 
-        for (int attempt = 1; attempt <= maxResultPollAttempts; attempt++)
+        for (int attempt = 1; attempt <= maxJobPollAttempts; attempt++)
         {
-            bool getOk = false;
-            string getError = string.Empty;
-            FurnitureServerResultResponse current = null;
+            bool statusOk = false;
+            string statusError = string.Empty;
+            FurnitureServerStatusResponse current = null;
 
-            yield return apiClient.GetResult(scanSessionId, (ok, response, error) =>
+            yield return apiClient.GetScanJobStatus(scanSessionId, (ok, response, error) =>
             {
-                getOk = ok;
+                statusOk = ok;
                 current = response;
-                getError = error;
+                statusError = error;
             });
 
-            if (!getOk)
+            if (!statusOk)
             {
-                Debug.LogWarning($"[FurnitureServerPlacementPipeline] result poll failed. attempt:{attempt}/{maxResultPollAttempts}, error:{getError}");
+                Debug.LogWarning($"[FurnitureServerPlacementPipeline] scan-job poll failed. attempt:{attempt}/{maxJobPollAttempts}, error:{statusError}");
             }
             else if (current != null)
             {
                 LastStatus = current.status;
-                int count = current.objects != null ? current.objects.Length : 0;
-                Debug.Log($"[FurnitureServerPlacementPipeline] result poll. attempt:{attempt}/{maxResultPollAttempts}, status:{current.status}, objects:{count}");
+                Debug.Log($"[FurnitureServerPlacementPipeline] scan-job poll. attempt:{attempt}/{maxJobPollAttempts}, status:{current.status}, stage:{current.stage}, objects:{current.object_count}");
 
                 if (current.IsFailedStatus())
                 {
-                    FinishWithFailure($"result status failed. status:{current.status}, error:{current.error}");
+                    FinishWithFailure($"scan-job failed. stage:{current.stage}, error:{current.error}, stderr:{current.stderr_tail}");
                     yield break;
                 }
 
-                if (current.IsDoneStatus() || current.HasObjects || string.IsNullOrWhiteSpace(current.status))
+                if (current.IsDoneStatus())
                 {
-                    result = current;
-                    resultReady = true;
+                    jobCompleted = true;
                     break;
                 }
             }
 
-            yield return new WaitForSeconds(resultPollIntervalSeconds);
+            yield return new WaitForSeconds(jobPollIntervalSeconds);
         }
 
-        if (!resultReady || result == null)
+        if (!jobCompleted)
         {
-            FinishWithFailure($"result polling timed out. attempts:{maxResultPollAttempts}");
+            FinishWithFailure($"scan-job polling timed out. attempts:{maxJobPollAttempts}");
+            yield break;
+        }
+
+        FurnitureServerResultResponse result = null;
+        bool getResultOk = false;
+        string getResultError = string.Empty;
+
+        yield return apiClient.GetResult(scanSessionId, (ok, response, error) =>
+        {
+            getResultOk = ok;
+            result = response;
+            getResultError = error;
+        });
+
+        if (!getResultOk || result == null)
+        {
+            FinishWithFailure($"get result failed. {getResultError}");
+            yield break;
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.scan_session_id) && result.scan_session_id != scanSessionId)
+        {
+            FinishWithFailure($"wrong scan result received. expected:{scanSessionId}, actual:{result.scan_session_id}");
+            yield break;
+        }
+
+        if (result.IsFailedStatus())
+        {
+            FinishWithFailure($"result status failed. status:{result.status}, error:{result.error}");
             yield break;
         }
 
         LastResult = result;
-        bool placementDone = false;
+
+        if (PendingObjectCount > 0)
+        {
+            SelectedPendingObjectIndex = 0;
+        }
+
+        if (!autoPlaceResultObjects)
+        {
+            LastStatus = "result_ready_manual_placement";
+            IsRunning = false;
+            runningCoroutine = null;
+            Debug.Log($"[FurnitureServerPlacementPipeline] Server result cached for manual placement. session:{scanSessionId}, objects:{PendingObjectCount}");
+            yield break;
+        }
+
         int placed = 0;
         int failed = 0;
 
         yield return resultPlacer.PlaceResultRoutine(result, (placedCount, failedCount) =>
         {
-            placementDone = true;
             placed = placedCount;
             failed = failedCount;
         });
@@ -243,7 +398,7 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         IsRunning = false;
         runningCoroutine = null;
 
-        Debug.Log($"[FurnitureServerPlacementPipeline] Server placement flow completed. session:{scanSessionId}, placed:{placed}, failed:{failed}, callback:{placementDone}");
+        Debug.Log($"[FurnitureServerPlacementPipeline] Server placement flow completed. session:{scanSessionId}, placed:{placed}, failed:{failed}");
     }
 
     private void FinishWithFailure(string reason)

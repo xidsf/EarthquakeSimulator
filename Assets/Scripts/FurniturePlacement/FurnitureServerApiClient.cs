@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -26,21 +27,30 @@ public class FurnitureServerApiClient : MonoBehaviour
     public bool logRequests = true;
     public bool logResponseBody = false;
 
+    // ── 기존 메서드 (하위 호환 유지) ─────────────────────────────────────────
+
+    [Obsolete("Use POST /scan-session/{scan_session_id}/finish followed by GET /scan-job/{scan_session_id}.")]
     public IEnumerator PostDetectSession(string scanSessionId, Action<bool, FurnitureServerStatusResponse, string> onComplete)
     {
-        string url = BuildDetectSessionUrl(scanSessionId);
+        string escapedId = UnityWebRequest.EscapeURL(scanSessionId);
+        string escapedMode = UnityWebRequest.EscapeURL(string.IsNullOrWhiteSpace(detectMode) ? "auto" : detectMode);
+        string url = BuildUrl($"/detect-session/{escapedId}?mode={escapedMode}");
         yield return SendJsonRequest<FurnitureServerStatusResponse>(url, "POST", onComplete);
     }
 
+    [Obsolete("Manual GLB placement flow no longer calls /detections directly.")]
     public IEnumerator GetDetections(string scanSessionId, Action<bool, FurnitureServerDetectionResponse, string> onComplete)
     {
         string url = BuildUrl($"/detections/{UnityWebRequest.EscapeURL(scanSessionId)}");
         yield return SendJsonRequest<FurnitureServerDetectionResponse>(url, "GET", onComplete);
     }
 
+    [Obsolete("Use POST /scan-session/{scan_session_id}/finish instead of /process-scan.")]
     public IEnumerator PostProcessScan(string scanSessionId, Action<bool, FurnitureServerStatusResponse, string> onComplete)
     {
-        string url = BuildProcessScanUrl(scanSessionId);
+        string escapedId = UnityWebRequest.EscapeURL(scanSessionId);
+        string useConfirmed = useConfirmedFurniture ? "1" : "0";
+        string url = BuildUrl($"/process-scan/{escapedId}?use_confirmed={useConfirmed}");
         yield return SendJsonRequest<FurnitureServerStatusResponse>(url, "POST", onComplete);
     }
 
@@ -50,18 +60,52 @@ public class FurnitureServerApiClient : MonoBehaviour
         yield return SendJsonRequest<FurnitureServerResultResponse>(url, "GET", onComplete);
     }
 
-    private string BuildDetectSessionUrl(string scanSessionId)
+    public IEnumerator PostFinishScanSession(string scanSessionId, Action<bool, FurnitureServerStatusResponse, string> onComplete)
     {
-        string escapedId = UnityWebRequest.EscapeURL(scanSessionId);
-        string escapedMode = UnityWebRequest.EscapeURL(string.IsNullOrWhiteSpace(detectMode) ? "auto" : detectMode);
-        return BuildUrl($"/detect-session/{escapedId}?mode={escapedMode}");
+        string url = BuildUrl($"/scan-session/{UnityWebRequest.EscapeURL(scanSessionId)}/finish");
+        yield return SendJsonRequest<FurnitureServerStatusResponse>(url, "POST", onComplete);
     }
 
-    private string BuildProcessScanUrl(string scanSessionId)
+    public IEnumerator PostFinishScanSession(
+        string scanSessionId,
+        string jsonBody,
+        Action<bool, FurnitureServerStatusResponse, string> onComplete)
     {
-        string escapedId = UnityWebRequest.EscapeURL(scanSessionId);
-        string useConfirmed = useConfirmedFurniture ? "1" : "0";
-        return BuildUrl($"/process-scan/{escapedId}?use_confirmed={useConfirmed}");
+        string url = BuildUrl($"/scan-session/{UnityWebRequest.EscapeURL(scanSessionId)}/finish");
+        yield return SendJsonRequest<FurnitureServerStatusResponse>(url, "POST", onComplete, jsonBody);
+    }
+
+    public IEnumerator GetScanJobStatus(string scanSessionId, Action<bool, FurnitureServerStatusResponse, string> onComplete)
+    {
+        string url = BuildUrl($"/scan-job/{UnityWebRequest.EscapeURL(scanSessionId)}");
+        yield return SendJsonRequest<FurnitureServerStatusResponse>(url, "GET", onComplete);
+    }
+
+    // ── 신규 메서드 ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// POST /run-pipeline/{session_id}
+    /// room_to_unity_pipeline.py를 서버에서 백그라운드로 실행합니다.
+    /// 즉시 { status: "processing" } 를 반환하며, 완료 여부는 GetResult polling으로 확인합니다.
+    /// force=true 시 이미 완료된 세션도 재실행합니다 (?force=1).
+    /// </summary>
+    [Obsolete("Use POST /scan-session/{scan_session_id}/finish followed by GET /scan-job/{scan_session_id}.")]
+    public IEnumerator PostRunPipeline(string scanSessionId, Action<bool, FurnitureServerStatusResponse, string> onComplete, bool force = false)
+    {
+        string escaped = UnityWebRequest.EscapeURL(scanSessionId);
+        string url = BuildUrl($"/run-pipeline/{escaped}{(force ? "?force=1" : string.Empty)}");
+        yield return SendJsonRequest<FurnitureServerStatusResponse>(url, "POST", onComplete);
+    }
+
+    /// <summary>
+    /// GET /pipeline-status/{session_id}
+    /// 파이프라인 실행 상태를 조회합니다 (queued / processing / done / failed / not_started).
+    /// </summary>
+    [Obsolete("Use GET /scan-job/{scan_session_id}.")]
+    public IEnumerator GetPipelineStatus(string scanSessionId, Action<bool, FurnitureServerStatusResponse, string> onComplete)
+    {
+        string url = BuildUrl($"/pipeline-status/{UnityWebRequest.EscapeURL(scanSessionId)}");
+        yield return SendJsonRequest<FurnitureServerStatusResponse>(url, "GET", onComplete);
     }
 
     private string BuildUrl(string path)
@@ -70,7 +114,7 @@ public class FurnitureServerApiClient : MonoBehaviour
         return root + path;
     }
 
-    private IEnumerator SendJsonRequest<T>(string url, string method, Action<bool, T, string> onComplete)
+    private IEnumerator SendJsonRequest<T>(string url, string method, Action<bool, T, string> onComplete, string jsonBody = null)
         where T : class, new()
     {
         if (logRequests)
@@ -83,6 +127,12 @@ public class FurnitureServerApiClient : MonoBehaviour
             request.timeout = requestTimeoutSeconds;
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Accept", "application/json");
+
+            if (!string.IsNullOrWhiteSpace(jsonBody))
+            {
+                request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(jsonBody));
+                request.SetRequestHeader("Content-Type", "application/json");
+            }
 
             yield return request.SendWebRequest();
 

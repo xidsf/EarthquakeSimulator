@@ -58,11 +58,19 @@ public class FurnitureSessionTester : MonoBehaviour
             }
         ));
 
-        yield return StartCoroutine(sessionClient.ProcessScan(
+        yield return StartCoroutine(sessionClient.FinishScan(
             scanSessionId,
             response =>
             {
-                Debug.Log($"[FurnitureSessionTester] Processed session. Frame count: {response.frame_count}");
+                Debug.Log($"[FurnitureSessionTester] Finish requested. Frame count: {response.frame_count}");
+            }
+        ));
+
+        yield return StartCoroutine(sessionClient.PollScanJob(
+            scanSessionId,
+            response =>
+            {
+                Debug.Log($"[FurnitureSessionTester] Scan job completed. Object count: {response.object_count}");
             }
         ));
 

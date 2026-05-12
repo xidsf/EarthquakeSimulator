@@ -34,6 +34,23 @@ public class FurniturePlacementMetadata
     [Tooltip("서버 /result objects[].confidence 원본입니다.")]
     public float confidence;
 
+    [Tooltip("서버 /result objects[].detection_id 원본입니다.")]
+    public string detectionId;
+
+    [Tooltip("서버 /result objects[].frame_id 원본입니다.")]
+    public string frameId;
+
+    [Tooltip("서버 /result objects[].placement_mode 원본입니다.")]
+    public string placementMode;
+
+    [Tooltip("서버 /result objects[].raw_label 원본입니다.")]
+    public string rawLabel;
+    public string thumbnailUrl;
+    public string physicsMode;
+    public bool simulationEnabled = true;
+    public string rigidbodyMode;
+    public bool useGravity;
+
     public FurniturePlacementMetadata()
     {
     }

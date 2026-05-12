@@ -19,7 +19,12 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
     [Tooltip("MainPlate 위에서 계속 표시되어야 하는 안내 문구(ForCapture) 오브젝트입니다.")]
     public GameObject obj_ForCaptureText;
 
-    [Header("Loading UI Elements")] // [추가] 로딩 UI 관련
+    // [추가] 뷰파인더 UI 제어를 위한 변수
+    [Header("Camera Viewport")]
+    [Tooltip("사용자 시선을 따라다니는 CameraViewPortUI 오브젝트를 연결해주세요.")]
+    public GameObject obj_CameraViewPortUI;
+
+    [Header("Loading UI Elements")]
     [Tooltip("가구 생성 로딩 화면의 부모 오브젝트(배경 패널 등)를 연결해주세요.")]
     public GameObject loadingUIParent;
     [Tooltip("로딩 상태를 표시할 TextMeshPro 컴포넌트를 연결해주세요.")]
@@ -48,7 +53,6 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
 
     private void SetupCanvasGroup()
     {
-        // 툴팁(CaptureTip)의 페이드아웃을 위해 CanvasGroup이 없다면 자동으로 추가합니다.
         if (obj_CaptureTip != null)
         {
             tipCanvasGroup = obj_CaptureTip.GetComponent<CanvasGroup>();
@@ -65,16 +69,25 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
         CreateActions();
         RegisterButtons();
 
-        // [핵심] ForCapture 텍스트는 툴팁과 달리, 이 단계가 켜져 있는 동안 계속 활성화 상태를 유지합니다.
+        // 패널이 다시 켜질 때 모든 버튼의 상태를 활성화(초기화)합니다.
+        SetAllButtonsEnabled(true);
+
+        // 단계 진입 시 ForCapture 텍스트 활성화
         if (obj_ForCaptureText != null)
         {
             obj_ForCaptureText.SetActive(true);
         }
 
-        // [추가] 단계 진입 시 로딩 UI 초기 숨김
+        // [추가] 단계 진입 시 CameraViewPortUI 활성화
+        if (obj_CameraViewPortUI != null)
+        {
+            obj_CameraViewPortUI.SetActive(true);
+        }
+
+        // 단계 진입 시 로딩 UI 초기 숨김
         if (loadingUIParent != null) loadingUIParent.SetActive(false);
 
-        // 단계 진입 시 툴팁(CaptureTip)만 자동으로 띄웠다 사라지게 합니다.
+        // 단계 진입 시 툴팁만 띄웠다 사라지게 함
         ShowTipSequence();
     }
 
@@ -83,10 +96,16 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
         UnregisterButtons();
         StopTipSequence();
 
-        // 단계가 종료될 때 안내 문구도 함께 꺼줍니다.
+        // 단계가 종료될 때 안내 문구도 함께 꺼줌
         if (obj_ForCaptureText != null)
         {
             obj_ForCaptureText.SetActive(false);
+        }
+
+        // [추가] 단계가 강제로 종료되거나 다른 상태로 넘어갈 때 뷰파인더도 안전하게 꺼줌
+        if (obj_CameraViewPortUI != null)
+        {
+            obj_CameraViewPortUI.SetActive(false);
         }
     }
 
@@ -114,13 +133,20 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
         RemoveClick(btn_Complete, completeAction);
     }
 
+    private void SetAllButtonsEnabled(bool isEnabled)
+    {
+        if (btn_Capture != null) btn_Capture.enabled = isEnabled;
+        if (btn_PopUpTip != null) btn_PopUpTip.enabled = isEnabled;
+        if (btn_Gallery != null) btn_Gallery.enabled = isEnabled;
+        if (btn_Complete != null) btn_Complete.enabled = isEnabled;
+    }
+
     // ==========================================
     // 툴팁(CaptureTip) 애니메이션 로직
     // ==========================================
 
     public void OnClickPopUpTip()
     {
-        // 버튼을 누를 때마다 툴팁 애니메이션을 처음부터 다시 시작합니다.
         ShowTipSequence();
     }
 
@@ -131,7 +157,7 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
         if (obj_CaptureTip != null)
         {
             obj_CaptureTip.SetActive(true);
-            if (tipCanvasGroup != null) tipCanvasGroup.alpha = 1.0f; // 투명도 초기화
+            if (tipCanvasGroup != null) tipCanvasGroup.alpha = 1.0f;
         }
 
         tipSequenceCoroutine = StartCoroutine(TipFadeOutRoutine());
@@ -159,10 +185,8 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
 
     private IEnumerator TipFadeOutRoutine()
     {
-        // 5초 대기 (ForCapture와 무관하게 툴팁만 해당됨)
         yield return new WaitForSeconds(tipShowDuration);
 
-        // 1초 페이드아웃
         float elapsedTime = 0f;
         while (elapsedTime < tipFadeDuration)
         {
@@ -186,12 +210,25 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
 
     public void OnClickComplete()
     {
-        // [수정] 즉시 넘어가지 않고 비활성화 후 가구 생성 코루틴 실행
-        if (btn_Complete != null) btn_Complete.enabled = false;
+        // 완료 버튼을 누르는 즉시 모든 버튼 비활성화 처리
+        SetAllButtonsEnabled(false);
+
+        // 가구 배치 단계로 넘어가는 즉시 안내 텍스트 비활성화
+        if (obj_ForCaptureText != null)
+        {
+            obj_ForCaptureText.SetActive(false);
+        }
+
+        // [추가] 가구 생성 코루틴이 시작되기 직전에 뷰파인더(CameraViewPortUI)를 즉시 숨김
+        if (obj_CameraViewPortUI != null)
+        {
+            obj_CameraViewPortUI.SetActive(false);
+        }
+
         StartCoroutine(FurnitureGenerationRoutine());
     }
 
-    // [추가] 가구 생성 및 UI 전환 코루틴
+    // 가구 생성 및 UI 전환 코루틴
     private IEnumerator FurnitureGenerationRoutine()
     {
         // 1. 로딩 UI 표시 시작
@@ -201,8 +238,8 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
         float dotTimer = 0f;
         int dotCount = 1;
 
-        // 실제 가구 배치 로직이 들어가면 이 시간을 비동기 작업 완료 시간으로 대체하세요.
-        float mockGenerationTime = 3.0f;
+        // 임시 가구 생성 대기 시간 (5초)
+        float mockGenerationTime = 5.0f;
 
         while (generationTimer < mockGenerationTime)
         {
@@ -229,7 +266,7 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
         // 2. 가구 생성 완료 메시지
         if (text_LoadingStatus != null)
         {
-            text_LoadingStatus.text = "가구 생성 완료";
+            text_LoadingStatus.text = "가구 생성 완료!";
         }
 
         // 3. 2초 대기
@@ -237,9 +274,7 @@ public class RoomCapturePanelController : WorkflowPanelControllerBase
 
         // 4. 상태 초기화 및 실제 다음 워크플로우로 이동
         if (loadingUIParent != null) loadingUIParent.SetActive(false);
-        if (btn_Complete != null) btn_Complete.enabled = true;
 
-        // 기존에 OnClickComplete가 하던 역할 수행
         RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteRoomCapture);
     }
 }

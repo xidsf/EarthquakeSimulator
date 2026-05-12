@@ -73,10 +73,6 @@ mono_crash.*
 *.unitypackage.meta
 *.app
 
-# Local earthquake THA data
-/[Aa]ssets/THA_Process_Data/
-/[Aa]ssets/THA_Process_Data.meta
-
 # Local Python physics simulation experiments
 /PythonSimulation/
 

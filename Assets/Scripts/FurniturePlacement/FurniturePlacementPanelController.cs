@@ -1,4 +1,6 @@
+using System.Collections;
 using MixedReality.Toolkit.UX;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
 
@@ -52,6 +54,15 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
 
     [Tooltip("가구 배치 단계를 완료하고 시뮬레이션 단계로 이동합니다.")]
     public PressableButton userCompleteFurniturePlacementButton;
+
+    [Header("Server Furniture List UI")]
+    public TMP_Text userSelectedServerFurnitureText;
+    public TMP_Text userServerFurnitureListText;
+    public TMP_Text userServerFurnitureStatusText;
+    public Transform userSelectedServerFurniturePreviewAnchor;
+    public bool loadSelectedServerFurniturePreview = true;
+    public float selectedServerFurniturePreviewScale = 0.03f;
+    public bool requireAllServerFurnitureConfirmedBeforeComplete = true;
 
     [Header("Debug References - Optional")]
     [Tooltip("테스트용 랜덤 가구 배치 컨트롤러입니다. 실제 사용자 UI에서는 연결하지 않아도 됩니다.")]
@@ -117,6 +128,9 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     private UnityAction debugSelectNextFurnitureAction;
     private UnityAction debugSelectPreviousFurnitureAction;
     private UnityAction debugConfirmSelectedFurnitureAction;
+    private FurnitureServerPlacementPipeline subscribedServerPlacementPipeline;
+    private GameObject selectedServerFurniturePreviewObject;
+    private int selectedServerFurniturePreviewRequestId;
 
     protected override void Awake()
     {
@@ -133,11 +147,15 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         TryBindRoomGeometryFromWorkflow();
         CreateActions();
         RegisterButtons();
+        SubscribeServerPlacementPipelineEvents();
+        RefreshServerFurnitureListView();
     }
 
     private void OnDisable()
     {
+        UnsubscribeServerPlacementPipelineEvents();
         UnregisterButtons();
+        ClearSelectedServerFurniturePreview();
     }
 
     private void EnsureFurniturePlacementReferences()
@@ -171,6 +189,41 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         {
             serverPlacementPipeline = FindFirst<FurnitureServerPlacementPipeline>();
         }
+    }
+
+    private void SubscribeServerPlacementPipelineEvents()
+    {
+        if (subscribedServerPlacementPipeline == serverPlacementPipeline)
+        {
+            return;
+        }
+
+        UnsubscribeServerPlacementPipelineEvents();
+
+        if (serverPlacementPipeline == null)
+        {
+            return;
+        }
+
+        subscribedServerPlacementPipeline = serverPlacementPipeline;
+        subscribedServerPlacementPipeline.ResultListChanged += OnServerResultListChanged;
+        subscribedServerPlacementPipeline.PendingSelectionChanged += OnServerPendingSelectionChanged;
+        subscribedServerPlacementPipeline.PendingObjectLoadedForPlacement += OnServerPendingObjectLoadedForPlacement;
+        subscribedServerPlacementPipeline.PendingObjectConfirmed += OnServerPendingObjectConfirmed;
+    }
+
+    private void UnsubscribeServerPlacementPipelineEvents()
+    {
+        if (subscribedServerPlacementPipeline == null)
+        {
+            return;
+        }
+
+        subscribedServerPlacementPipeline.ResultListChanged -= OnServerResultListChanged;
+        subscribedServerPlacementPipeline.PendingSelectionChanged -= OnServerPendingSelectionChanged;
+        subscribedServerPlacementPipeline.PendingObjectLoadedForPlacement -= OnServerPendingObjectLoadedForPlacement;
+        subscribedServerPlacementPipeline.PendingObjectConfirmed -= OnServerPendingObjectConfirmed;
+        subscribedServerPlacementPipeline = null;
     }
 
     private void EnsureDebugReferences()
@@ -284,6 +337,211 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         RemoveClick(debugConfirmSelectedFurnitureButton, debugConfirmSelectedFurnitureAction);
     }
 
+    private void OnServerResultListChanged(FurnitureServerPlacementPipeline pipeline)
+    {
+        RefreshServerFurnitureListView();
+    }
+
+    private void OnServerPendingSelectionChanged(int index, FurnitureServerResultObject selectedObject)
+    {
+        RefreshServerFurnitureListView();
+        UpdateSelectedServerFurniturePreview(selectedObject);
+    }
+
+    private void OnServerPendingObjectLoadedForPlacement(int index, FurnitureServerResultObject selectedObject, GameObject placedObject)
+    {
+        RefreshServerFurnitureListView();
+        SetServerFurnitureStatus($"Adjust and confirm {BuildFurnitureName(selectedObject, index)}.");
+    }
+
+    private void OnServerPendingObjectConfirmed(int index, FurnitureServerResultObject selectedObject)
+    {
+        RefreshServerFurnitureListView();
+        SetServerFurnitureStatus($"Confirmed {BuildFurnitureName(selectedObject, index)}.");
+    }
+
+    private void RefreshServerFurnitureListView()
+    {
+        EnsureFurniturePlacementReferences();
+        SubscribeServerPlacementPipelineEvents();
+
+        if (serverPlacementPipeline == null || serverPlacementPipeline.PendingObjectCount == 0)
+        {
+            SetSelectedFurnitureText("No server furniture loaded.");
+            SetFurnitureListText(string.Empty);
+            SetServerFurnitureStatus(serverPlacementPipeline != null ? serverPlacementPipeline.LastStatus : string.Empty);
+            ClearSelectedServerFurniturePreview();
+            return;
+        }
+
+        int selectedIndex = serverPlacementPipeline.SelectedPendingObjectIndex;
+        FurnitureServerResultObject selectedObject = serverPlacementPipeline.SelectedPendingObject;
+        int count = serverPlacementPipeline.PendingObjectCount;
+        int confirmed = serverPlacementPipeline.GetConfirmedPendingObjectCount();
+
+        if (selectedObject != null)
+        {
+            string selectedLine = $"{selectedIndex + 1}/{count}  {BuildFurnitureName(selectedObject, selectedIndex)}";
+            if (selectedObject.confidence > 0f)
+            {
+                selectedLine += $"  confidence:{selectedObject.confidence:0.00}";
+            }
+
+            SetSelectedFurnitureText(selectedLine);
+        }
+        else
+        {
+            SetSelectedFurnitureText($"Furniture list ready. confirmed:{confirmed}/{count}");
+        }
+
+        string listText = string.Empty;
+        for (int i = 0; i < count; i++)
+        {
+            FurnitureServerResultObject obj = serverPlacementPipeline.GetPendingObject(i);
+            string marker = i == selectedIndex ? "> " : "  ";
+            string state = serverPlacementPipeline.IsPendingObjectConfirmed(i)
+                ? " [confirmed]"
+                : serverPlacementPipeline.PendingConfirmationIndex == i
+                    ? " [adjusting]"
+                    : serverPlacementPipeline.IsPendingObjectLoadedForPlacement(i)
+                        ? " [placed]"
+                        : string.Empty;
+
+            listText += $"{marker}{i + 1}. {BuildFurnitureName(obj, i)}{state}\n";
+        }
+
+        SetFurnitureListText(listText.TrimEnd());
+
+        string status = serverPlacementPipeline.HasPendingUnconfirmedPlacement
+            ? "Confirm the current furniture before selecting or placing another one."
+            : $"Select with left/right, then place. confirmed:{confirmed}/{count}";
+
+        SetServerFurnitureStatus(status);
+    }
+
+    private void UpdateSelectedServerFurniturePreview(FurnitureServerResultObject selectedObject)
+    {
+        ClearSelectedServerFurniturePreview();
+
+        if (!loadSelectedServerFurniturePreview || selectedObject == null || userSelectedServerFurniturePreviewAnchor == null)
+        {
+            return;
+        }
+
+        int requestId = ++selectedServerFurniturePreviewRequestId;
+        StartCoroutine(LoadSelectedServerFurniturePreviewRoutine(selectedObject, requestId));
+    }
+
+    private IEnumerator LoadSelectedServerFurniturePreviewRoutine(FurnitureServerResultObject selectedObject, int requestId)
+    {
+        EnsureFurniturePlacementReferences();
+
+        FurnitureServerMeshLoader meshLoader = serverPlacementPipeline != null &&
+                                               serverPlacementPipeline.resultPlacer != null
+            ? serverPlacementPipeline.resultPlacer.meshLoader
+            : FindFirst<FurnitureServerMeshLoader>();
+
+        if (meshLoader == null)
+        {
+            yield break;
+        }
+
+        GameObject preview = null;
+        string error = string.Empty;
+
+        yield return meshLoader.LoadFurnitureObject(selectedObject, (loadedObject, loadError) =>
+        {
+            preview = loadedObject;
+            error = loadError;
+        });
+
+        if (preview == null)
+        {
+            Debug.LogWarning($"[FurniturePlacementPanelController] Selected furniture preview load failed. {error}");
+            yield break;
+        }
+
+        if (requestId != selectedServerFurniturePreviewRequestId || userSelectedServerFurniturePreviewAnchor == null)
+        {
+            Destroy(preview);
+            yield break;
+        }
+
+        selectedServerFurniturePreviewObject = preview;
+        preview.transform.SetParent(userSelectedServerFurniturePreviewAnchor, false);
+        preview.transform.localPosition = Vector3.zero;
+        preview.transform.localRotation = Quaternion.identity;
+        preview.transform.localScale = Vector3.one * selectedServerFurniturePreviewScale;
+
+        Collider[] colliders = preview.GetComponentsInChildren<Collider>(true);
+        foreach (Collider collider in colliders)
+        {
+            collider.enabled = false;
+        }
+
+        Rigidbody[] rigidbodies = preview.GetComponentsInChildren<Rigidbody>(true);
+        foreach (Rigidbody rb in rigidbodies)
+        {
+            rb.isKinematic = true;
+            rb.useGravity = false;
+        }
+    }
+
+    private void ClearSelectedServerFurniturePreview()
+    {
+        selectedServerFurniturePreviewRequestId++;
+
+        if (selectedServerFurniturePreviewObject != null)
+        {
+            Destroy(selectedServerFurniturePreviewObject);
+            selectedServerFurniturePreviewObject = null;
+        }
+    }
+
+    private void SetSelectedFurnitureText(string value)
+    {
+        if (userSelectedServerFurnitureText != null)
+        {
+            userSelectedServerFurnitureText.text = value;
+        }
+    }
+
+    private void SetFurnitureListText(string value)
+    {
+        if (userServerFurnitureListText != null)
+        {
+            userServerFurnitureListText.text = value;
+        }
+    }
+
+    private void SetServerFurnitureStatus(string value)
+    {
+        if (userServerFurnitureStatusText != null)
+        {
+            userServerFurnitureStatusText.text = value;
+        }
+    }
+
+    private static string BuildFurnitureName(FurnitureServerResultObject obj, int index)
+    {
+        if (obj == null)
+        {
+            return $"Furniture {index + 1}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(obj.label))
+        {
+            return obj.label;
+        }
+
+        if (!string.IsNullOrWhiteSpace(obj.id))
+        {
+            return obj.id;
+        }
+
+        return $"Furniture {index + 1}";
+    }
+
     public void OnClickPlaceFurnitureFromServer()
     {
         EnsureFurniturePlacementReferences();
@@ -294,38 +552,64 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
             return;
         }
 
+        SubscribeServerPlacementPipelineEvents();
         serverPlacementPipeline.StartPlacementFromCurrentScanSession();
+        RefreshServerFurnitureListView();
         Debug.Log("[FurniturePlacementPanelController] Server furniture list requested from current scan_session_id. Select and place an object after result is ready.");
     }
 
     public void OnClickSelectNextServerFurniture()
     {
         EnsureFurniturePlacementReferences();
+        SubscribeServerPlacementPipelineEvents();
         serverPlacementPipeline?.SelectNextPendingObject();
+        RefreshServerFurnitureListView();
     }
 
     public void OnClickSelectPreviousServerFurniture()
     {
         EnsureFurniturePlacementReferences();
+        SubscribeServerPlacementPipelineEvents();
         serverPlacementPipeline?.SelectPreviousPendingObject();
+        RefreshServerFurnitureListView();
     }
 
     public void OnClickPlaceSelectedServerFurniture()
     {
         EnsureFurniturePlacementReferences();
-        serverPlacementPipeline?.PlaceSelectedPendingObject();
+        SubscribeServerPlacementPipelineEvents();
+
+        if (serverPlacementPipeline == null)
+        {
+            Debug.LogWarning("[FurniturePlacementPanelController] Place selected failed. FurnitureServerPlacementPipeline is missing.");
+            return;
+        }
+
+        if (serverPlacementPipeline.HasPendingUnconfirmedPlacement)
+        {
+            Debug.LogWarning("[FurniturePlacementPanelController] Place selected ignored. Confirm the current placed furniture first.");
+            RefreshServerFurnitureListView();
+            return;
+        }
+
+        serverPlacementPipeline.PlaceSelectedPendingObject();
+        RefreshServerFurnitureListView();
     }
 
     public void SelectServerFurnitureByIndex(int index)
     {
         EnsureFurniturePlacementReferences();
+        SubscribeServerPlacementPipelineEvents();
         serverPlacementPipeline?.SelectPendingObject(index);
+        RefreshServerFurnitureListView();
     }
 
     public void PlaceServerFurnitureByIndex(int index)
     {
         EnsureFurniturePlacementReferences();
+        SubscribeServerPlacementPipelineEvents();
         serverPlacementPipeline?.PlacePendingObject(index);
+        RefreshServerFurnitureListView();
     }
 
     public void OnClickToggleMoveMode()
@@ -367,12 +651,32 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         }
 
         bool result = furniturePlacementManager.ConfirmSelectedFurniture();
+        if (result && serverPlacementPipeline != null && serverPlacementPipeline.HasPendingUnconfirmedPlacement)
+        {
+            serverPlacementPipeline.ConfirmPlacedPendingObjectAndSelectNext();
+            moveModeController?.SetMoveMode(false);
+        }
+
+        RefreshServerFurnitureListView();
         Debug.Log($"[FurniturePlacementPanelController] Confirm selected requested. result:{result}");
     }
 
     public void OnClickCompleteFurniturePlacement()
     {
         EnsureFurniturePlacementReferences();
+
+        if (requireAllServerFurnitureConfirmedBeforeComplete &&
+            serverPlacementPipeline != null &&
+            serverPlacementPipeline.PendingObjectCount > 0)
+        {
+            int confirmed = serverPlacementPipeline.GetConfirmedPendingObjectCount();
+            if (serverPlacementPipeline.HasPendingUnconfirmedPlacement || confirmed < serverPlacementPipeline.PendingObjectCount)
+            {
+                Debug.LogWarning($"[FurniturePlacementPanelController] Complete furniture placement blocked. Confirm all server furniture first. confirmed:{confirmed}/{serverPlacementPipeline.PendingObjectCount}");
+                RefreshServerFurnitureListView();
+                return;
+            }
+        }
 
         if (simulationStartController != null)
         {

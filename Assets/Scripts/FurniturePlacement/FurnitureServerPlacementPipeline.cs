@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using UnityEngine;
 
@@ -51,8 +52,16 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
     public int PendingObjectCount => LastResult != null && LastResult.objects != null ? LastResult.objects.Length : 0;
     public int SelectedPendingObjectIndex { get; private set; } = -1;
     public FurnitureServerResultObject SelectedPendingObject => GetPendingObject(SelectedPendingObjectIndex);
+    public int PendingConfirmationIndex { get; private set; } = -1;
+    public bool HasPendingUnconfirmedPlacement => PendingConfirmationIndex >= 0;
+    public event Action<FurnitureServerPlacementPipeline> ResultListChanged;
+    public event Action<int, FurnitureServerResultObject> PendingSelectionChanged;
+    public event Action<int, FurnitureServerResultObject, GameObject> PendingObjectLoadedForPlacement;
+    public event Action<int, FurnitureServerResultObject> PendingObjectConfirmed;
 
     private Coroutine runningCoroutine;
+    private bool[] confirmedPendingObjects;
+    private GameObject[] placedPendingInstances;
 
     private void Awake()
     {
@@ -127,17 +136,46 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         return string.IsNullOrWhiteSpace(obj.label) ? obj.id : obj.label;
     }
 
+    public bool IsPendingObjectConfirmed(int index)
+    {
+        return confirmedPendingObjects != null &&
+               index >= 0 &&
+               index < confirmedPendingObjects.Length &&
+               confirmedPendingObjects[index];
+    }
+
+    public bool IsPendingObjectLoadedForPlacement(int index)
+    {
+        return placedPendingInstances != null &&
+               index >= 0 &&
+               index < placedPendingInstances.Length &&
+               placedPendingInstances[index] != null;
+    }
+
     public void SelectPendingObject(int index)
     {
+        if (HasPendingUnconfirmedPlacement && index != PendingConfirmationIndex)
+        {
+            Debug.LogWarning($"[FurnitureServerPlacementPipeline] Selection locked until current placed object is confirmed. pendingIndex:{PendingConfirmationIndex}");
+            return;
+        }
+
         if (GetPendingObject(index) == null)
         {
             Debug.LogWarning($"[FurnitureServerPlacementPipeline] SelectPendingObject failed. index:{index}, count:{PendingObjectCount}");
             return;
         }
 
+        if (IsPendingObjectConfirmed(index))
+        {
+            Debug.LogWarning($"[FurnitureServerPlacementPipeline] SelectPendingObject ignored. Object already confirmed. index:{index}");
+            return;
+        }
+
         SelectedPendingObjectIndex = index;
         FurnitureServerResultObject selected = SelectedPendingObject;
         Debug.Log($"[FurnitureServerPlacementPipeline] Pending object selected. index:{index}, id:{selected.id}, label:{selected.label}");
+        PendingSelectionChanged?.Invoke(index, selected);
     }
 
     public void SelectNextPendingObject()
@@ -148,7 +186,13 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
             return;
         }
 
-        int next = SelectedPendingObjectIndex < 0 ? 0 : (SelectedPendingObjectIndex + 1) % PendingObjectCount;
+        int next = FindSelectablePendingIndex(SelectedPendingObjectIndex, 1);
+        if (next < 0)
+        {
+            Debug.LogWarning("[FurnitureServerPlacementPipeline] No unconfirmed server objects remain.");
+            return;
+        }
+
         SelectPendingObject(next);
     }
 
@@ -160,7 +204,13 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
             return;
         }
 
-        int previous = SelectedPendingObjectIndex < 0 ? 0 : (SelectedPendingObjectIndex - 1 + PendingObjectCount) % PendingObjectCount;
+        int previous = FindSelectablePendingIndex(SelectedPendingObjectIndex, -1);
+        if (previous < 0)
+        {
+            Debug.LogWarning("[FurnitureServerPlacementPipeline] No unconfirmed server objects remain.");
+            return;
+        }
+
         SelectPendingObject(previous);
     }
 
@@ -171,10 +221,22 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
 
     public void PlacePendingObject(int index)
     {
+        if (HasPendingUnconfirmedPlacement)
+        {
+            Debug.LogWarning($"[FurnitureServerPlacementPipeline] PlacePendingObject ignored. Confirm the current object before placing another one. pendingIndex:{PendingConfirmationIndex}");
+            return;
+        }
+
         FurnitureServerResultObject obj = GetPendingObject(index);
         if (obj == null)
         {
             Debug.LogWarning($"[FurnitureServerPlacementPipeline] PlacePendingObject failed. index:{index}, count:{PendingObjectCount}");
+            return;
+        }
+
+        if (IsPendingObjectConfirmed(index))
+        {
+            Debug.LogWarning($"[FurnitureServerPlacementPipeline] PlacePendingObject ignored. Object already confirmed. index:{index}");
             return;
         }
 
@@ -229,6 +291,16 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         LastStatus = placed ? "manual_object_placed" : "manual_object_place_failed";
         if (placed)
         {
+            EnsurePendingTrackingArrays();
+            if (placedPendingInstances != null && index >= 0 && index < placedPendingInstances.Length)
+            {
+                placedPendingInstances[index] = instance;
+            }
+
+            PendingConfirmationIndex = index;
+            SelectedPendingObjectIndex = index;
+            PendingObjectLoadedForPlacement?.Invoke(index, obj, instance);
+            ResultListChanged?.Invoke(this);
             Debug.Log($"[FurnitureServerPlacementPipeline] Manual server object placed. index:{index}, id:{obj.id}, label:{obj.label}", instance);
         }
         else
@@ -249,9 +321,10 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
 
         IsRunning = true;
         ActiveScanSessionId = scanSessionId;
-        LastStatus = "started";
-        LastResult = null;
-        SelectedPendingObjectIndex = -1;
+            LastStatus = "started";
+            LastResult = null;
+            SelectedPendingObjectIndex = -1;
+            ResetPendingTracking();
 
         if (logPipeline)
         {
@@ -370,11 +443,14 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         }
 
         LastResult = result;
+        EnsurePendingTrackingArrays();
 
         if (PendingObjectCount > 0)
         {
             SelectedPendingObjectIndex = 0;
+            PendingSelectionChanged?.Invoke(SelectedPendingObjectIndex, SelectedPendingObject);
         }
+        ResultListChanged?.Invoke(this);
 
         if (!autoPlaceResultObjects)
         {
@@ -399,6 +475,122 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         runningCoroutine = null;
 
         Debug.Log($"[FurnitureServerPlacementPipeline] Server placement flow completed. session:{scanSessionId}, placed:{placed}, failed:{failed}");
+    }
+
+    public bool ConfirmPlacedPendingObjectAndSelectNext()
+    {
+        if (!HasPendingUnconfirmedPlacement)
+        {
+            Debug.LogWarning("[FurnitureServerPlacementPipeline] Confirm ignored. No pending placed object is waiting for confirmation.");
+            return false;
+        }
+
+        int confirmedIndex = PendingConfirmationIndex;
+        FurnitureServerResultObject confirmedObject = GetPendingObject(confirmedIndex);
+
+        EnsurePendingTrackingArrays();
+        if (confirmedPendingObjects != null && confirmedIndex >= 0 && confirmedIndex < confirmedPendingObjects.Length)
+        {
+            confirmedPendingObjects[confirmedIndex] = true;
+        }
+
+        PendingConfirmationIndex = -1;
+        PendingObjectConfirmed?.Invoke(confirmedIndex, confirmedObject);
+
+        int next = FindSelectablePendingIndex(confirmedIndex, 1);
+        if (next >= 0)
+        {
+            SelectedPendingObjectIndex = next;
+            PendingSelectionChanged?.Invoke(next, SelectedPendingObject);
+        }
+        else
+        {
+            SelectedPendingObjectIndex = -1;
+            PendingSelectionChanged?.Invoke(-1, null);
+        }
+
+        ResultListChanged?.Invoke(this);
+        Debug.Log($"[FurnitureServerPlacementPipeline] Pending object confirmed. index:{confirmedIndex}, next:{SelectedPendingObjectIndex}");
+        return true;
+    }
+
+    public int GetConfirmedPendingObjectCount()
+    {
+        if (confirmedPendingObjects == null)
+        {
+            return 0;
+        }
+
+        int count = 0;
+        for (int i = 0; i < confirmedPendingObjects.Length; i++)
+        {
+            if (confirmedPendingObjects[i])
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private int FindSelectablePendingIndex(int startIndex, int direction)
+    {
+        if (PendingObjectCount == 0)
+        {
+            return -1;
+        }
+
+        if (HasPendingUnconfirmedPlacement)
+        {
+            return PendingConfirmationIndex;
+        }
+
+        int step = direction >= 0 ? 1 : -1;
+        int index = startIndex;
+        if (index < 0 || index >= PendingObjectCount)
+        {
+            index = step > 0 ? -1 : 0;
+        }
+
+        for (int i = 0; i < PendingObjectCount; i++)
+        {
+            index = (index + step + PendingObjectCount) % PendingObjectCount;
+            if (!IsPendingObjectConfirmed(index))
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private void EnsurePendingTrackingArrays()
+    {
+        int count = PendingObjectCount;
+        if (count <= 0)
+        {
+            confirmedPendingObjects = null;
+            placedPendingInstances = null;
+            PendingConfirmationIndex = -1;
+            return;
+        }
+
+        if (confirmedPendingObjects == null || confirmedPendingObjects.Length != count)
+        {
+            confirmedPendingObjects = new bool[count];
+        }
+
+        if (placedPendingInstances == null || placedPendingInstances.Length != count)
+        {
+            placedPendingInstances = new GameObject[count];
+        }
+    }
+
+    private void ResetPendingTracking()
+    {
+        confirmedPendingObjects = null;
+        placedPendingInstances = null;
+        PendingConfirmationIndex = -1;
     }
 
     private void FinishWithFailure(string reason)

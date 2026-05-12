@@ -65,8 +65,11 @@ public class FurnitureServerResultPlacer : MonoBehaviour
     [Tooltip("기존 서버 결과 가구를 지우고 새 result를 배치합니다.")]
     public bool clearPreviousServerResultFurniture = true;
     public bool ignoreServerTransformForManualPlacement = true;
+    public bool preferCameraForwardForManualPlacement = true;
     public bool spawnManualObjectAtRoomCenter = true;
+    [Min(0.1f)] public float cameraForwardManualPlacementDistance = 1.5f;
     public bool enableMoveModeAfterManualObjectLoad = true;
+    public bool restrictManualPlacementManipulationToLoadedObject = true;
     public bool validateManualObjectOnRegister = false;
 
     [Tooltip("result 객체별 로딩 실패 시 다음 객체를 계속 처리합니다.")]
@@ -345,14 +348,28 @@ public class FurnitureServerResultPlacer : MonoBehaviour
             ? furniturePlacementManager.roomGeometryProvider
             : null;
 
-        if (spawnManualObjectAtRoomCenter && geometryProvider != null && geometryProvider.IsInitialized)
+        Camera mainCamera = Camera.main;
+        if (preferCameraForwardForManualPlacement && mainCamera != null)
+        {
+            Vector3 forward = Vector3.ProjectOnPlane(mainCamera.transform.forward, Vector3.up);
+            if (forward.sqrMagnitude < 0.0001f)
+            {
+                forward = mainCamera.transform.forward;
+            }
+
+            position = mainCamera.transform.position + forward.normalized * cameraForwardManualPlacementDistance;
+            position.y = geometryProvider != null && geometryProvider.IsInitialized
+                ? geometryProvider.FloorTopY
+                : position.y;
+            rotation = Quaternion.Euler(0f, mainCamera.transform.eulerAngles.y, 0f);
+        }
+        else if (spawnManualObjectAtRoomCenter && geometryProvider != null && geometryProvider.IsInitialized)
         {
             Bounds roomBounds = geometryProvider.RoomBounds;
             position = new Vector3(roomBounds.center.x, geometryProvider.FloorTopY, roomBounds.center.z);
         }
         else
         {
-            Camera mainCamera = Camera.main;
             if (mainCamera != null)
             {
                 Vector3 forward = Vector3.ProjectOnPlane(mainCamera.transform.forward, Vector3.up);
@@ -361,7 +378,7 @@ public class FurnitureServerResultPlacer : MonoBehaviour
                     forward = mainCamera.transform.forward;
                 }
 
-                position = mainCamera.transform.position + forward.normalized * 1.5f;
+                position = mainCamera.transform.position + forward.normalized * cameraForwardManualPlacementDistance;
                 position.y = geometryProvider != null && geometryProvider.IsInitialized
                     ? geometryProvider.FloorTopY
                     : 0f;
@@ -534,6 +551,11 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         if (placedFurniture == null || furniturePlacementManager.moveModeController == null)
         {
             return;
+        }
+
+        if (restrictManualPlacementManipulationToLoadedObject)
+        {
+            furniturePlacementManager.moveModeController.allowAllFurnitureMovableInMoveMode = false;
         }
 
         furniturePlacementManager.moveModeController.SetMoveMode(true);

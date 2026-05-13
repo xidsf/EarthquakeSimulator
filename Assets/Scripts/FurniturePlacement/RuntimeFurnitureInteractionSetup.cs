@@ -11,8 +11,9 @@ using UnityEngine;
 /// ㄴ Mesh child(MeshFilter + MeshRenderer)
 ///
 /// 수행 작업:
-/// - Mesh가 있는 자식 오브젝트에 MeshCollider 추가
-/// - MeshCollider.convex = true 설정
+/// - 서버가 제공한 MeshCollider를 보존
+/// - 필요 시에만 Mesh가 있는 자식 오브젝트에 MeshCollider 추가
+/// - 필요 시에만 MeshCollider.convex = true 설정
 /// - root에 Rigidbody 추가 및 kinematic 설정
 /// - root에 PlacedFurniture 추가
 /// - root에 MRTK3 ObjectManipulator 추가
@@ -27,9 +28,15 @@ using UnityEngine;
 public class RuntimeFurnitureInteractionSetup : MonoBehaviour
 {
     [Header("Mesh Collider Setup")]
-    public bool addMeshColliderToMeshChildren = true;
-    public bool forceConvexMeshCollider = true;
+    public bool addMeshColliderToMeshChildren = false;
+    public bool forceConvexMeshCollider = false;
     public bool includeInactiveChildren = true;
+
+    [Tooltip("서버가 이미 MeshCollider(convex 포함)를 붙여서 보낸다는 전제입니다. 클라이언트는 기존 MeshCollider를 보존하고 새로 만들지 않습니다.")]
+    public bool useServerProvidedMeshColliders = true;
+
+    [Tooltip("HoloLens2에서는 복잡한 GLB MeshCollider/convex cooking을 강제로 건너뜁니다. 서버 제공 MeshCollider는 유지합니다.")]
+    public bool suppressMeshCollidersOnDevice = true;
 
     [Header("Scale Correction")]
     [Tooltip("Mesh child의 localScale 중 하나라도 threshold 이상이면 scaleMultiplier를 곱합니다.")]
@@ -78,7 +85,7 @@ public class RuntimeFurnitureInteractionSetup : MonoBehaviour
         }
 
         int meshColliderCount = 0;
-        if (addMeshColliderToMeshChildren)
+        if (ShouldAddMeshCollidersToMeshChildren())
         {
             meshColliderCount = EnsureMeshColliders(root);
         }
@@ -213,6 +220,23 @@ public class RuntimeFurnitureInteractionSetup : MonoBehaviour
         }
 
         return count;
+    }
+
+    private bool ShouldAddMeshCollidersToMeshChildren()
+    {
+        if (useServerProvidedMeshColliders)
+        {
+            return false;
+        }
+
+#if UNITY_WSA && !UNITY_EDITOR
+        if (suppressMeshCollidersOnDevice)
+        {
+            return false;
+        }
+#endif
+
+        return addMeshColliderToMeshChildren;
     }
 
     private void EnsureRigidbody(GameObject root)

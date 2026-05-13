@@ -117,23 +117,12 @@ public partial class SceneUnderstandingRoomScanner
 
     private static void AddClick(PressableButton button, UnityAction action)
     {
-        if (button == null || action == null)
-        {
-            return;
-        }
-
-        button.OnClicked.RemoveListener(action);
-        button.OnClicked.AddListener(action);
+        PressableButtonClickGuard.AddClick(button, action);
     }
 
     private static void RemoveClick(PressableButton button, UnityAction action)
     {
-        if (button == null || action == null)
-        {
-            return;
-        }
-
-        button.OnClicked.RemoveListener(action);
+        PressableButtonClickGuard.RemoveClick(button, action);
     }
 
     private IEnumerator DebugUiRefreshLoop()

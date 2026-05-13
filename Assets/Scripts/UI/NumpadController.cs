@@ -33,16 +33,16 @@ public class NumpadController : MonoBehaviour
                 string numString = i.ToString();
 
                 // 버튼이 눌렸을 때 실행할 함수를 코드로 직접 연결
-                numberButtons[i].OnClicked.AddListener(() => OnClick_Number(numString));
+                PressableButtonClickGuard.AddClick(numberButtons[i], () => OnClick_Number(numString));
             }
         }
 
         // 2. 기능 버튼 연결
         if (btn_Backspace != null)
-            btn_Backspace.OnClicked.AddListener(OnClick_Backspace);
+            PressableButtonClickGuard.AddClick(btn_Backspace, OnClick_Backspace);
 
         if (btn_Done != null)
-            btn_Done.OnClicked.AddListener(OnClick_Done);
+            PressableButtonClickGuard.AddClick(btn_Done, OnClick_Done);
     }
 
     // ==========================================

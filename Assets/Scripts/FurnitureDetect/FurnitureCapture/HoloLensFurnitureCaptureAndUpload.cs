@@ -87,6 +87,12 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
     [Tooltip("true이면 촬영 후 저장이 끝나자마자 /scan-frame으로 전송합니다. false이면 저장만 합니다.")]
     [SerializeField] private bool uploadImmediatelyAfterCapture = false;
 
+    [Tooltip("HoloLens2 PhotoCapture 목표 가로 해상도입니다. 지원 해상도 중 가장 가까운 값을 선택합니다.")]
+    [SerializeField] private int targetCaptureWidth = 1280;
+
+    [Tooltip("HoloLens2 PhotoCapture 목표 세로 해상도입니다. 지원 해상도 중 가장 가까운 값을 선택합니다.")]
+    [SerializeField] private int targetCaptureHeight = 720;
+
     [Header("Room Object Auto Binding")]
     [SerializeField] private bool autoBindRoomObjectsBeforeCapture = true;
     [SerializeField] private bool autoFindConfirmRoomManager = true;
@@ -609,7 +615,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
             return;
         }
 
-        selectedResolution = resolutions[0];
+        selectedResolution = SelectCaptureResolution(resolutions);
 
         PhotoCapture.CreateAsync(false, captureObject =>
         {
@@ -631,6 +637,26 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
 
             photoCaptureObject.StartPhotoModeAsync(cameraParameters, OnPhotoModeStarted);
         });
+    }
+
+    private Resolution SelectCaptureResolution(List<Resolution> resolutions)
+    {
+        int targetWidth = Mathf.Max(1, targetCaptureWidth);
+        int targetHeight = Mathf.Max(1, targetCaptureHeight);
+        float targetAspect = (float)targetWidth / targetHeight;
+
+        Resolution selected = resolutions
+            .OrderBy(resolution => Mathf.Abs(((float)resolution.width / resolution.height) - targetAspect))
+            .ThenBy(resolution => Mathf.Abs((resolution.width * resolution.height) - (targetWidth * targetHeight)))
+            .First();
+
+        Debug.Log(
+            "[FurnitureCapture] PhotoCapture 해상도 선택\n" +
+            $"target: {targetWidth}x{targetHeight}\n" +
+            $"selected: {selected.width}x{selected.height}"
+        );
+
+        return selected;
     }
 
     private void OnPhotoModeStarted(PhotoCapture.PhotoCaptureResult result)

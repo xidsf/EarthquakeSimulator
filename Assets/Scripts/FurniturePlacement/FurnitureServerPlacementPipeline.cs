@@ -39,7 +39,8 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
     public bool blockWhileRunning = true;
 
     [Header("Polling")]
-    [Min(1)] public int maxJobPollAttempts = 120;
+    [Tooltip("스캔 파이프라인 완료를 기다리는 최대 폴링 횟수. interval=2s 기준 300=10분. 첫 실행은 SAM3D 생성 포함 5~10분 걸릴 수 있어 여유 있게 설정합니다.")]
+    [Min(1)] public int maxJobPollAttempts = 300;
     [Min(0.1f)] public float jobPollIntervalSeconds = 2.0f;
 
     [Header("Log")]
@@ -366,10 +367,10 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
 
         IsRunning = true;
         ActiveScanSessionId = scanSessionId;
-            LastStatus = "started";
-            LastResult = null;
-            SelectedPendingObjectIndex = -1;
-            ResetPendingTracking();
+        LastStatus = "started";
+        LastResult = null;
+        SelectedPendingObjectIndex = -1;
+        ResetPendingTracking();
 
         if (logPipeline)
         {
@@ -407,8 +408,16 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
 
             if (!finishOk)
             {
-                FinishWithFailure($"finish scan-session failed. {finishError}");
-                yield break;
+                // 409 = 파이프라인이 이미 실행 중 → 실패로 처리하지 않고 polling으로 계속 진행.
+                bool alreadyRunning = !string.IsNullOrWhiteSpace(finishError) && finishError.Contains("409");
+                if (!alreadyRunning)
+                {
+                    FinishWithFailure($"finish scan-session failed. {finishError}");
+                    yield break;
+                }
+
+                Debug.Log($"[FurnitureServerPlacementPipeline] /finish returned 409 (pipeline already running). Proceeding to poll. session:{scanSessionId}");
+                LastStatus = "already_processing";
             }
         }
 

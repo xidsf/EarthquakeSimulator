@@ -42,6 +42,10 @@ public class FurnitureServerResultPlacer : MonoBehaviour
     [Header("Coordinate Mapping - Confirm With Server")]
     public FurnitureServerCoordinateSpace coordinateSpace = FurnitureServerCoordinateSpace.UnityWorld;
     public FurnitureServerRotationMode rotationMode = FurnitureServerRotationMode.QuaternionXyzw;
+
+    [Tooltip("WorldBoundsSizeMeters: size_world 기준으로 GLB Renderer bounds를 측정해 스케일 적용 (권장).\n" +
+             "LocalScaleValue: serverObject.scale을 localScale에 직접 적용 (glTFast 좌표계 차이로 오차 가능).\n" +
+             "Ignore: 스케일 적용 안 함.")]
     public FurnitureServerTargetSizeMode targetSizeMode = FurnitureServerTargetSizeMode.WorldBoundsSizeMeters;
 
     [Tooltip("coordinateSpace가 RoomRootLocal일 때 사용합니다.")]
@@ -52,7 +56,13 @@ public class FurnitureServerResultPlacer : MonoBehaviour
 
     [Header("Runtime Setup Order")]
     [Tooltip("target_size 적용 전에 MeshCollider/ObjectManipulator 보정 및 큰 scale 1/4 축소를 먼저 수행합니다.")]
-    public bool configureRuntimeInteractionBeforeTargetSize = true;
+    public bool configureRuntimeInteractionBeforeTargetSize = false;
+
+    [Tooltip("HoloLens2에서는 최종 scale/정렬 이후 서버 제공 MeshCollider를 보존한 상태로 interaction setup을 적용합니다.")]
+    public bool forceRuntimeInteractionAfterTargetSizeOnDevice = true;
+
+    [Tooltip("서버가 Unity Collider(MeshCollider 포함)를 이미 포함해 보낸 경우 collider metadata 기반 BoxCollider 추가를 건너뜁니다.")]
+    public bool preferServerProvidedColliders = true;
 
     [Header("Model Alignment")]
     [Tooltip("서버 position을 가구의 바닥 중심점으로 보고 GLB child들을 root 기준 바닥에 맞춥니다.")]
@@ -219,12 +229,14 @@ public class FurnitureServerResultPlacer : MonoBehaviour
             instance.transform.SetParent(serverSpawnRoot, true);
         }
 
-        if (configureRuntimeInteractionBeforeTargetSize)
-        {
-            RuntimeFurnitureInteractionSetup setup = runtimeInteractionSetup != null
-                ? runtimeInteractionSetup
-                : furniturePlacementManager.runtimeInteractionSetup;
+        RuntimeFurnitureInteractionSetup setup = runtimeInteractionSetup != null
+            ? runtimeInteractionSetup
+            : furniturePlacementManager.runtimeInteractionSetup;
 
+        bool configureBeforeTargetSize = ShouldConfigureRuntimeInteractionBeforeTargetSize();
+
+        if (configureBeforeTargetSize)
+        {
             if (setup != null)
             {
                 setup.ConfigureFurnitureObject(instance);
@@ -236,6 +248,11 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         ApplyTargetSize(instance, serverObject);
         NormalizeModelIfNeeded(instance);
         ApplyServerCollider(instance, serverObject);
+
+        if (!configureBeforeTargetSize && setup != null)
+        {
+            setup.ConfigureFurnitureObject(instance);
+        }
 
         FurniturePlacementMetadata metadata = new FurniturePlacementMetadata
         {
@@ -294,6 +311,18 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         }
 
         ApplyServerTransform(instance, serverObject);
+    }
+
+    private bool ShouldConfigureRuntimeInteractionBeforeTargetSize()
+    {
+#if UNITY_WSA && !UNITY_EDITOR
+        if (forceRuntimeInteractionAfterTargetSizeOnDevice)
+        {
+            return false;
+        }
+#endif
+
+        return configureRuntimeInteractionBeforeTargetSize;
     }
 
     private void ApplyServerTransform(GameObject instance, FurnitureServerResultObject serverObject)
@@ -484,6 +513,11 @@ public class FurnitureServerResultPlacer : MonoBehaviour
             return;
         }
 
+        if (preferServerProvidedColliders && instance.GetComponentInChildren<Collider>(true) != null)
+        {
+            return;
+        }
+
         string colliderType = string.IsNullOrWhiteSpace(serverObject.collider_type)
             ? "box"
             : serverObject.collider_type.Trim().ToLowerInvariant();
@@ -592,25 +626,30 @@ public class FurnitureServerResultPlacer : MonoBehaviour
 
     private Vector3 GetTargetSize(FurnitureServerResultObject serverObject)
     {
+        // size_world: 서버가 HoloLens depth 기반으로 추정한 실제 세계 크기 (미터 단위).
         Vector3 sizeWorld = ToVector3(serverObject.size_world, Vector3.zero);
         if (HasAllPositiveComponents(sizeWorld))
         {
             return sizeWorld;
         }
 
+        // target_size: taxonomy 기반 기본 크기 (size_world가 없을 때 fallback).
         Vector3 targetSize = ToVector3(serverObject.target_size, Vector3.zero);
         if (HasAllPositiveComponents(targetSize))
         {
             return targetSize;
         }
 
+        // collider_size: collider 기반 크기 참고값.
         Vector3 colliderSize = ToVector3(serverObject.collider_size, Vector3.zero);
         if (HasAllPositiveComponents(colliderSize))
         {
             return colliderSize;
         }
 
-        return ToVector3(serverObject.scale, Vector3.zero);
+        // scale 필드는 Unity localScale 값이지 미터 단위 세계 크기가 아니므로
+        // WorldBoundsSizeMeters 모드에서 사용하면 안 됨 → Vector3.zero 반환해서 skip.
+        return Vector3.zero;
     }
 
     private static bool IsManualPlacement(FurnitureServerResultObject serverObject)

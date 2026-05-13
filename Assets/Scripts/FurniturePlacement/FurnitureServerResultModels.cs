@@ -159,7 +159,16 @@ public class FurnitureServerResultObject
     public float[] position;
     public float[] rotation;
     public float rotation_yaw_deg;
+
+    // scale = Unity localScale (서버 사전 계산값).
+    // 직접 transform.localScale에 적용하지 말 것 — WorldBoundsSizeMeters 모드에서는
+    // size_world 기준으로 Unity가 bounds를 재측정해 적용하므로 scale 필드는 무시됨.
     public float[] scale;
+
+    // glb_native_size: GLB bounding box 실측값 [x, y, z] (trimesh 측정, meters).
+    // scale_source: "glb_bbox" = 서버 실측, "default_1_1_1" = fallback.
+    public float[] glb_native_size;
+    public string scale_source;
 
     public float[] size_world;
     public float[] target_size;
@@ -167,11 +176,22 @@ public class FurnitureServerResultObject
     public string collider_type;
     public float[] collider_center;
     public float[] collider_size;
+    // collider_source = "unity_runtime" → Unity가 런타임에 직접 생성해야 함.
+    public string collider_source;
+    public bool collider_required_from_server;
 
     public string placement_mode;
     public bool manual_placement_required;
     public string placement_status;
     public float placement_confidence;
+
+    // role: "hazard_object" | "support_surface"
+    public string role;
+    // placement_group: "hazard_objects" | "support_objects"
+    public string placement_group;
+    // placement_order: 1=support 먼저 배치, 2=hazard 나중 배치
+    public int placement_order;
+    public bool is_required_support_asset;
 
     public string physics_mode;
     public bool is_support_surface;
@@ -182,6 +202,13 @@ public class FurnitureServerResultObject
     public string rigidbody_mode;
     public bool use_gravity;
     public bool earthquake_simulation;
+
+    // mass 정보 (서버 참조표 기반 추정값).
+    public float mass_kg;
+    public float mass_lbs;
+    public string mass_source;
+    public string mass_reference_item;
+    public string mass_confidence;
 
     public string fixture_type;
     public float fixture_confidence;

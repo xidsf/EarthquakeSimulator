@@ -20,7 +20,7 @@ public class IntensitySliderController : WorkflowPanelControllerBase
         if (btn_Done != null)
         {
             btn_Done.OnClicked.RemoveAllListeners();
-            btn_Done.OnClicked.AddListener(OnClick_Done);
+            PressableButtonClickGuard.AddClick(btn_Done, OnClick_Done);
         }
     }
 

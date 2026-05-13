@@ -423,14 +423,11 @@ public class WorkflowHelpPanelController : MonoBehaviour
 
     private static void AddClick(PressableButton button, UnityAction action)
     {
-        if (button == null || action == null) return;
-        button.OnClicked.RemoveListener(action);
-        button.OnClicked.AddListener(action);
+        PressableButtonClickGuard.AddClick(button, action);
     }
 
     private static void RemoveClick(PressableButton button, UnityAction action)
     {
-        if (button == null || action == null) return;
-        button.OnClicked.RemoveListener(action);
+        PressableButtonClickGuard.RemoveClick(button, action);
     }
 }

@@ -60,6 +60,8 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     public TMP_Text text_RotateMode;
     public Transform userSelectedServerFurniturePreviewAnchor;
     public bool loadSelectedServerFurniturePreview = true;
+    [Tooltip("HoloLens2에서는 preview GLB와 실제 배치 GLB가 중복 로드되어 메모리 피크가 커질 수 있으므로 기본적으로 preview를 막습니다.")]
+    public bool suppressSelectedServerFurniturePreviewOnDevice = true;
     public float selectedServerFurniturePreviewScale = 0.03f;
     public bool requireAllServerFurnitureConfirmedBeforeComplete = true;
 
@@ -520,7 +522,8 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
                                     !isRunning &&
                                     (!requireAllServerFurnitureConfirmedBeforeComplete || allPlaced);
 
-        SetButtonEnabled(userPlaceFurnitureFromServerButton, !isRunning);
+        SetButtonVisible(userPlaceFurnitureFromServerButton, !hasServerFurniture);
+        SetButtonEnabled(userPlaceFurnitureFromServerButton, !isRunning && !hasServerFurniture);
         SetButtonEnabled(userSelectNextServerFurnitureButton, canSelectOtherFurniture);
         SetButtonEnabled(userSelectPreviousServerFurnitureButton, canSelectOtherFurniture);
         SetButtonEnabled(userPlaceSelectedServerFurnitureButton, canPlaceSelectedFurniture);
@@ -600,13 +603,27 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     {
         ClearSelectedServerFurniturePreview();
 
-        if (!loadSelectedServerFurniturePreview || selectedObject == null || userSelectedServerFurniturePreviewAnchor == null)
+        if (!ShouldLoadSelectedServerFurniturePreview() || selectedObject == null || userSelectedServerFurniturePreviewAnchor == null)
         {
             return;
         }
 
         int requestId = ++selectedServerFurniturePreviewRequestId;
         StartCoroutine(LoadSelectedServerFurniturePreviewRoutine(selectedObject, requestId));
+    }
+
+    private bool ShouldLoadSelectedServerFurniturePreview()
+    {
+        if (!loadSelectedServerFurniturePreview)
+        {
+            return false;
+        }
+
+#if UNITY_WSA && !UNITY_EDITOR
+        return !suppressSelectedServerFurniturePreviewOnDevice;
+#else
+        return true;
+#endif
     }
 
     private IEnumerator LoadSelectedServerFurniturePreviewRoutine(FurnitureServerResultObject selectedObject, int requestId)

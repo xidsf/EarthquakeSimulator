@@ -967,10 +967,7 @@ PrefabInstance:
     m_RemovedGameObjects:
     - {fileID: 5719829374270691469, guid: 5e1e5c2fb89ded5469dd37ccbed1a896, type: 3}
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 1220126735637944177, guid: 5e1e5c2fb89ded5469dd37ccbed1a896, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 5e1e5c2fb89ded5469dd37ccbed1a896, type: 3}
 --- !u!4 &46994442 stripped
 Transform:
@@ -2249,7 +2246,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &129256256
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -8987,7 +8984,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 1, g: 1, b: 1, a: 0.40392157}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -10652,10 +10649,7 @@ PrefabInstance:
     m_RemovedGameObjects:
     - {fileID: 5719829374270691469, guid: 5e1e5c2fb89ded5469dd37ccbed1a896, type: 3}
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 1220126735637944177, guid: 5e1e5c2fb89ded5469dd37ccbed1a896, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 5e1e5c2fb89ded5469dd37ccbed1a896, type: 3}
 --- !u!4 &1109063623 stripped
 Transform:

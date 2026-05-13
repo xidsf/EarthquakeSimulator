@@ -61,7 +61,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     public Transform userSelectedServerFurniturePreviewAnchor;
     public bool loadSelectedServerFurniturePreview = true;
     [Tooltip("HoloLens2에서는 preview GLB와 실제 배치 GLB가 중복 로드되어 메모리 피크가 커질 수 있으므로 기본적으로 preview를 막습니다.")]
-    public bool suppressSelectedServerFurniturePreviewOnDevice = true;
+    public bool suppressSelectedServerFurniturePreviewOnDevice = false;
     public float selectedServerFurniturePreviewScale = 0.03f;
     public bool requireAllServerFurnitureConfirmedBeforeComplete = true;
 

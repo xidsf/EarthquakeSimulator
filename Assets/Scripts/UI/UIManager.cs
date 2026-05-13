@@ -11,96 +11,96 @@ public class UIManager : MonoBehaviour
         public RoomBuildWorkflowManager.WorkflowState state;
         public GameObject mainPanel;
 
-        [Tooltip("?대떦 ?곹깭?먯꽌 MainPlate(硫붿씤 UI ?먮꽟)瑜??쒖꽦?뷀븷吏 ?щ??낅땲??")]
-        public bool showMainPlate = true; // 湲곕낯媛믪? true
+        [Tooltip("해당 상태에서 MainPlate(메인 UI 패널)를 활성화할지 여부입니다.")]
+        public bool showMainPlate = true; // 기본값은 true
 
-        [Tooltip("?대떦 ?곹깭?먯꽌 異붽?濡?耳?踰꾪듉?낅땲??")]
+        [Tooltip("해당 상태에서 추가로 켤 버튼입니다.")]
         public PressableButton[] visibleButtons;
 
-        [Tooltip("?대떦 ?곹깭?먯꽌 異붽?濡?耳??ㅻ툕?앺듃?낅땲??")]
+        [Tooltip("해당 상태에서 추가로 켤 오브젝트입니다.")]
         public GameObject[] visibleObjects;
 
-        [Tooltip("?곹깭 吏꾩엯 ??Numpad/Slider 媛숈? ?쒕툕?⑤꼸???レ뒿?덈떎.")]
+        [Tooltip("상태 진입 시 Numpad/Slider 같은 서브패널을 닫습니다.")]
         public bool hideSubPanelsOnEnter = true;
     }
 
-    [Header("Workflow ?곌껐")]
-    [Tooltip("諛??앹꽦/?섎룞 踰?罹≪쿂/諛곗튂/?쒕??덉씠???④퀎???ㅼ젣 ?묒뾽???대떦?섎뒗 WorkflowManager?낅땲??")]
+    [Header("Workflow 연결")]
+    [Tooltip("방 생성/수동 벽/캡처/배치/시뮬레이션 단계의 실제 작업을 담당하는 WorkflowManager입니다.")]
     public RoomBuildWorkflowManager workflowManager;
 
-    [Tooltip("workflowManager媛 鍮꾩뼱 ?덉쑝硫??고??꾩뿉 Scene?먯꽌 ?먮룞 ?먯깋?⑸땲??")]
+    [Tooltip("workflowManager가 비어 있으면 런타임에 Scene에서 자동 탐색합니다.")]
     public bool autoFindWorkflowManager = true;
 
-    [Tooltip("Workflow ?곹깭媛 諛붾???UIManager媛 硫붿씤 ?⑤꼸???꾪솚?⑸땲??")]
+    [Tooltip("Workflow 상태가 바뀔 때 UIManager가 메인 패널을 전환합니다.")]
     public bool useWorkflowDrivenPanels = true;
 
-    [Tooltip("?곹깭蹂?UI ?ㅼ젙 諛곗뿴???곗꽑 ?ъ슜?⑸땲?? 媛??곹깭留덈떎 mainPanel怨??꾩슂??踰꾪듉/?ㅻ툕?앺듃瑜?吏곸젒 吏?뺥븷 ???덉뒿?덈떎.")]
+    [Tooltip("상태별 UI 설정 배열을 우선 사용합니다. 각 상태마다 mainPanel과 필요한 버튼/오브젝트를 직접 지정할 수 있습니다.")]
     public bool useWorkflowStateUiConfigs = true;
 
     [Header("Main UI Plate")]
-    [Tooltip("?④퀎蹂꾨줈 ?쒖뼱??硫붿씤 UI??遺紐⑦뙋??MainPlate)?낅땲??")]
+    [Tooltip("단계별로 제어할 메인 UI의 부모판넬(MainPlate)입니다.")]
     public GameObject panel_MainPlate;
 
-    [Header("1. Opening / RoomInfoInput ?⑤꼸")]
-    [Tooltip("???쒖옉 ??媛??癒쇱? 蹂댁뿬以?Opening ?⑤꼸?낅땲?? 鍮꾩썙?먮㈃ Opening ?⑤꼸 ?④퀎???ъ슜?섏? ?딆뒿?덈떎.")]
+    [Header("1. Opening / RoomInfoInput 패널")]
+    [Tooltip("앱 시작 시 가장 먼저 보여줄 Opening 패널입니다. 비워두면 Opening 패널 단계는 사용하지 않습니다.")]
     public GameObject panel_Opening;
 
-    [Tooltip("panel_Opening???곌껐?섏뼱 ?덉쑝硫?Start?먯꽌 Opening ?⑤꼸??癒쇱? 蹂댁뿬以띾땲??")]
+    [Tooltip("panel_Opening이 연결되어 있으면 Start에서 Opening 패널을 먼저 보여줍니다.")]
     public bool showOpeningPanelOnStart = true;
 
-    [Tooltip("RoomInfoInput ?④퀎 ?⑤꼸?낅땲??")]
+    [Tooltip("RoomInfoInput 단계 패널입니다.")]
     public GameObject panel_RoomInfoInput;
 
-    [Header("1-1. Workflow ?④퀎蹂?硫붿씤 ?⑤꼸")]
-    [Tooltip("RoomBuild ?④퀎 ?⑤꼸?낅땲??")]
+    [Header("1-1. Workflow 단계별 메인 패널")]
+    [Tooltip("RoomBuild 단계 패널입니다.")]
     public GameObject panel_RoomBuild;
 
-    [Tooltip("ManualWallGenerate ?④퀎 ?⑤꼸?낅땲??")]
+    [Tooltip("ManualWallGenerate 단계 패널입니다.")]
     public GameObject panel_ManualWallGenerate;
 
-    [Tooltip("ManualWallConfirmed ?④퀎 ?⑤꼸?낅땲??")]
+    [Tooltip("ManualWallConfirmed 단계 패널입니다.")]
     public GameObject panel_ManualWallConfirmed;
 
-    [Tooltip("RoomCapture ?④퀎 ?⑤꼸?낅땲??")]
+    [Tooltip("RoomCapture 단계 패널입니다.")]
     public GameObject panel_RoomCapture;
 
-    [Tooltip("FurniturePlacement ?④퀎 ?⑤꼸?낅땲??")]
+    [Tooltip("FurniturePlacement 단계 패널입니다.")]
     public GameObject panel_FurniturePlacement;
 
-    [Tooltip("SimulationProcess ?④퀎 ?⑤꼸?낅땲??")]
+    [Tooltip("SimulationProcess 단계 패널입니다.")]
     public GameObject panel_SimulationProcess;
 
-    [Tooltip("SimulationSuccess ?④퀎 ?⑤꼸?낅땲??")]
+    [Tooltip("SimulationSuccess 단계 패널입니다.")]
     public GameObject panel_SimulationSuccess;
 
-    [Tooltip("RunSimulation ?④퀎 ?⑤꼸?낅땲??")]
+    [Tooltip("RunSimulation 단계 패널입니다.")]
     public GameObject panel_RunSimulation;
 
-    [Tooltip("FurnitureRePlacement ?④퀎 ?⑤꼸?낅땲??")]
+    [Tooltip("FurnitureRePlacement 단계 패널입니다.")]
     public GameObject panel_FurnitureRePlacement;
 
-    [Header("1-2. Workflow ?곹깭蹂?UI ?ㅼ젙")]
-    [Tooltip("?곹깭蹂꾨줈 ?쒖떆??硫붿씤 ?⑤꼸怨?異붽? 踰꾪듉/?ㅻ툕?앺듃瑜?吏?뺥빀?덈떎. 鍮꾩썙?먮㈃ ?꾩쓽 ?⑤꼸 ?꾨뱶 fallback???ъ슜?⑸땲??")]
+    [Header("1-2. Workflow 상태별 UI 설정")]
+    [Tooltip("상태별로 표시할 메인 패널과 추가 버튼/오브젝트를 지정합니다. 비워두면 위의 패널 필드 fallback을 사용합니다.")]
     public WorkflowStateUiConfig[] workflowStateUiConfigs;
 
-    [Header("2. ?쒕툕 ?⑤꼸")]
+    [Header("2. 서브 패널")]
     public GameObject sub_BuildingTypeOptions;
     public GameObject sub_Numpad;
     public GameObject sub_IntensitySlider;
 
-    [Header("3. ?쒖뒪??硫붿떆吏 UI")]
+    [Header("3. 시스템 메시지 UI")]
     public GameObject panel_SystemMessage;
     public TMP_Text text_SystemMessage;
 
-    [Header("5. Workflow ?곹깭 ?쒖떆")]
+    [Header("5. Workflow 상태 표시")]
     public TMP_Text text_WorkflowStatus;
 
     [Header("6. Workflow Help")]
-    [Tooltip("Help ?⑤꼸 ?꾩껜瑜?愿由ы븯??而⑦듃濡ㅻ윭?낅땲?? State 蹂寃???ShowForState瑜??몄텧?⑸땲??")]
+    [Tooltip("Help 패널 전체를 관리하는 컨트롤러입니다. State 변경 시 ShowForState를 호출합니다.")]
     public WorkflowHelpPanelController workflowHelpPanel;
     public bool autoFindWorkflowHelpPanel = true;
 
-    // ?꾩옱 ?쒖꽦?붾맂 硫붿씤 ?⑤꼸 (Help ?대┝ ??鍮꾪솢?깊솕?섍린 ?꾪빐 異붿쟻)
+    // 현재 활성화된 메인 패널을 추적합니다. Help 열림 시 비활성화에 사용합니다.
     private GameObject currentMainPanel;
 
     public GameObject CurrentMainPanel => currentMainPanel;
@@ -141,7 +141,7 @@ public class UIManager : MonoBehaviour
             return;
         }
 
-        // WorkflowManager 誘몄뿰寃???Opening ?먮뒗 RoomInfoInput ?⑤꼸 ?쒖떆
+        // WorkflowManager 미연결 시 Opening 또는 RoomInfoInput 패널 표시
         ShowMainPanel(panel_Opening != null ? panel_Opening : panel_RoomInfoInput);
     }
 
@@ -222,19 +222,19 @@ public class UIManager : MonoBehaviour
 
         WorkflowStateUiConfig config = GetWorkflowStateUiConfig(state);
 
-        // 1. 硫붿씤 ?⑤꼸 ?꾪솚
+        // 1. 메인 패널 전환
         GameObject targetPanel = GetPanelForWorkflowState(state, config);
         ShowMainPanel(targetPanel);
 
-        // 2. MainPlate ?쒖꽦???쒖뼱
+        // 2. MainPlate 활성화 제어
         if (panel_MainPlate != null)
         {
-            // ?ㅼ젙???덉쑝硫??ㅼ젙媛믪뿉 ?곕Ⅴ怨? ?ㅼ젙???놁쑝硫?湲곕낯?곸쑝濡?耳?땲??
+            // 설정이 있으면 설정값에 따르고, 설정이 없으면 기본적으로 켭니다.
             bool shouldShowMainPlate = (config != null) ? config.showMainPlate : true;
             panel_MainPlate.SetActive(shouldShowMainPlate);
         }
 
-        // 3. 踰꾪듉 諛??ㅻ툕?앺듃 媛?쒖꽦 ?곸슜
+        // 3. 버튼 및 오브젝트 가시성 적용
         ApplyWorkflowStateVisibleObjects(config);
 
         if (config != null && config.hideSubPanelsOnEnter)
@@ -347,7 +347,7 @@ public class UIManager : MonoBehaviour
 
         if (workflow == null)
         {
-            ShowWarningMessage("WorkflowManager媛 ?곌껐?섏뼱 ?덉? ?딆뒿?덈떎.");
+            ShowWarningMessage("WorkflowManager가 연결되어 있지 않습니다.");
             return false;
         }
 
@@ -365,7 +365,7 @@ public class UIManager : MonoBehaviour
 
         if (workflowManager != null && workflowManager.currentState != RoomBuildWorkflowManager.WorkflowState.RoomInfoInput)
         {
-            ShowWarningMessage("?꾩옱 ?곹깭?먯꽌??RoomInfoInput ?⑤꼸濡??뚯븘媛????놁뒿?덈떎.");
+            ShowWarningMessage("현재 상태에서는 RoomInfoInput 패널로 돌아갈 수 없습니다.");
             return;
         }
 
@@ -406,7 +406,7 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    // Help 而⑦듃濡ㅻ윭?먯꽌 ?몄텧. ?꾩옱 硫붿씤 ?⑤꼸??耳쒓굅?????덊띁?곗뒪???좎?).
+    // Help 컨트롤러에서 호출합니다. 현재 메인 패널을 켜거나 끄는 인터페이스입니다.
     public void SetCurrentMainPanelInteractable(bool interactable)
     {
         if (currentMainPanel != null)

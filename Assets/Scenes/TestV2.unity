@@ -415,7 +415,10 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 7256543900600860858, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
 --- !u!4 &36939921 stripped
 Transform:
@@ -4287,7 +4290,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &656623179
 RectTransform:
   m_ObjectHideFlags: 0
@@ -4691,6 +4694,10 @@ MonoBehaviour:
   userOpenConfirmRoomButton: {fileID: 742976829}
   text_ManualCreateMode: {fileID: 227401847}
   text_WallCutMode: {fileID: 1302358410}
+  manualCreateModeLabel: "\uBCBD \uC0DD\uC131 \uBAA8\uB4DC"
+  wallCutModeLabel: "\uBCBD \uC790\uB974\uAE30 \uBAA8\uB4DC"
+  modeOnText: On
+  modeOffText: Off
   rebuildSelectableSurfacesButton: {fileID: 0}
   toggleManualWallEditModeButton: {fileID: 0}
   setManualCreateModeButton: {fileID: 0}
@@ -4770,6 +4777,10 @@ MonoBehaviour:
   wallBlockDistance: 0.08
   maxGridCellsPerAxis: 220
   nearestFreeCellSearchRadius: 8
+  trimConfirmedBoundarySegmentsToSelectedRoom: 1
+  confirmedBoundaryTrimSampleStepMultiplier: 0.5
+  confirmedBoundaryTrimSelectedCellRadiusMultiplier: 2.75
+  confirmedBoundaryTrimEndPaddingMeters: 0.24
   useCubeFootprintFloodFill: 1
   cubeFootprintWallThickness: 0.16
   cubeFootprintEndPadding: 0.1
@@ -4806,6 +4817,14 @@ MonoBehaviour:
   gapMarkerMaterial: {fileID: 0}
   gapMarkerSize: 0.12
   gapMarkerYOffset: 0.12
+  requireEntranceBeforeProceed: 1
+  entrancePlacementMode: 0
+  hasEntrance: 0
+  entrancePointWorld: {x: 0, y: 0, z: 0}
+  entranceRadiusMeters: 1.5
+  entranceMarkerRoot: {fileID: 0}
+  entrancePointMarkerMaterial: {fileID: 0}
+  entrancePointMarkerSize: 0.12
 --- !u!1001 &690439773
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -5887,6 +5906,10 @@ MonoBehaviour:
   text_SystemMessage: {fileID: 1018718685}
   btn_EditWallAgain: {fileID: 893769904}
   btn_ProceedNext: {fileID: 384066544}
+  btn_SetEntrancePoint: {fileID: 0}
+  btn_ClearEntrancePoint: {fileID: 0}
+  text_EntranceStatus: {fileID: 0}
+  confirmRoomManager: {fileID: 0}
 --- !u!1 &806697712
 GameObject:
   m_ObjectHideFlags: 0
@@ -6805,7 +6828,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &865809332
 RectTransform:
   m_ObjectHideFlags: 0
@@ -7780,7 +7803,10 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 7256543900600860858, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
 --- !u!1 &1001287131
 GameObject:
@@ -8598,18 +8624,10 @@ MonoBehaviour:
   autoFindWorkflowManager: 1
   useWorkflowDrivenPanels: 1
   useWorkflowStateUiConfigs: 1
-  registerWorkflowButtons: 0
-  manageWorkflowButtonVisibility: 0
-  useLegacyStartPanelWhenWorkflowMissing: 1
   panel_MainPlate: {fileID: 865809331}
   panel_Opening: {fileID: 0}
   showOpeningPanelOnStart: 0
   panel_RoomInfoInput: {fileID: 1399894962}
-  panel_BuildingInfo: {fileID: 0}
-  panel_AutoScanCheck: {fileID: 0}
-  panel_ManualWall: {fileID: 0}
-  panel_MeshAndSimSetup: {fileID: 0}
-  panel_Result: {fileID: 0}
   panel_RoomBuild: {fileID: 873799632}
   panel_ManualWallGenerate: {fileID: 687404642}
   panel_ManualWallConfirmed: {fileID: 798991840}
@@ -8697,21 +8715,9 @@ MonoBehaviour:
   sub_IntensitySlider: {fileID: 416736704}
   panel_SystemMessage: {fileID: 900332666}
   text_SystemMessage: {fileID: 159521143}
-  completeRoomInfoInputButton: {fileID: 0}
-  switchToManualWallButton: {fileID: 0}
-  returnToRoomBuildButton: {fileID: 0}
-  confirmManualWallsButton: {fileID: 0}
-  backToManualWallButton: {fileID: 0}
-  confirmRoomButton: {fileID: 0}
-  completeRoomCaptureButton: {fileID: 0}
-  completeFurniturePlacementButton: {fileID: 0}
-  completeSimulationProcessButton: {fileID: 0}
-  startRunSimulationButton: {fileID: 0}
-  completeRunSimulationButton: {fileID: 0}
-  startFurnitureRePlacementButton: {fileID: 0}
-  completeFurnitureRePlacementButton: {fileID: 0}
-  returnToRoomCaptureButton: {fileID: 0}
   text_WorkflowStatus: {fileID: 1343992415}
+  workflowHelpPanel: {fileID: 0}
+  autoFindWorkflowHelpPanel: 1
 --- !u!1 &1085933389
 GameObject:
   m_ObjectHideFlags: 0
@@ -11111,6 +11117,7 @@ MonoBehaviour:
   clearManualWallsWhenReturningToRoomBuild: 1
   hideAutoRoomVisualsInConfirmRoom: 1
   hideManualWallVisualsInConfirmRoom: 1
+  hideConfirmedRoomRenderersInRoomCapture: 1
   restoreAutoRoomVisualsWhenBackToManual: 1
   currentState: 0
   finalRoomClosed: 0
@@ -14828,7 +14835,10 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 7256543900600860858, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
 --- !u!4 &1886631724 stripped
 Transform:
@@ -15620,6 +15630,9 @@ MonoBehaviour:
   updateIntervalSeconds: 2
   queryRadiusMeters: 8
   meshLevelOfDetail: 1
+  workflowManager: {fileID: 0}
+  autoFindWorkflowManager: 1
+  requireRoomBuildStateToScan: 1
   minWallHeightMeters: 1.2
   minWallLengthMeters: 0.5
   maxCloseGapMeters: 0.45

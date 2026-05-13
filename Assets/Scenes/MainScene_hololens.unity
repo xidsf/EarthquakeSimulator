@@ -16303,35 +16303,35 @@ MonoBehaviour:
   panel_FurnitureRePlacement: {fileID: 0}
   workflowStateUiConfigs:
   - state: 0
-    mainPanel: {fileID: 2128505333}
+    mainPanel: {fileID: 0}
     showMainPlate: 1
     visibleButtons: []
     visibleObjects:
     - {fileID: 2037681334}
     hideSubPanelsOnEnter: 0
   - state: 1
-    mainPanel: {fileID: 2128505333}
+    mainPanel: {fileID: 0}
     showMainPlate: 0
     visibleButtons: []
     visibleObjects:
     - {fileID: 1559471276}
     hideSubPanelsOnEnter: 0
   - state: 2
-    mainPanel: {fileID: 2128505333}
+    mainPanel: {fileID: 0}
     showMainPlate: 0
     visibleButtons: []
     visibleObjects:
     - {fileID: 237620768}
     hideSubPanelsOnEnter: 0
   - state: 3
-    mainPanel: {fileID: 2128505333}
+    mainPanel: {fileID: 0}
     showMainPlate: 0
     visibleButtons: []
     visibleObjects:
     - {fileID: 1599065184}
     hideSubPanelsOnEnter: 0
   - state: 4
-    mainPanel: {fileID: 2128505333}
+    mainPanel: {fileID: 0}
     showMainPlate: 0
     visibleButtons: []
     visibleObjects:
@@ -16339,35 +16339,35 @@ MonoBehaviour:
     - {fileID: 1961066079}
     hideSubPanelsOnEnter: 0
   - state: 5
-    mainPanel: {fileID: 2128505333}
+    mainPanel: {fileID: 0}
     showMainPlate: 0
     visibleButtons: []
     visibleObjects:
     - {fileID: 148157389}
     hideSubPanelsOnEnter: 0
   - state: 6
-    mainPanel: {fileID: 2128505333}
+    mainPanel: {fileID: 0}
     showMainPlate: 1
     visibleButtons: []
     visibleObjects:
     - {fileID: 470110063}
     hideSubPanelsOnEnter: 0
   - state: 7
-    mainPanel: {fileID: 2128505333}
+    mainPanel: {fileID: 0}
     showMainPlate: 1
     visibleButtons: []
     visibleObjects:
     - {fileID: 867777434}
     hideSubPanelsOnEnter: 0
   - state: 8
-    mainPanel: {fileID: 2128505333}
+    mainPanel: {fileID: 0}
     showMainPlate: 0
     visibleButtons: []
     visibleObjects:
     - {fileID: 1978719260}
     hideSubPanelsOnEnter: 0
   - state: 9
-    mainPanel: {fileID: 2128505333}
+    mainPanel: {fileID: 0}
     showMainPlate: 0
     visibleButtons: []
     visibleObjects: []

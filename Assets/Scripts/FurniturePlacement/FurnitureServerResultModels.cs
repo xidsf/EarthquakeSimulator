@@ -146,6 +146,9 @@ public class FurnitureServerResultObject
     public string mesh_filename;
     public string mesh_format;
     public string mesh_source;
+    public string mesh_role;
+    public bool mesh_texture_required;
+    public string mesh_decimation_policy;
     public string mesh_strategy;
     public string mesh_strategy_reason;
     public string sam3d_status;
@@ -176,9 +179,22 @@ public class FurnitureServerResultObject
     public string collider_type;
     public float[] collider_center;
     public float[] collider_size;
-    // collider_source = "unity_runtime" → Unity가 런타임에 직접 생성해야 함.
+    // collider_source = "server_convex_hull" → collider_mesh_url을 로드해 convex MeshCollider로 붙임.
+    // collider_source = "unity_runtime_box_fallback" → collider_size 기반 BoxCollider fallback.
     public string collider_source;
     public bool collider_required_from_server;
+    public string collider_mesh_url;
+    public string collider_mesh_filename;
+    public string collider_mesh_format;
+    public bool collider_convex;
+    public string collider_mesh_space;
+    public bool collider_apply_object_scale;
+    public int collider_face_count;
+    public int collider_vertex_count;
+    public float[] collider_native_size;
+    public float collider_inflate_ratio;
+    public int collider_max_faces;
+    public string collider_error;
 
     public string placement_mode;
     public bool manual_placement_required;

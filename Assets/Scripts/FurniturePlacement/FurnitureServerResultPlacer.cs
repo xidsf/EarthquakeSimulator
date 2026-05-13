@@ -43,10 +43,10 @@ public class FurnitureServerResultPlacer : MonoBehaviour
     public FurnitureServerCoordinateSpace coordinateSpace = FurnitureServerCoordinateSpace.UnityWorld;
     public FurnitureServerRotationMode rotationMode = FurnitureServerRotationMode.QuaternionXyzw;
 
-    [Tooltip("WorldBoundsSizeMeters: size_world 기준으로 GLB Renderer bounds를 측정해 스케일 적용 (권장).\n" +
-             "LocalScaleValue: serverObject.scale을 localScale에 직접 적용 (glTFast 좌표계 차이로 오차 가능).\n" +
+    [Tooltip("LocalScaleValue: serverObject.scale을 root localScale에 직접 적용 (서버 GLB bbox 기준, 권장).\n" +
+             "WorldBoundsSizeMeters: size_world 기준으로 GLB Renderer bounds를 측정해 스케일 적용.\n" +
              "Ignore: 스케일 적용 안 함.")]
-    public FurnitureServerTargetSizeMode targetSizeMode = FurnitureServerTargetSizeMode.WorldBoundsSizeMeters;
+    public FurnitureServerTargetSizeMode targetSizeMode = FurnitureServerTargetSizeMode.LocalScaleValue;
 
     [Tooltip("coordinateSpace가 RoomRootLocal일 때 사용합니다.")]
     public Transform roomRoot;
@@ -63,6 +63,12 @@ public class FurnitureServerResultPlacer : MonoBehaviour
 
     [Tooltip("서버가 Unity Collider(MeshCollider 포함)를 이미 포함해 보낸 경우 collider metadata 기반 BoxCollider 추가를 건너뜁니다.")]
     public bool preferServerProvidedColliders = true;
+
+    [Tooltip("서버 collider_mesh_url이 있으면 visual GLB의 MeshCollider를 만들지 않고 별도 convex hull collider GLB를 로드합니다.")]
+    public bool useServerConvexHullCollider = true;
+
+    [Tooltip("서버 convex hull collider를 붙이기 전 visual GLB 쪽 Collider를 제거합니다.")]
+    public bool removeVisualCollidersWhenServerColliderExists = true;
 
     [Header("Model Alignment")]
     [Tooltip("서버 position을 가구의 바닥 중심점으로 보고 GLB child들을 root 기준 바닥에 맞춥니다.")]
@@ -247,7 +253,7 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         NormalizeModelIfNeeded(instance);
         ApplyTargetSize(instance, serverObject);
         NormalizeModelIfNeeded(instance);
-        ApplyServerCollider(instance, serverObject);
+        yield return ApplyServerColliderRoutine(instance, serverObject);
 
         if (!configureBeforeTargetSize && setup != null)
         {
@@ -465,6 +471,16 @@ public class FurnitureServerResultPlacer : MonoBehaviour
             return;
         }
 
+        if (targetSizeMode == FurnitureServerTargetSizeMode.LocalScaleValue)
+        {
+            Vector3 serverScale = ToVector3(serverObject.scale, Vector3.zero);
+            if (HasAllPositiveComponents(serverScale))
+            {
+                instance.transform.localScale = serverScale;
+                return;
+            }
+        }
+
         Vector3 target = GetTargetSize(serverObject);
         if (target == Vector3.zero || !HasPositiveComponent(target))
         {
@@ -506,31 +522,63 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         instance.transform.localScale = scale;
     }
 
-    private void ApplyServerCollider(GameObject instance, FurnitureServerResultObject serverObject)
+    private IEnumerator ApplyServerColliderRoutine(GameObject instance, FurnitureServerResultObject serverObject)
     {
         if (instance == null || serverObject == null)
         {
-            return;
+            yield break;
         }
 
-        if (preferServerProvidedColliders && instance.GetComponentInChildren<Collider>(true) != null)
+        bool hasServerColliderMesh =
+            useServerConvexHullCollider &&
+            !string.IsNullOrWhiteSpace(serverObject.collider_mesh_url) &&
+            IsServerConvexHullCollider(serverObject);
+
+        if (hasServerColliderMesh)
         {
-            return;
+            if (removeVisualCollidersWhenServerColliderExists)
+            {
+                RemoveColliders(instance);
+            }
+
+            bool colliderLoaded = false;
+            GameObject colliderRoot = null;
+            string colliderError = string.Empty;
+
+            yield return meshLoader.LoadColliderObject(serverObject, (loadedCollider, error) =>
+            {
+                colliderRoot = loadedCollider;
+                colliderError = error;
+                colliderLoaded = loadedCollider != null;
+            });
+
+            if (colliderLoaded && colliderRoot != null)
+            {
+                AttachConvexHullCollider(instance, colliderRoot, serverObject);
+                yield break;
+            }
+
+            Debug.LogWarning($"[FurnitureServerResultPlacer] Server collider mesh load failed. id:{serverObject.id}, error:{colliderError}. Falling back to box collider.", instance);
         }
 
         string colliderType = string.IsNullOrWhiteSpace(serverObject.collider_type)
             ? "box"
             : serverObject.collider_type.Trim().ToLowerInvariant();
 
-        if (colliderType != "box")
+        if (preferServerProvidedColliders && instance.GetComponentInChildren<Collider>(true) != null)
         {
-            return;
+            yield break;
+        }
+
+        if (colliderType != "box" && colliderType != "unity_runtime_box_fallback")
+        {
+            yield break;
         }
 
         Vector3 colliderSize = ToVector3(serverObject.collider_size, Vector3.zero);
         if (!HasAllPositiveComponents(colliderSize))
         {
-            return;
+            yield break;
         }
 
         BoxCollider boxCollider = instance.GetComponent<BoxCollider>();
@@ -542,6 +590,82 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         boxCollider.center = ToVector3(serverObject.collider_center, new Vector3(0f, colliderSize.y * 0.5f, 0f));
         boxCollider.size = colliderSize;
         boxCollider.enabled = true;
+    }
+
+    private static bool IsServerConvexHullCollider(FurnitureServerResultObject serverObject)
+    {
+        string source = string.IsNullOrWhiteSpace(serverObject.collider_source)
+            ? string.Empty
+            : serverObject.collider_source.Trim().ToLowerInvariant();
+        string type = string.IsNullOrWhiteSpace(serverObject.collider_type)
+            ? string.Empty
+            : serverObject.collider_type.Trim().ToLowerInvariant();
+
+        return source == "server_convex_hull" ||
+               type == "mesh_convex_hull" ||
+               serverObject.collider_convex;
+    }
+
+    private static void AttachConvexHullCollider(GameObject visualRoot, GameObject colliderRoot, FurnitureServerResultObject serverObject)
+    {
+        colliderRoot.name = $"{visualRoot.name}_ServerConvexCollider";
+        colliderRoot.transform.SetParent(visualRoot.transform, false);
+        colliderRoot.transform.localPosition = Vector3.zero;
+        colliderRoot.transform.localRotation = Quaternion.identity;
+        colliderRoot.transform.localScale = Vector3.one;
+
+        DisableRenderers(colliderRoot);
+
+        int added = 0;
+        MeshFilter[] meshFilters = colliderRoot.GetComponentsInChildren<MeshFilter>(true);
+        foreach (MeshFilter meshFilter in meshFilters)
+        {
+            if (meshFilter == null || meshFilter.sharedMesh == null)
+            {
+                continue;
+            }
+
+            MeshCollider meshCollider = meshFilter.GetComponent<MeshCollider>();
+            if (meshCollider == null)
+            {
+                meshCollider = meshFilter.gameObject.AddComponent<MeshCollider>();
+            }
+
+            meshCollider.sharedMesh = null;
+            meshCollider.sharedMesh = meshFilter.sharedMesh;
+            meshCollider.convex = true;
+            meshCollider.enabled = true;
+            added++;
+        }
+
+        if (added <= 0)
+        {
+            Debug.LogWarning($"[FurnitureServerResultPlacer] Collider GLB loaded but no MeshFilter was found. id:{serverObject.id}", visualRoot);
+        }
+    }
+
+    private static void RemoveColliders(GameObject root)
+    {
+        Collider[] colliders = root.GetComponentsInChildren<Collider>(true);
+        foreach (Collider collider in colliders)
+        {
+            if (collider != null)
+            {
+                Destroy(collider);
+            }
+        }
+    }
+
+    private static void DisableRenderers(GameObject root)
+    {
+        Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+        foreach (Renderer renderer in renderers)
+        {
+            if (renderer != null)
+            {
+                renderer.enabled = false;
+            }
+        }
     }
 
     private void ApplyPhysicsMetadata(GameObject instance, FurnitureServerResultObject serverObject)

@@ -65,6 +65,10 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     public float selectedServerFurniturePreviewScale = 0.03f;
     public bool requireAllServerFurnitureConfirmedBeforeComplete = true;
 
+    [Header("Server Furniture Request Guard")]
+    [Tooltip("A server furniture generation request locks the request button until a result arrives or this timeout elapses.")]
+    [Min(1.0f)] public float serverFurnitureRequestTimeoutSeconds = 600.0f;
+
     [Header("Mode Text")]
     [SerializeField] private string moveModeLabel = "Move";
     [SerializeField] private string rotateModeLabel = "Rotate";
@@ -158,6 +162,8 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     private FurnitureMoveModeController subscribedMoveModeController;
     private GameObject selectedServerFurniturePreviewObject;
     private int selectedServerFurniturePreviewRequestId;
+    private bool serverFurnitureRequestLocked;
+    private float serverFurnitureRequestStartedRealtime = -1.0f;
 
     protected override void Awake()
     {
@@ -187,6 +193,35 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         UnsubscribeMoveModeControllerEvents();
         UnregisterButtons();
         ClearSelectedServerFurniturePreview();
+    }
+
+    private void Update()
+    {
+        if (!serverFurnitureRequestLocked)
+        {
+            return;
+        }
+
+        if (HasServerFurnitureResponse())
+        {
+            ClearServerFurnitureRequestLock("server response received");
+            RefreshServerFurnitureListView();
+            return;
+        }
+
+        if (!HasServerFurnitureRequestTimedOut())
+        {
+            return;
+        }
+
+        if (serverPlacementPipeline != null && serverPlacementPipeline.IsRunning)
+        {
+            serverPlacementPipeline.StopRunningFlow();
+        }
+
+        ClearServerFurnitureRequestLock("request timed out");
+        RefreshServerFurnitureListView();
+        Debug.LogWarning("[FurniturePlacementPanelController] Server furniture request timed out. Request button is enabled for retry.");
     }
 
     private void EnsureFurniturePlacementReferences()
@@ -410,6 +445,11 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
 
     private void OnServerResultListChanged(FurnitureServerPlacementPipeline pipeline)
     {
+        if (HasServerFurnitureResponse())
+        {
+            ClearServerFurnitureRequestLock("server response received");
+        }
+
         RefreshServerFurnitureListView();
     }
 
@@ -455,7 +495,9 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         {
             SetSelectedFurnitureText("No server furniture loaded.");
             SetFurnitureListText(string.Empty);
-            SetServerFurnitureStatus(serverPlacementPipeline != null ? serverPlacementPipeline.LastStatus : string.Empty);
+            SetServerFurnitureStatus(IsServerFurnitureRequestLocked()
+                ? BuildServerFurnitureRequestLockStatus()
+                : serverPlacementPipeline != null ? serverPlacementPipeline.LastStatus : string.Empty);
             ClearSelectedServerFurniturePreview();
             return;
         }
@@ -521,9 +563,10 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         bool canCompletePlacement = hasServerFurniture &&
                                     !isRunning &&
                                     (!requireAllServerFurnitureConfirmedBeforeComplete || allPlaced);
+        bool canRequestServerFurniture = !isRunning && !hasServerFurniture && !IsServerFurnitureRequestLocked();
 
         SetButtonVisible(userPlaceFurnitureFromServerButton, !hasServerFurniture);
-        SetButtonEnabled(userPlaceFurnitureFromServerButton, !isRunning && !hasServerFurniture);
+        SetButtonEnabled(userPlaceFurnitureFromServerButton, canRequestServerFurniture);
         SetButtonEnabled(userSelectNextServerFurnitureButton, canSelectOtherFurniture);
         SetButtonEnabled(userSelectPreviousServerFurnitureButton, canSelectOtherFurniture);
         SetButtonEnabled(userPlaceSelectedServerFurnitureButton, canPlaceSelectedFurniture);
@@ -597,6 +640,55 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         }
 
         return $"Select with left/right, then place. placed:{placed}/{count}";
+    }
+
+    private bool IsServerFurnitureRequestLocked()
+    {
+        return serverFurnitureRequestLocked && !HasServerFurnitureResponse() && !HasServerFurnitureRequestTimedOut();
+    }
+
+    private bool HasServerFurnitureResponse()
+    {
+        return serverPlacementPipeline != null && serverPlacementPipeline.LastResult != null;
+    }
+
+    private bool HasServerFurnitureRequestTimedOut()
+    {
+        if (!serverFurnitureRequestLocked || serverFurnitureRequestStartedRealtime < 0.0f)
+        {
+            return false;
+        }
+
+        float timeout = Mathf.Max(1.0f, serverFurnitureRequestTimeoutSeconds);
+        return Time.realtimeSinceStartup - serverFurnitureRequestStartedRealtime >= timeout;
+    }
+
+    private void BeginServerFurnitureRequestLock()
+    {
+        serverFurnitureRequestLocked = true;
+        serverFurnitureRequestStartedRealtime = Time.realtimeSinceStartup;
+    }
+
+    private void ClearServerFurnitureRequestLock(string reason)
+    {
+        if (!serverFurnitureRequestLocked)
+        {
+            return;
+        }
+
+        serverFurnitureRequestLocked = false;
+        serverFurnitureRequestStartedRealtime = -1.0f;
+        Debug.Log($"[FurniturePlacementPanelController] Server furniture request lock cleared. reason:{reason}");
+    }
+
+    private string BuildServerFurnitureRequestLockStatus()
+    {
+        float timeout = Mathf.Max(1.0f, serverFurnitureRequestTimeoutSeconds);
+        float elapsed = serverFurnitureRequestStartedRealtime >= 0.0f
+            ? Mathf.Max(0.0f, Time.realtimeSinceStartup - serverFurnitureRequestStartedRealtime)
+            : 0.0f;
+        float remaining = Mathf.Max(0.0f, timeout - elapsed);
+        return $"Server furniture generation requested. Retry available in {Mathf.CeilToInt(remaining)}s.";
     }
 
     private void UpdateSelectedServerFurniturePreview(FurnitureServerResultObject selectedObject)
@@ -746,8 +838,21 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
             return;
         }
 
+        if (IsServerFurnitureRequestLocked())
+        {
+            Debug.LogWarning($"[FurniturePlacementPanelController] Server furniture request ignored. {BuildServerFurnitureRequestLockStatus()}");
+            RefreshServerFurnitureListView();
+            return;
+        }
+
         SubscribeServerPlacementPipelineEvents();
         serverPlacementPipeline.StartPlacementFromCurrentScanSession();
+
+        if (serverPlacementPipeline.IsRunning)
+        {
+            BeginServerFurnitureRequestLock();
+        }
+
         RefreshServerFurnitureListView();
         Debug.Log("[FurniturePlacementPanelController] Server furniture list requested from current scan_session_id. Select and place an object after result is ready.");
     }

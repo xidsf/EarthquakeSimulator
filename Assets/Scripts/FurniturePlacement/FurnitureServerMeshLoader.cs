@@ -15,9 +15,9 @@ using UnityEngine.Networking;
 /// 주의:
 /// - 이 로더는 서버 result mesh_url 처리에만 사용합니다.
 /// - Debug 랜덤 prefab 배치 흐름은 이 로더를 거치지 않습니다.
-/// - 생성된 오브젝트의 MeshCollider/Convex/Rigidbody/ObjectManipulator 보정은
-///   FurnitureServerResultPlacer -> FurniturePlacementManager.RegisterRecognizedFurniture()
-///   -> RuntimeFurnitureInteractionSetup 흐름에서 처리됩니다.
+/// - visual mesh는 렌더링/YOLO 인식용입니다.
+/// - physics collider는 서버가 제공하는 collider_mesh_url GLB를 별도로 로드해서
+///   FurnitureServerResultPlacer가 MeshCollider(convex)로 붙입니다.
 /// </summary>
 public class FurnitureServerMeshLoader : MonoBehaviour
 {
@@ -70,7 +70,13 @@ public class FurnitureServerMeshLoader : MonoBehaviour
 
         if (loadGlbUrls && LooksLikeGlbUrl(meshUrl))
         {
-            yield return LoadGlbObject(meshUrl, serverObject, onLoaded);
+            yield return LoadGlbObject(
+                meshUrl,
+                serverObject,
+                "VisualGLB",
+                disableRenderers: false,
+                createFallbackOnFail: true,
+                onLoaded: onLoaded);
             yield break;
         }
 
@@ -86,14 +92,50 @@ public class FurnitureServerMeshLoader : MonoBehaviour
             onLoaded);
     }
 
-    private IEnumerator LoadGlbObject(string url, FurnitureServerResultObject serverObject, Action<GameObject, string> onLoaded)
+    public IEnumerator LoadColliderObject(FurnitureServerResultObject serverObject, Action<GameObject, string> onLoaded)
+    {
+        if (serverObject == null)
+        {
+            onLoaded?.Invoke(null, "serverObject is null");
+            yield break;
+        }
+
+        string colliderUrl = ResolveMeshUrl(serverObject.collider_mesh_url);
+        if (string.IsNullOrWhiteSpace(colliderUrl))
+        {
+            onLoaded?.Invoke(null, "collider_mesh_url is empty");
+            yield break;
+        }
+
+        if (!loadGlbUrls || !LooksLikeGlbUrl(colliderUrl))
+        {
+            onLoaded?.Invoke(null, $"Unsupported collider_mesh_url format. Expected GLB. url:{colliderUrl}");
+            yield break;
+        }
+
+        yield return LoadGlbObject(
+            colliderUrl,
+            serverObject,
+            "ColliderHull",
+            disableRenderers: true,
+            createFallbackOnFail: false,
+            onLoaded: onLoaded);
+    }
+
+    private IEnumerator LoadGlbObject(
+        string url,
+        FurnitureServerResultObject serverObject,
+        string nameSuffix,
+        bool disableRenderers,
+        bool createFallbackOnFail,
+        Action<GameObject, string> onLoaded)
     {
         if (logLoading)
         {
             Debug.Log($"[FurnitureServerMeshLoader] Load GLB via glTFast: {url}");
         }
 
-        GameObject root = new GameObject(BuildObjectName(serverObject, "GLB"));
+        GameObject root = new GameObject(BuildObjectName(serverObject, nameSuffix));
         GltfImport gltf = new GltfImport();
 
         Task<bool> loadTask = null;
@@ -111,7 +153,7 @@ public class FurnitureServerMeshLoader : MonoBehaviour
         if (!string.IsNullOrEmpty(loadStartError))
         {
             Destroy(root);
-            yield return CreateFallback(serverObject, loadStartError, onLoaded);
+            yield return CompleteGlbFailure(serverObject, loadStartError, createFallbackOnFail, onLoaded);
             yield break;
         }
 
@@ -121,7 +163,7 @@ public class FurnitureServerMeshLoader : MonoBehaviour
         {
             string reason = BuildTaskError("glTFast GLB load failed", loadTask);
             Destroy(root);
-            yield return CreateFallback(serverObject, reason, onLoaded);
+            yield return CompleteGlbFailure(serverObject, reason, createFallbackOnFail, onLoaded);
             yield break;
         }
 
@@ -140,7 +182,7 @@ public class FurnitureServerMeshLoader : MonoBehaviour
         if (!string.IsNullOrEmpty(instantiateStartError))
         {
             Destroy(root);
-            yield return CreateFallback(serverObject, instantiateStartError, onLoaded);
+            yield return CompleteGlbFailure(serverObject, instantiateStartError, createFallbackOnFail, onLoaded);
             yield break;
         }
 
@@ -150,15 +192,20 @@ public class FurnitureServerMeshLoader : MonoBehaviour
         {
             string reason = BuildTaskError("glTFast GLB instantiate failed", instantiateTask);
             Destroy(root);
-            yield return CreateFallback(serverObject, reason, onLoaded);
+            yield return CompleteGlbFailure(serverObject, reason, createFallbackOnFail, onLoaded);
             yield break;
         }
 
-        if (root.transform.childCount == 0 && root.GetComponentsInChildren<Renderer>(true).Length == 0)
+        if (root.transform.childCount == 0 && root.GetComponentsInChildren<MeshFilter>(true).Length == 0)
         {
             Destroy(root);
-            yield return CreateFallback(serverObject, "glTFast loaded GLB but no renderable object was instantiated.", onLoaded);
+            yield return CompleteGlbFailure(serverObject, "glTFast loaded GLB but no mesh object was instantiated.", createFallbackOnFail, onLoaded);
             yield break;
+        }
+
+        if (disableRenderers)
+        {
+            DisableRenderers(root);
         }
 
         if (retainGltfImportsForObjectLifetime)
@@ -172,6 +219,26 @@ public class FurnitureServerMeshLoader : MonoBehaviour
         }
 
         onLoaded?.Invoke(root, string.Empty);
+    }
+
+    private IEnumerator CompleteGlbFailure(
+        FurnitureServerResultObject serverObject,
+        string reason,
+        bool createFallbackOnFail,
+        Action<GameObject, string> onLoaded)
+    {
+        if (createFallbackOnFail)
+        {
+            yield return CreateFallback(serverObject, reason, onLoaded);
+            yield break;
+        }
+
+        if (!string.IsNullOrWhiteSpace(reason))
+        {
+            Debug.LogWarning($"[FurnitureServerMeshLoader] {reason}");
+        }
+
+        onLoaded?.Invoke(null, reason);
     }
 
     private IEnumerator LoadAssetBundleObject(string url, FurnitureServerResultObject serverObject, Action<GameObject, string> onLoaded)
@@ -364,6 +431,23 @@ public class FurnitureServerMeshLoader : MonoBehaviour
         string label = !string.IsNullOrWhiteSpace(serverObject.label) ? serverObject.label : fallback;
         string id = !string.IsNullOrWhiteSpace(serverObject.id) ? serverObject.id : Guid.NewGuid().ToString("N").Substring(0, 8);
         return $"ServerFurniture_{label}_{id}";
+    }
+
+    private static void DisableRenderers(GameObject root)
+    {
+        if (root == null)
+        {
+            return;
+        }
+
+        Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+        foreach (Renderer renderer in renderers)
+        {
+            if (renderer != null)
+            {
+                renderer.enabled = false;
+            }
+        }
     }
 
     private Vector3 GetFallbackSize(FurnitureServerResultObject serverObject)

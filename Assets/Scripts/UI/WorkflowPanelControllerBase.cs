@@ -50,6 +50,7 @@ public abstract class WorkflowPanelControllerBase : MonoBehaviour
         }
     }
 
+
     protected void ShowWarning(string message)
     {
         if (uiManager != null)

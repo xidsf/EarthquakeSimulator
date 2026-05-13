@@ -214,6 +214,16 @@ public class PlacedFurniture : MonoBehaviour
         ownerManager?.HandleFurnitureTouched(this, inputSource);
     }
 
+    public void NotifySelectedByController(string inputSource)
+    {
+        if (!initialized)
+        {
+            return;
+        }
+
+        ownerManager?.HandleFurnitureSelected(this, inputSource);
+    }
+
     public void NotifyMoveStarted()
     {
         if (!initialized)

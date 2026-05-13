@@ -80,7 +80,21 @@ public class RoomGeometrySnapshot
     public bool has_ceiling;
     public int assigned_wall_count;
 
+    public RoomEntranceSnapshot entrance;
+
     public List<RoomSurfaceSnapshot> surfaces = new List<RoomSurfaceSnapshot>();
+}
+
+[Serializable]
+public class RoomEntranceSnapshot
+{
+    public bool has_entrance;
+    public SerializableVector3 center_world;
+    public float radius_meters;
+    public string shape;
+    public string coordinate_space;
+    public string purpose;
+    public string note;
 }
 
 [Serializable]

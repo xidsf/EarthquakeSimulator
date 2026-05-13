@@ -143,6 +143,7 @@ public class FurnitureMoveModeController : MonoBehaviour
         selectedIndex = selectedIndex < 0 ? 0 : (selectedIndex + 1) % furnitures.Count;
         ApplyMovableState();
         SelectionChanged?.Invoke(SelectedFurniture);
+        SelectedFurniture?.NotifySelectedByController("SelectNext");
         Debug.Log($"[FurnitureMoveModeController] Selected next: {SelectedFurniture.DisplayName}", SelectedFurniture);
     }
 
@@ -159,6 +160,7 @@ public class FurnitureMoveModeController : MonoBehaviour
         selectedIndex = selectedIndex < 0 ? 0 : (selectedIndex - 1 + furnitures.Count) % furnitures.Count;
         ApplyMovableState();
         SelectionChanged?.Invoke(SelectedFurniture);
+        SelectedFurniture?.NotifySelectedByController("SelectPrevious");
         Debug.Log($"[FurnitureMoveModeController] Selected previous: {SelectedFurniture.DisplayName}", SelectedFurniture);
     }
 
@@ -174,6 +176,7 @@ public class FurnitureMoveModeController : MonoBehaviour
         selectedIndex = index;
         ApplyMovableState();
         SelectionChanged?.Invoke(SelectedFurniture);
+        SelectedFurniture?.NotifySelectedByController("SelectFurniture");
         Debug.Log($"[FurnitureMoveModeController] Selected: {SelectedFurniture.DisplayName}", SelectedFurniture);
     }
 

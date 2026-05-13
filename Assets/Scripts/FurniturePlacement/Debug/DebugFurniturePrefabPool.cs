@@ -11,6 +11,24 @@ public class DebugFurniturePrefabPool : MonoBehaviour
     [Tooltip("테스트용 가구 prefab들을 Inspector에서 드래그앤드롭합니다.")]
     public List<GameObject> debugPrefabs = new List<GameObject>();
 
+    public int Count => debugPrefabs != null ? debugPrefabs.Count : 0;
+
+    public GameObject GetPrefab(int index)
+    {
+        if (debugPrefabs == null || index < 0 || index >= debugPrefabs.Count)
+        {
+            return null;
+        }
+
+        return debugPrefabs[index];
+    }
+
+    public string GetPrefabName(int index)
+    {
+        GameObject prefab = GetPrefab(index);
+        return prefab != null ? prefab.name : $"Debug Furniture {index + 1}";
+    }
+
     public bool TryGetRandomPrefab(out GameObject prefab)
     {
         prefab = null;

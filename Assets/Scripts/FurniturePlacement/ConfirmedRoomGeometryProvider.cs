@@ -39,6 +39,16 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
     [Tooltip("Point inside 검사 시 벽 내부에 찍힌 후보를 제외하기 위한 작은 반경입니다.")]
     public float wallOverlapSphereRadius = 0.025f;
 
+    [Header("Placement Assist")]
+    [Tooltip("If a moved or rotated furniture object overlaps a wall or another furniture object, try to push it to the nearest valid pose before restoring the previous pose.")]
+    public bool resolvePoseOnValidationFailure = true;
+
+    [Min(1)] public int collisionResolutionIterations = 8;
+    [Min(0.0f)] public float collisionResolutionSkinMeters = 0.015f;
+    [Min(0.05f)] public float maxCollisionResolutionStepMeters = 0.35f;
+    [Min(0.05f)] public float nearbyInsideSearchStepMeters = 0.05f;
+    [Min(0.05f)] public float nearbyInsideSearchMaxRadiusMeters = 0.8f;
+
     [Header("Runtime State - Read Only")]
     [SerializeField] private bool initialized;
     [SerializeField] private int wallColliderCount;
@@ -185,6 +195,23 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
             SnapFurnitureToFloor(furniture);
         }
 
+        if (IsFurniturePoseValid(furniture, out reason))
+        {
+            return true;
+        }
+
+        if (resolvePoseOnValidationFailure && TryResolveFurniturePose(furniture, out reason))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool IsFurniturePoseValid(PlacedFurniture furniture, out string reason)
+    {
+        reason = string.Empty;
+
         if (!TryGetFurnitureBounds(furniture, out Bounds furnitureBounds))
         {
             reason = "Furniture has no valid collider or renderer bounds.";
@@ -216,6 +243,219 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
         }
 
         return true;
+    }
+
+    private bool TryResolveFurniturePose(PlacedFurniture furniture, out string reason)
+    {
+        reason = string.Empty;
+
+        Vector3 originalPosition = furniture.transform.position;
+        Quaternion originalRotation = furniture.transform.rotation;
+
+        for (int i = 0; i < collisionResolutionIterations; i++)
+        {
+            if (keepFurnitureUpright)
+            {
+                ForceUpright(furniture.transform);
+            }
+
+            if (snapFurnitureToFloor)
+            {
+                SnapFurnitureToFloor(furniture);
+            }
+
+            if (IsFurniturePoseValid(furniture, out reason))
+            {
+                return true;
+            }
+
+            bool changed = false;
+
+            if (TryGetFurnitureBounds(furniture, out Bounds bounds) && !AreFurnitureBoundsInsideRoom(bounds))
+            {
+                changed |= TryMoveFurnitureToNearbyInsideRoom(furniture);
+            }
+
+            changed |= TryResolveFurniturePenetrations(furniture);
+
+            if (!changed)
+            {
+                break;
+            }
+        }
+
+        if (snapFurnitureToFloor)
+        {
+            SnapFurnitureToFloor(furniture);
+        }
+
+        if (IsFurniturePoseValid(furniture, out reason))
+        {
+            return true;
+        }
+
+        furniture.transform.SetPositionAndRotation(originalPosition, originalRotation);
+        if (keepFurnitureUpright)
+        {
+            ForceUpright(furniture.transform);
+        }
+
+        if (snapFurnitureToFloor)
+        {
+            SnapFurnitureToFloor(furniture);
+        }
+
+        IsFurniturePoseValid(furniture, out reason);
+        return false;
+    }
+
+    private bool TryMoveFurnitureToNearbyInsideRoom(PlacedFurniture furniture)
+    {
+        Vector3 startPosition = furniture.transform.position;
+        Quaternion startRotation = furniture.transform.rotation;
+        float step = Mathf.Max(0.01f, nearbyInsideSearchStepMeters);
+        float maxRadius = Mathf.Max(step, nearbyInsideSearchMaxRadiusMeters);
+        Vector3 roomCenter = new Vector3(roomBounds.center.x, startPosition.y, roomBounds.center.z);
+        Vector3 towardCenter = Vector3.ProjectOnPlane(roomCenter - startPosition, Vector3.up);
+
+        if (TryApplyInsideRoomCandidate(furniture, startPosition, startRotation))
+        {
+            return true;
+        }
+
+        if (towardCenter.sqrMagnitude > 0.0001f)
+        {
+            Vector3 direction = towardCenter.normalized;
+            for (float radius = step; radius <= maxRadius + 0.0001f; radius += step)
+            {
+                if (TryApplyInsideRoomCandidate(furniture, startPosition + direction * radius, startRotation))
+                {
+                    return true;
+                }
+            }
+        }
+
+        const int directionCount = 16;
+        for (float radius = step; radius <= maxRadius + 0.0001f; radius += step)
+        {
+            for (int i = 0; i < directionCount; i++)
+            {
+                float angle = Mathf.PI * 2f * i / directionCount;
+                Vector3 offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * radius;
+                if (TryApplyInsideRoomCandidate(furniture, startPosition + offset, startRotation))
+                {
+                    return true;
+                }
+            }
+        }
+
+        furniture.transform.SetPositionAndRotation(startPosition, startRotation);
+        return false;
+    }
+
+    private bool TryApplyInsideRoomCandidate(PlacedFurniture furniture, Vector3 candidatePosition, Quaternion rotation)
+    {
+        furniture.transform.SetPositionAndRotation(candidatePosition, rotation);
+
+        if (keepFurnitureUpright)
+        {
+            ForceUpright(furniture.transform);
+        }
+
+        if (snapFurnitureToFloor)
+        {
+            SnapFurnitureToFloor(furniture);
+        }
+
+        return TryGetFurnitureBounds(furniture, out Bounds candidateBounds) &&
+               AreFurnitureBoundsInsideRoom(candidateBounds);
+    }
+
+    private bool TryResolveFurniturePenetrations(PlacedFurniture furniture)
+    {
+        Vector3 totalMove = Vector3.zero;
+
+        foreach (BoxCollider wallCollider in wallColliders)
+        {
+            if (wallCollider == null || !wallCollider.enabled)
+            {
+                continue;
+            }
+
+            totalMove += ComputeSeparationMove(furniture, wallCollider);
+        }
+
+        foreach (PlacedFurniture other in placedFurnitures)
+        {
+            if (other == null || other == furniture)
+            {
+                continue;
+            }
+
+            Collider[] otherColliders = other.GetActivePlacementColliders();
+            if (otherColliders == null)
+            {
+                continue;
+            }
+
+            foreach (Collider otherCollider in otherColliders)
+            {
+                if (otherCollider == null || !otherCollider.enabled)
+                {
+                    continue;
+                }
+
+                totalMove += ComputeSeparationMove(furniture, otherCollider);
+            }
+        }
+
+        totalMove = Vector3.ProjectOnPlane(totalMove, Vector3.up);
+        float maxStep = Mathf.Max(0.01f, maxCollisionResolutionStepMeters);
+        if (totalMove.magnitude > maxStep)
+        {
+            totalMove = totalMove.normalized * maxStep;
+        }
+
+        if (totalMove.sqrMagnitude <= 0.000001f)
+        {
+            return false;
+        }
+
+        furniture.transform.position += totalMove;
+        return true;
+    }
+
+    private Vector3 ComputeSeparationMove(PlacedFurniture furniture, Collider targetCollider)
+    {
+        Vector3 move = Vector3.zero;
+        Collider[] colliders = furniture.GetActivePlacementColliders();
+        if (colliders == null || targetCollider == null || !targetCollider.enabled)
+        {
+            return move;
+        }
+
+        foreach (Collider collider in colliders)
+        {
+            if (collider == null || !collider.enabled || !collider.bounds.Intersects(targetCollider.bounds))
+            {
+                continue;
+            }
+
+            if (Physics.ComputePenetration(
+                    collider,
+                    collider.transform.position,
+                    collider.transform.rotation,
+                    targetCollider,
+                    targetCollider.transform.position,
+                    targetCollider.transform.rotation,
+                    out Vector3 direction,
+                    out float distance))
+            {
+                move += direction * (distance + collisionResolutionSkinMeters);
+            }
+        }
+
+        return move;
     }
 
     public bool IsInsideRoom(Vector3 point)

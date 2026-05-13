@@ -20,9 +20,17 @@ public class RoomGeometrySnapshotProvider : MonoBehaviour
     [Tooltip("동적으로 생성된 ConfirmedRoom_Wall 오브젝트들의 Transform입니다.")]
     [SerializeField] private List<Transform> walls = new List<Transform>();
 
+    [Header("Entrance")]
+    [SerializeField] private ConfirmRoomManager confirmRoomManager;
+
     [Header("Mesh Export Option")]
     [SerializeField] private bool includeMeshVertices = true;
     [SerializeField] private bool includeMeshTriangles = false;
+
+    public void SetConfirmRoomManager(ConfirmRoomManager manager)
+    {
+        confirmRoomManager = manager;
+    }
 
     public void SetRoomObjects(
         Transform root,
@@ -136,6 +144,8 @@ public class RoomGeometrySnapshotProvider : MonoBehaviour
             return false;
         }
 
+        SetConfirmRoomManager(manager);
+
         if (manager.ConfirmedRoomFloorObject == null || manager.ConfirmedRoomCeilingObject == null)
         {
             Debug.LogWarning("[RoomSnapshot] Confirmed room floor/ceiling이 아직 생성되지 않았습니다.");
@@ -176,6 +186,7 @@ public class RoomGeometrySnapshotProvider : MonoBehaviour
         floor = null;
         ceiling = null;
         walls = new List<Transform>();
+        confirmRoomManager = null;
     }
 
     public RoomGeometrySnapshot BuildSnapshot()
@@ -189,7 +200,8 @@ public class RoomGeometrySnapshotProvider : MonoBehaviour
             root_path = roomRoot != null ? GetTransformPath(roomRoot) : null,
             has_floor = floor != null,
             has_ceiling = ceiling != null,
-            assigned_wall_count = walls != null ? CountNonNullWalls() : 0
+            assigned_wall_count = walls != null ? CountNonNullWalls() : 0,
+            entrance = BuildEntranceSnapshot()
         };
 
         if (floor != null)
@@ -235,6 +247,34 @@ public class RoomGeometrySnapshotProvider : MonoBehaviour
         );
 
         return snapshot;
+    }
+
+    private RoomEntranceSnapshot BuildEntranceSnapshot()
+    {
+        if (confirmRoomManager != null && confirmRoomManager.hasEntrance)
+        {
+            return new RoomEntranceSnapshot
+            {
+                has_entrance = true,
+                center_world = SerializableVector3.From(confirmRoomManager.entrancePointWorld),
+                radius_meters = confirmRoomManager.entranceRadiusMeters,
+                shape = "circle_xz",
+                coordinate_space = "Unity world space",
+                purpose = "entrance_clearance_area",
+                note = "Server should reconstruct a 1.5m radius entrance clearance area from this center point."
+            };
+        }
+
+        float radius = confirmRoomManager != null ? confirmRoomManager.entranceRadiusMeters : 1.5f;
+        return new RoomEntranceSnapshot
+        {
+            has_entrance = false,
+            radius_meters = radius,
+            shape = "circle_xz",
+            coordinate_space = "Unity world space",
+            purpose = "entrance_clearance_area",
+            note = "Entrance point was not assigned on the client."
+        };
     }
 
     private int CountNonNullWalls()

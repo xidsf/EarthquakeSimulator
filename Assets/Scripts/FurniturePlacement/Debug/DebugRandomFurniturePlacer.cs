@@ -17,6 +17,16 @@ public class DebugRandomFurniturePlacer : MonoBehaviour
     [Header("Placement")]
     public int maxPlacementAttempts = 30;
     public Transform debugSpawnRoot;
+    [Min(0.1f)] public float cameraForwardPlacementDistance = 1.5f;
+    public bool enableMoveModeAfterManualDebugPlacement = true;
+    public bool restrictManipulationToPlacedDebugObject = true;
+
+    [Header("Manual Debug Selection")]
+    [SerializeField] private int selectedPrefabIndex;
+
+    public int SelectedPrefabIndex => selectedPrefabIndex;
+    public int PrefabCount => prefabPool != null ? prefabPool.Count : 0;
+    public string SelectedPrefabName => prefabPool != null ? prefabPool.GetPrefabName(selectedPrefabIndex) : string.Empty;
 
     private void Awake()
     {
@@ -78,6 +88,93 @@ public class DebugRandomFurniturePlacer : MonoBehaviour
         return false;
     }
 
+    public bool SelectNextPrefab()
+    {
+        EnsureReferences();
+        return SelectPrefabRelative(1);
+    }
+
+    public bool SelectPreviousPrefab()
+    {
+        EnsureReferences();
+        return SelectPrefabRelative(-1);
+    }
+
+    public bool SelectPrefab(int index)
+    {
+        EnsureReferences();
+
+        if (prefabPool == null || prefabPool.Count == 0)
+        {
+            Debug.LogWarning("[DebugRandomFurniturePlacer] SelectPrefab failed. No debug prefab assigned.");
+            selectedPrefabIndex = -1;
+            return false;
+        }
+
+        selectedPrefabIndex = Mathf.Clamp(index, 0, prefabPool.Count - 1);
+        Debug.Log($"[DebugRandomFurniturePlacer] Debug prefab selected. index:{selectedPrefabIndex}, name:{SelectedPrefabName}");
+        return prefabPool.GetPrefab(selectedPrefabIndex) != null;
+    }
+
+    public bool PlaceSelectedPrefabAtCameraForward()
+    {
+        EnsureReferences();
+
+        if (prefabPool == null || furniturePlacementManager == null)
+        {
+            Debug.LogWarning("[DebugRandomFurniturePlacer] Place selected prefab failed. Required references are missing.");
+            return false;
+        }
+
+        if (selectedPrefabIndex < 0 || selectedPrefabIndex >= prefabPool.Count)
+        {
+            selectedPrefabIndex = 0;
+        }
+
+        GameObject prefab = prefabPool.GetPrefab(selectedPrefabIndex);
+        if (prefab == null)
+        {
+            Debug.LogWarning($"[DebugRandomFurniturePlacer] Place selected prefab failed. index:{selectedPrefabIndex}");
+            return false;
+        }
+
+        GetCameraForwardPose(out Vector3 position, out Quaternion rotation);
+
+        GameObject instance = Instantiate(prefab, position, rotation, debugSpawnRoot != null ? debugSpawnRoot : null);
+        instance.name = $"DebugFurniture_{prefab.name}_Manual";
+
+        FurniturePlacementMetadata metadata = new FurniturePlacementMetadata
+        {
+            label = prefab.name,
+            source = "debug_manual",
+            displayName = prefab.name
+        };
+
+        bool originalValidateOnRegister = furniturePlacementManager.validateOnRegister;
+        furniturePlacementManager.validateOnRegister = false;
+        bool registered = furniturePlacementManager.RegisterRecognizedFurniture(instance, metadata);
+        furniturePlacementManager.validateOnRegister = originalValidateOnRegister;
+
+        if (!registered)
+        {
+            Destroy(instance);
+            return false;
+        }
+
+        PlacedFurniture placedFurniture = instance.GetComponent<PlacedFurniture>();
+        furniturePlacementManager.SetActiveNotConfirmedFurniture(placedFurniture, "DebugManualPlacement");
+
+        if (enableMoveModeAfterManualDebugPlacement && furniturePlacementManager.moveModeController != null)
+        {
+            furniturePlacementManager.moveModeController.allowAllFurnitureMovableInMoveMode = !restrictManipulationToPlacedDebugObject;
+            furniturePlacementManager.moveModeController.SelectFurniture(placedFurniture);
+            furniturePlacementManager.moveModeController.SetMoveMode(true);
+        }
+
+        Debug.Log($"[DebugRandomFurniturePlacer] Selected debug prefab placed: {prefab.name}", instance);
+        return true;
+    }
+
     public int PlaceRandomFurniture(int count)
     {
         int success = 0;
@@ -93,6 +190,70 @@ public class DebugRandomFurniturePlacer : MonoBehaviour
 
         Debug.Log($"[DebugRandomFurniturePlacer] Random placement completed. success:{success}/{safeCount}");
         return success;
+    }
+
+    private bool SelectPrefabRelative(int direction)
+    {
+        if (prefabPool == null || prefabPool.Count == 0)
+        {
+            Debug.LogWarning("[DebugRandomFurniturePlacer] SelectPrefabRelative failed. No debug prefab assigned.");
+            selectedPrefabIndex = -1;
+            return false;
+        }
+
+        int step = direction >= 0 ? 1 : -1;
+        int index = selectedPrefabIndex;
+        if (index < 0 || index >= prefabPool.Count)
+        {
+            index = step > 0 ? -1 : 0;
+        }
+
+        for (int i = 0; i < prefabPool.Count; i++)
+        {
+            index = (index + step + prefabPool.Count) % prefabPool.Count;
+            if (prefabPool.GetPrefab(index) != null)
+            {
+                selectedPrefabIndex = index;
+                Debug.Log($"[DebugRandomFurniturePlacer] Debug prefab selected. index:{selectedPrefabIndex}, name:{SelectedPrefabName}");
+                return true;
+            }
+        }
+
+        selectedPrefabIndex = -1;
+        return false;
+    }
+
+    private void GetCameraForwardPose(out Vector3 position, out Quaternion rotation)
+    {
+        ConfirmedRoomGeometryProvider geometryProvider = furniturePlacementManager != null
+            ? furniturePlacementManager.roomGeometryProvider
+            : null;
+
+        Camera mainCamera = Camera.main;
+        if (mainCamera != null)
+        {
+            Vector3 forward = Vector3.ProjectOnPlane(mainCamera.transform.forward, Vector3.up);
+            if (forward.sqrMagnitude < 0.0001f)
+            {
+                forward = mainCamera.transform.forward;
+            }
+
+            position = mainCamera.transform.position + forward.normalized * cameraForwardPlacementDistance;
+            position.y = geometryProvider != null && geometryProvider.IsInitialized ? geometryProvider.FloorTopY : position.y;
+            rotation = Quaternion.Euler(0f, mainCamera.transform.eulerAngles.y, 0f);
+            return;
+        }
+
+        if (geometryProvider != null && geometryProvider.IsInitialized)
+        {
+            Bounds bounds = geometryProvider.RoomBounds;
+            position = new Vector3(bounds.center.x, geometryProvider.FloorTopY, bounds.center.z);
+            rotation = Quaternion.identity;
+            return;
+        }
+
+        position = Vector3.zero;
+        rotation = Quaternion.identity;
     }
 
     private void EnsureReferences()

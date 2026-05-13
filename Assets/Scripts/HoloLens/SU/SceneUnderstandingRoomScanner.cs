@@ -26,6 +26,11 @@ public partial class SceneUnderstandingRoomScanner : MonoBehaviour
     public float queryRadiusMeters = 8.0f;
     public SceneMeshLevelOfDetail meshLevelOfDetail = SceneMeshLevelOfDetail.Medium;
 
+    [Header("Workflow Guard")]
+    public RoomBuildWorkflowManager workflowManager;
+    public bool autoFindWorkflowManager = true;
+    public bool requireRoomBuildStateToScan = true;
+
     [Header("Room Reconstruction")]
     public float minWallHeightMeters = 1.2f;
     public float minWallLengthMeters = 0.5f;
@@ -81,6 +86,8 @@ public partial class SceneUnderstandingRoomScanner : MonoBehaviour
 
     private async void Start()
     {
+        EnsureWorkflowManagerReference();
+
         if (sceneRoot == null)
         {
             sceneRoot = new GameObject("SceneUnderstandingRoot").transform;
@@ -88,7 +95,7 @@ public partial class SceneUnderstandingRoomScanner : MonoBehaviour
 
         await InitializeSceneUnderstanding();
 
-        if (autoUpdate)
+        if (autoUpdate && CanScanForCurrentWorkflowState())
         {
             StartScanning();
         }
@@ -96,6 +103,14 @@ public partial class SceneUnderstandingRoomScanner : MonoBehaviour
 
     public void StartScanning()
     {
+        EnsureWorkflowManagerReference();
+
+        if (!CanScanForCurrentWorkflowState())
+        {
+            isRunning = false;
+            return;
+        }
+
         if (isRunning)
         {
             return;
@@ -124,6 +139,13 @@ public partial class SceneUnderstandingRoomScanner : MonoBehaviour
 
     public async void ForceUpdate()
     {
+        EnsureWorkflowManagerReference();
+
+        if (!CanScanForCurrentWorkflowState())
+        {
+            return;
+        }
+
         await ComputeAndDisplayScene();
     }
 
@@ -131,6 +153,12 @@ public partial class SceneUnderstandingRoomScanner : MonoBehaviour
     {
         while (isRunning)
         {
+            if (!CanScanForCurrentWorkflowState())
+            {
+                isRunning = false;
+                yield break;
+            }
+
             if (!lockRoom && !isComputing)
             {
                 _ = ComputeAndDisplayScene();
@@ -154,7 +182,7 @@ public partial class SceneUnderstandingRoomScanner : MonoBehaviour
 
     private async Task ComputeAndDisplayScene()
     {
-        if (isComputing)
+        if (isComputing || !CanScanForCurrentWorkflowState())
         {
             return;
         }
@@ -192,6 +220,11 @@ public partial class SceneUnderstandingRoomScanner : MonoBehaviour
                 return;
             }
 
+            if (!CanScanForCurrentWorkflowState())
+            {
+                return;
+            }
+
             previousScene = newScene;
             currentScene = newScene;
 
@@ -221,6 +254,33 @@ public partial class SceneUnderstandingRoomScanner : MonoBehaviour
         finally
         {
             isComputing = false;
+        }
+    }
+
+    private bool CanScanForCurrentWorkflowState()
+    {
+        if (!requireRoomBuildStateToScan)
+        {
+            return true;
+        }
+
+        return workflowManager != null &&
+               workflowManager.currentState == RoomBuildWorkflowManager.WorkflowState.RoomBuild;
+    }
+
+    private void EnsureWorkflowManagerReference()
+    {
+        if (workflowManager != null || !autoFindWorkflowManager)
+        {
+            return;
+        }
+
+        RoomBuildWorkflowManager[] managers =
+            FindObjectsByType<RoomBuildWorkflowManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+
+        if (managers != null && managers.Length > 0)
+        {
+            workflowManager = managers[0];
         }
     }
 

@@ -387,6 +387,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         }
 
         confirmRoomManager = manager;
+        roomSnapshotProvider?.SetConfirmRoomManager(manager);
 
         if (manager.ConfirmedRoomFloorObject == null || manager.ConfirmedRoomCeilingObject == null)
         {
@@ -429,6 +430,9 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
 
         if (HasCompleteRoomObjects())
         {
+            if (roomSnapshotProvider != null && confirmRoomManager != null)
+                roomSnapshotProvider.SetConfirmRoomManager(confirmRoomManager);
+
             if (roomSnapshotProvider != null)
                 roomSnapshotProvider.SetRoomObjects(roomRoot, floorObject, ceilingObject, wallObjects);
 
@@ -543,6 +547,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         floorObject = null;
         ceilingObject = null;
         wallObjects = new List<Transform>();
+        confirmRoomManager = null;
         roomSnapshotProvider?.ClearRoomObjects();
         Debug.Log("[FurnitureCapture] Room object references cleared.");
     }
@@ -1516,7 +1521,8 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
             root_path = roomRoot != null ? GetTransformPath(roomRoot) : null,
             has_floor = floorObject != null,
             has_ceiling = ceilingObject != null,
-            assigned_wall_count = wallObjects != null ? wallObjects.Count(wall => wall != null) : 0
+            assigned_wall_count = wallObjects != null ? wallObjects.Count(wall => wall != null) : 0,
+            entrance = BuildEntranceSnapshot()
         };
 
         int floorCount = 0;
@@ -1566,6 +1572,34 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         );
 
         return snapshot;
+    }
+
+    private RoomEntranceSnapshot BuildEntranceSnapshot()
+    {
+        if (confirmRoomManager != null && confirmRoomManager.hasEntrance)
+        {
+            return new RoomEntranceSnapshot
+            {
+                has_entrance = true,
+                center_world = SerializableVector3.From(confirmRoomManager.entrancePointWorld),
+                radius_meters = confirmRoomManager.entranceRadiusMeters,
+                shape = "circle_xz",
+                coordinate_space = "Unity world space",
+                purpose = "entrance_clearance_area",
+                note = "Server should reconstruct a 1.5m radius entrance clearance area from this center point."
+            };
+        }
+
+        float radius = confirmRoomManager != null ? confirmRoomManager.entranceRadiusMeters : 1.5f;
+        return new RoomEntranceSnapshot
+        {
+            has_entrance = false,
+            radius_meters = radius,
+            shape = "circle_xz",
+            coordinate_space = "Unity world space",
+            purpose = "entrance_clearance_area",
+            note = "Entrance point was not assigned on the client."
+        };
     }
 
     private RoomSurfaceSnapshot BuildSurfaceSnapshot(string surfaceType, Transform target, int index)
@@ -1773,7 +1807,20 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         public bool has_floor;
         public bool has_ceiling;
         public int assigned_wall_count;
+        public RoomEntranceSnapshot entrance;
         public List<RoomSurfaceSnapshot> surfaces = new List<RoomSurfaceSnapshot>();
+    }
+
+    [Serializable]
+    private class RoomEntranceSnapshot
+    {
+        public bool has_entrance;
+        public SerializableVector3 center_world;
+        public float radius_meters;
+        public string shape;
+        public string coordinate_space;
+        public string purpose;
+        public string note;
     }
 
     [Serializable]

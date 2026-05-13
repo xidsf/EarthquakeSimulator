@@ -1,8 +1,7 @@
-using System;
+﻿using System;
 using MixedReality.Toolkit.UX;
 using TMPro;
 using UnityEngine;
-using UnityEngine.Events;
 
 public class UIManager : MonoBehaviour
 {
@@ -12,141 +11,99 @@ public class UIManager : MonoBehaviour
         public RoomBuildWorkflowManager.WorkflowState state;
         public GameObject mainPanel;
 
-        [Tooltip("해당 상태에서 MainPlate(메인 UI 판넬)를 활성화할지 여부입니다.")]
-        public bool showMainPlate = true; // 기본값은 true
+        [Tooltip("?대떦 ?곹깭?먯꽌 MainPlate(硫붿씤 UI ?먮꽟)瑜??쒖꽦?뷀븷吏 ?щ??낅땲??")]
+        public bool showMainPlate = true; // 湲곕낯媛믪? true
 
-        [Tooltip("해당 상태에서 추가로 켤 버튼입니다.")]
+        [Tooltip("?대떦 ?곹깭?먯꽌 異붽?濡?耳?踰꾪듉?낅땲??")]
         public PressableButton[] visibleButtons;
 
-        [Tooltip("해당 상태에서 추가로 켤 오브젝트입니다.")]
+        [Tooltip("?대떦 ?곹깭?먯꽌 異붽?濡?耳??ㅻ툕?앺듃?낅땲??")]
         public GameObject[] visibleObjects;
 
-        [Tooltip("상태 진입 시 Numpad/Slider 같은 서브패널을 닫습니다.")]
+        [Tooltip("?곹깭 吏꾩엯 ??Numpad/Slider 媛숈? ?쒕툕?⑤꼸???レ뒿?덈떎.")]
         public bool hideSubPanelsOnEnter = true;
     }
 
-    [Header("Workflow 연결")]
-    [Tooltip("방 생성/수동 벽/캡처/배치/시뮬레이션 단계의 실제 작업을 담당하는 WorkflowManager입니다.")]
+    [Header("Workflow ?곌껐")]
+    [Tooltip("諛??앹꽦/?섎룞 踰?罹≪쿂/諛곗튂/?쒕??덉씠???④퀎???ㅼ젣 ?묒뾽???대떦?섎뒗 WorkflowManager?낅땲??")]
     public RoomBuildWorkflowManager workflowManager;
 
-    [Tooltip("workflowManager가 비어 있으면 런타임에 Scene에서 자동 탐색합니다.")]
+    [Tooltip("workflowManager媛 鍮꾩뼱 ?덉쑝硫??고??꾩뿉 Scene?먯꽌 ?먮룞 ?먯깋?⑸땲??")]
     public bool autoFindWorkflowManager = true;
 
-    [Tooltip("Workflow 상태가 바뀔 때 UIManager가 메인 패널을 전환합니다.")]
+    [Tooltip("Workflow ?곹깭媛 諛붾???UIManager媛 硫붿씤 ?⑤꼸???꾪솚?⑸땲??")]
     public bool useWorkflowDrivenPanels = true;
 
-    [Tooltip("상태별 UI 설정 배열을 우선 사용합니다. 각 상태마다 mainPanel과 필요한 버튼/오브젝트를 직접 지정할 수 있습니다.")]
+    [Tooltip("?곹깭蹂?UI ?ㅼ젙 諛곗뿴???곗꽑 ?ъ슜?⑸땲?? 媛??곹깭留덈떎 mainPanel怨??꾩슂??踰꾪듉/?ㅻ툕?앺듃瑜?吏곸젒 吏?뺥븷 ???덉뒿?덈떎.")]
     public bool useWorkflowStateUiConfigs = true;
 
-    [Tooltip("이전 버전 호환용입니다. 새 구조에서는 각 PanelController가 버튼을 연결하므로 기본값은 false입니다.")]
-    public bool registerWorkflowButtons = false;
-
-    [Tooltip("현재 Workflow 상태에 맞는 버튼만 보이도록 버튼 GameObject active를 제어합니다. 버튼이 이미 패널 하위에서 관리되면 꺼도 됩니다.")]
-    public bool manageWorkflowButtonVisibility = false;
-
-    [Tooltip("WorkflowManager가 없을 때만 기존처럼 BuildingInfo 패널로 시작합니다.")]
-    public bool useLegacyStartPanelWhenWorkflowMissing = true;
-
     [Header("Main UI Plate")]
-    [Tooltip("단계별로 제어할 메인 UI의 부모판넬(MainPlate)입니다.")]
+    [Tooltip("?④퀎蹂꾨줈 ?쒖뼱??硫붿씤 UI??遺紐⑦뙋??MainPlate)?낅땲??")]
     public GameObject panel_MainPlate;
 
-    [Header("1. Opening / RoomInfoInput 패널")]
-    [Tooltip("앱 시작 시 가장 먼저 보여줄 Opening 패널입니다. 비워두면 Opening 패널 단계는 사용하지 않습니다.")]
+    [Header("1. Opening / RoomInfoInput ?⑤꼸")]
+    [Tooltip("???쒖옉 ??媛??癒쇱? 蹂댁뿬以?Opening ?⑤꼸?낅땲?? 鍮꾩썙?먮㈃ Opening ?⑤꼸 ?④퀎???ъ슜?섏? ?딆뒿?덈떎.")]
     public GameObject panel_Opening;
 
-    [Tooltip("panel_Opening이 연결되어 있으면 Start에서 Opening 패널을 먼저 보여줍니다.")]
+    [Tooltip("panel_Opening???곌껐?섏뼱 ?덉쑝硫?Start?먯꽌 Opening ?⑤꼸??癒쇱? 蹂댁뿬以띾땲??")]
     public bool showOpeningPanelOnStart = true;
 
-    [Tooltip("RoomInfoInput 단계 패널입니다. 기존 panel_BuildingInfo 역할을 이 필드로 통합합니다.")]
+    [Tooltip("RoomInfoInput ?④퀎 ?⑤꼸?낅땲??")]
     public GameObject panel_RoomInfoInput;
 
-    [Header("1-0. Legacy Fallback 패널")]
-    [Tooltip("이전 버전 호환용입니다. panel_RoomInfoInput이 비어 있을 때만 fallback으로 사용합니다.")]
-    public GameObject panel_BuildingInfo;
-
-    public GameObject panel_AutoScanCheck;
-    public GameObject panel_ManualWall;
-    public GameObject panel_MeshAndSimSetup;
-    public GameObject panel_Result;
-
-    [Header("1-1. Workflow 단계별 메인 패널")]
-    [Tooltip("RoomBuild 단계 패널입니다. 비워두면 panel_AutoScanCheck를 사용합니다.")]
+    [Header("1-1. Workflow ?④퀎蹂?硫붿씤 ?⑤꼸")]
+    [Tooltip("RoomBuild ?④퀎 ?⑤꼸?낅땲??")]
     public GameObject panel_RoomBuild;
 
-    [Tooltip("ManualWallGenerate 단계 패널입니다. 비워두면 panel_ManualWall을 사용합니다.")]
+    [Tooltip("ManualWallGenerate ?④퀎 ?⑤꼸?낅땲??")]
     public GameObject panel_ManualWallGenerate;
 
-    [Tooltip("ManualWallConfirmed 단계 패널입니다. 비워두면 panel_MeshAndSimSetup을 사용합니다.")]
+    [Tooltip("ManualWallConfirmed ?④퀎 ?⑤꼸?낅땲??")]
     public GameObject panel_ManualWallConfirmed;
 
-    [Tooltip("RoomCapture 단계 패널입니다.")]
+    [Tooltip("RoomCapture ?④퀎 ?⑤꼸?낅땲??")]
     public GameObject panel_RoomCapture;
 
-    [Tooltip("FurniturePlacement 단계 패널입니다.")]
+    [Tooltip("FurniturePlacement ?④퀎 ?⑤꼸?낅땲??")]
     public GameObject panel_FurniturePlacement;
 
-    [Tooltip("SimulationProcess 단계 패널입니다.")]
+    [Tooltip("SimulationProcess ?④퀎 ?⑤꼸?낅땲??")]
     public GameObject panel_SimulationProcess;
 
-    [Tooltip("SimulationSuccess 단계 패널입니다. 비워두면 panel_Result를 사용합니다.")]
+    [Tooltip("SimulationSuccess ?④퀎 ?⑤꼸?낅땲??")]
     public GameObject panel_SimulationSuccess;
 
-    [Tooltip("RunSimulation 단계 패널입니다. 비워두면 panel_Result를 사용합니다.")]
+    [Tooltip("RunSimulation ?④퀎 ?⑤꼸?낅땲??")]
     public GameObject panel_RunSimulation;
 
-    [Tooltip("FurnitureRePlacement 단계 패널입니다. 비워두면 panel_FurniturePlacement를 사용합니다.")]
+    [Tooltip("FurnitureRePlacement ?④퀎 ?⑤꼸?낅땲??")]
     public GameObject panel_FurnitureRePlacement;
 
-    [Header("1-2. Workflow 상태별 UI 설정")]
-    [Tooltip("상태별로 표시할 메인 패널과 추가 버튼/오브젝트를 지정합니다. 비워두면 위의 패널 필드 fallback을 사용합니다.")]
+    [Header("1-2. Workflow ?곹깭蹂?UI ?ㅼ젙")]
+    [Tooltip("?곹깭蹂꾨줈 ?쒖떆??硫붿씤 ?⑤꼸怨?異붽? 踰꾪듉/?ㅻ툕?앺듃瑜?吏?뺥빀?덈떎. 鍮꾩썙?먮㈃ ?꾩쓽 ?⑤꼸 ?꾨뱶 fallback???ъ슜?⑸땲??")]
     public WorkflowStateUiConfig[] workflowStateUiConfigs;
 
-    [Header("2. 서브 패널")]
+    [Header("2. ?쒕툕 ?⑤꼸")]
     public GameObject sub_BuildingTypeOptions;
     public GameObject sub_Numpad;
     public GameObject sub_IntensitySlider;
 
-    [Header("3. 시스템 메시지 UI")]
+    [Header("3. ?쒖뒪??硫붿떆吏 UI")]
     public GameObject panel_SystemMessage;
     public TMP_Text text_SystemMessage;
 
-    [Header("4. Workflow 버튼 - Legacy Fallback")]
-    [Tooltip("새 구조에서는 각 PanelController에 버튼을 연결하는 것을 권장합니다. 이 필드는 이전 버전 호환용입니다.")]
-    public PressableButton completeRoomInfoInputButton;
-    public PressableButton switchToManualWallButton;
-    public PressableButton returnToRoomBuildButton;
-    public PressableButton confirmManualWallsButton;
-    public PressableButton backToManualWallButton;
-    public PressableButton confirmRoomButton;
-
-    [Header("4-1. Workflow 버튼 - 확장 단계 Legacy Fallback")]
-    public PressableButton completeRoomCaptureButton;
-    public PressableButton completeFurniturePlacementButton;
-    public PressableButton completeSimulationProcessButton;
-    public PressableButton startRunSimulationButton;
-    public PressableButton completeRunSimulationButton;
-    public PressableButton startFurnitureRePlacementButton;
-    public PressableButton completeFurnitureRePlacementButton;
-    public PressableButton returnToRoomCaptureButton;
-
-    [Header("5. Workflow 상태 표시")]
+    [Header("5. Workflow ?곹깭 ?쒖떆")]
     public TMP_Text text_WorkflowStatus;
 
-    private UnityAction completeRoomInfoInputAction;
-    private UnityAction switchToManualWallAction;
-    private UnityAction returnToRoomBuildAction;
-    private UnityAction confirmManualWallsAction;
-    private UnityAction backToManualWallAction;
-    private UnityAction confirmRoomAction;
-    private UnityAction completeRoomCaptureAction;
-    private UnityAction completeFurniturePlacementAction;
-    private UnityAction completeSimulationProcessAction;
-    private UnityAction startRunSimulationAction;
-    private UnityAction completeRunSimulationAction;
-    private UnityAction startFurnitureRePlacementAction;
-    private UnityAction completeFurnitureRePlacementAction;
-    private UnityAction returnToRoomCaptureAction;
+    [Header("6. Workflow Help")]
+    [Tooltip("Help ?⑤꼸 ?꾩껜瑜?愿由ы븯??而⑦듃濡ㅻ윭?낅땲?? State 蹂寃???ShowForState瑜??몄텧?⑸땲??")]
+    public WorkflowHelpPanelController workflowHelpPanel;
+    public bool autoFindWorkflowHelpPanel = true;
+
+    // ?꾩옱 ?쒖꽦?붾맂 硫붿씤 ?⑤꼸 (Help ?대┝ ??鍮꾪솢?깊솕?섍린 ?꾪빐 異붿쟻)
+    private GameObject currentMainPanel;
+
+    public GameObject CurrentMainPanel => currentMainPanel;
 
     private void Awake()
     {
@@ -155,15 +112,6 @@ public class UIManager : MonoBehaviour
         if (workflowManager != null && workflowManager.uiManager == null)
         {
             workflowManager.uiManager = this;
-        }
-    }
-
-    private void OnEnable()
-    {
-        if (registerWorkflowButtons)
-        {
-            CreateWorkflowButtonActions();
-            RegisterWorkflowButtons();
         }
     }
 
@@ -193,18 +141,8 @@ public class UIManager : MonoBehaviour
             return;
         }
 
-        if (useLegacyStartPanelWhenWorkflowMissing)
-        {
-            ShowMainPanel(panel_Opening != null ? panel_Opening : (panel_RoomInfoInput != null ? panel_RoomInfoInput : panel_BuildingInfo));
-        }
-    }
-
-    private void OnDisable()
-    {
-        if (registerWorkflowButtons)
-        {
-            UnregisterWorkflowButtons();
-        }
+        // WorkflowManager 誘몄뿰寃???Opening ?먮뒗 RoomInfoInput ?⑤꼸 ?쒖떆
+        ShowMainPanel(panel_Opening != null ? panel_Opening : panel_RoomInfoInput);
     }
 
     public RoomBuildWorkflowManager GetWorkflowManager()
@@ -229,79 +167,20 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    private void CreateWorkflowButtonActions()
+    private void EnsureWorkflowHelpPanelReference()
     {
-        completeRoomInfoInputAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteRoomInfoInput);
-        switchToManualWallAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.SwitchToManualWallGeneration);
-        returnToRoomBuildAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.ReturnToRoomBuild);
-        confirmManualWallsAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.ConfirmManualWalls);
-        backToManualWallAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.BackToManualWallGeneration);
-        confirmRoomAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.ConfirmRoomAndStartRoomCapture);
-        completeRoomCaptureAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteRoomCapture);
-        completeFurniturePlacementAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteFurniturePlacement);
-        completeSimulationProcessAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteSimulationProcess);
-        startRunSimulationAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.StartRunSimulation);
-        completeRunSimulationAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteRunSimulation);
-        startFurnitureRePlacementAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.StartFurnitureRePlacement);
-        completeFurnitureRePlacementAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteFurnitureRePlacement);
-        returnToRoomCaptureAction ??= () => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.ReturnToRoomCapture);
-    }
-
-    private void RegisterWorkflowButtons()
-    {
-        AddClick(completeRoomInfoInputButton, completeRoomInfoInputAction);
-        AddClick(switchToManualWallButton, switchToManualWallAction);
-        AddClick(returnToRoomBuildButton, returnToRoomBuildAction);
-        AddClick(confirmManualWallsButton, confirmManualWallsAction);
-        AddClick(backToManualWallButton, backToManualWallAction);
-        AddClick(confirmRoomButton, confirmRoomAction);
-        AddClick(completeRoomCaptureButton, completeRoomCaptureAction);
-        AddClick(completeFurniturePlacementButton, completeFurniturePlacementAction);
-        AddClick(completeSimulationProcessButton, completeSimulationProcessAction);
-        AddClick(startRunSimulationButton, startRunSimulationAction);
-        AddClick(completeRunSimulationButton, completeRunSimulationAction);
-        AddClick(startFurnitureRePlacementButton, startFurnitureRePlacementAction);
-        AddClick(completeFurnitureRePlacementButton, completeFurnitureRePlacementAction);
-        AddClick(returnToRoomCaptureButton, returnToRoomCaptureAction);
-    }
-
-    private void UnregisterWorkflowButtons()
-    {
-        RemoveClick(completeRoomInfoInputButton, completeRoomInfoInputAction);
-        RemoveClick(switchToManualWallButton, switchToManualWallAction);
-        RemoveClick(returnToRoomBuildButton, returnToRoomBuildAction);
-        RemoveClick(confirmManualWallsButton, confirmManualWallsAction);
-        RemoveClick(backToManualWallButton, backToManualWallAction);
-        RemoveClick(confirmRoomButton, confirmRoomAction);
-        RemoveClick(completeRoomCaptureButton, completeRoomCaptureAction);
-        RemoveClick(completeFurniturePlacementButton, completeFurniturePlacementAction);
-        RemoveClick(completeSimulationProcessButton, completeSimulationProcessAction);
-        RemoveClick(startRunSimulationButton, startRunSimulationAction);
-        RemoveClick(completeRunSimulationButton, completeRunSimulationAction);
-        RemoveClick(startFurnitureRePlacementButton, startFurnitureRePlacementAction);
-        RemoveClick(completeFurnitureRePlacementButton, completeFurnitureRePlacementAction);
-        RemoveClick(returnToRoomCaptureButton, returnToRoomCaptureAction);
-    }
-
-    private static void AddClick(PressableButton button, UnityAction action)
-    {
-        if (button == null || action == null)
+        if (workflowHelpPanel != null || !autoFindWorkflowHelpPanel)
         {
             return;
         }
 
-        button.OnClicked.RemoveListener(action);
-        button.OnClicked.AddListener(action);
-    }
+        WorkflowHelpPanelController[] helpPanels =
+            FindObjectsByType<WorkflowHelpPanelController>(FindObjectsInactive.Include, FindObjectsSortMode.None);
 
-    private static void RemoveClick(PressableButton button, UnityAction action)
-    {
-        if (button == null || action == null)
+        if (helpPanels != null && helpPanels.Length > 0)
         {
-            return;
+            workflowHelpPanel = helpPanels[0];
         }
-
-        button.OnClicked.RemoveListener(action);
     }
 
     [ContextMenu("Reset Workflow State UI Configs From Panel Fields")]
@@ -309,16 +188,16 @@ public class UIManager : MonoBehaviour
     {
         workflowStateUiConfigs = new[]
         {
-            CreateConfig(RoomBuildWorkflowManager.WorkflowState.RoomInfoInput, panel_RoomInfoInput != null ? panel_RoomInfoInput : panel_BuildingInfo, completeRoomInfoInputButton),
-            CreateConfig(RoomBuildWorkflowManager.WorkflowState.RoomBuild, panel_RoomBuild != null ? panel_RoomBuild : panel_AutoScanCheck, switchToManualWallButton),
-            CreateConfig(RoomBuildWorkflowManager.WorkflowState.ManualWallGenerate, panel_ManualWallGenerate != null ? panel_ManualWallGenerate : panel_ManualWall, returnToRoomBuildButton, confirmManualWallsButton),
-            CreateConfig(RoomBuildWorkflowManager.WorkflowState.ManualWallConfirmed, panel_ManualWallConfirmed != null ? panel_ManualWallConfirmed : panel_MeshAndSimSetup, backToManualWallButton, confirmRoomButton),
-            CreateConfig(RoomBuildWorkflowManager.WorkflowState.RoomCapture, panel_RoomCapture, completeRoomCaptureButton),
-            CreateConfig(RoomBuildWorkflowManager.WorkflowState.FurniturePlacement, panel_FurniturePlacement, completeFurniturePlacementButton, startFurnitureRePlacementButton),
+            CreateConfig(RoomBuildWorkflowManager.WorkflowState.RoomInfoInput, panel_RoomInfoInput),
+            CreateConfig(RoomBuildWorkflowManager.WorkflowState.RoomBuild, panel_RoomBuild),
+            CreateConfig(RoomBuildWorkflowManager.WorkflowState.ManualWallGenerate, panel_ManualWallGenerate),
+            CreateConfig(RoomBuildWorkflowManager.WorkflowState.ManualWallConfirmed, panel_ManualWallConfirmed),
+            CreateConfig(RoomBuildWorkflowManager.WorkflowState.RoomCapture, panel_RoomCapture),
+            CreateConfig(RoomBuildWorkflowManager.WorkflowState.FurniturePlacement, panel_FurniturePlacement),
             CreateConfig(RoomBuildWorkflowManager.WorkflowState.SimulationProcess, panel_SimulationProcess),
-            CreateConfig(RoomBuildWorkflowManager.WorkflowState.SimulationSuccess, panel_SimulationSuccess != null ? panel_SimulationSuccess : panel_Result, startRunSimulationButton, startFurnitureRePlacementButton),
-            CreateConfig(RoomBuildWorkflowManager.WorkflowState.RunSimulation, panel_RunSimulation != null ? panel_RunSimulation : panel_Result, completeRunSimulationButton),
-            CreateConfig(RoomBuildWorkflowManager.WorkflowState.FurnitureRePlacement, panel_FurnitureRePlacement != null ? panel_FurnitureRePlacement : panel_FurniturePlacement, completeFurnitureRePlacementButton)
+            CreateConfig(RoomBuildWorkflowManager.WorkflowState.SimulationSuccess, panel_SimulationSuccess),
+            CreateConfig(RoomBuildWorkflowManager.WorkflowState.RunSimulation, panel_RunSimulation),
+            CreateConfig(RoomBuildWorkflowManager.WorkflowState.FurnitureRePlacement, panel_FurnitureRePlacement)
         };
     }
 
@@ -343,24 +222,30 @@ public class UIManager : MonoBehaviour
 
         WorkflowStateUiConfig config = GetWorkflowStateUiConfig(state);
 
-        // 1. 메인 패널 전환
-        ShowMainPanel(GetPanelForWorkflowState(state, config));
+        // 1. 硫붿씤 ?⑤꼸 ?꾪솚
+        GameObject targetPanel = GetPanelForWorkflowState(state, config);
+        ShowMainPanel(targetPanel);
 
-        // 2. [추가] MainPlate 활성화 제어
+        // 2. MainPlate ?쒖꽦???쒖뼱
         if (panel_MainPlate != null)
         {
-            // 설정이 있으면 설정값에 따르고, 설정이 없으면 기본적으로 켭니다.
+            // ?ㅼ젙???덉쑝硫??ㅼ젙媛믪뿉 ?곕Ⅴ怨? ?ㅼ젙???놁쑝硫?湲곕낯?곸쑝濡?耳?땲??
             bool shouldShowMainPlate = (config != null) ? config.showMainPlate : true;
             panel_MainPlate.SetActive(shouldShowMainPlate);
         }
 
-        // 3. 버튼 및 오브젝트 가시성 적용
+        // 3. 踰꾪듉 諛??ㅻ툕?앺듃 媛?쒖꽦 ?곸슜
         ApplyWorkflowStateVisibleObjects(config);
-        UpdateWorkflowButtonVisibility(state);
 
         if (config != null && config.hideSubPanelsOnEnter)
         {
             HideAllSubPanels();
+        }
+
+        EnsureWorkflowHelpPanelReference();
+        if (workflowHelpPanel != null)
+        {
+            workflowHelpPanel.ShowForState(state);
         }
     }
 
@@ -392,27 +277,27 @@ public class UIManager : MonoBehaviour
         switch (state)
         {
             case RoomBuildWorkflowManager.WorkflowState.RoomInfoInput:
-                return panel_RoomInfoInput != null ? panel_RoomInfoInput : panel_BuildingInfo;
+                return panel_RoomInfoInput;
             case RoomBuildWorkflowManager.WorkflowState.RoomBuild:
-                return panel_RoomBuild != null ? panel_RoomBuild : panel_AutoScanCheck;
+                return panel_RoomBuild;
             case RoomBuildWorkflowManager.WorkflowState.ManualWallGenerate:
-                return panel_ManualWallGenerate != null ? panel_ManualWallGenerate : panel_ManualWall;
+                return panel_ManualWallGenerate;
             case RoomBuildWorkflowManager.WorkflowState.ManualWallConfirmed:
-                return panel_ManualWallConfirmed != null ? panel_ManualWallConfirmed : panel_MeshAndSimSetup;
+                return panel_ManualWallConfirmed;
             case RoomBuildWorkflowManager.WorkflowState.RoomCapture:
-                return panel_RoomCapture != null ? panel_RoomCapture : panel_MeshAndSimSetup;
+                return panel_RoomCapture;
             case RoomBuildWorkflowManager.WorkflowState.FurniturePlacement:
-                return panel_FurniturePlacement != null ? panel_FurniturePlacement : panel_Result;
+                return panel_FurniturePlacement;
             case RoomBuildWorkflowManager.WorkflowState.SimulationProcess:
-                return panel_SimulationProcess != null ? panel_SimulationProcess : panel_MeshAndSimSetup;
+                return panel_SimulationProcess;
             case RoomBuildWorkflowManager.WorkflowState.SimulationSuccess:
-                return panel_SimulationSuccess != null ? panel_SimulationSuccess : panel_Result;
+                return panel_SimulationSuccess;
             case RoomBuildWorkflowManager.WorkflowState.RunSimulation:
-                return panel_RunSimulation != null ? panel_RunSimulation : panel_Result;
+                return panel_RunSimulation;
             case RoomBuildWorkflowManager.WorkflowState.FurnitureRePlacement:
-                return panel_FurnitureRePlacement != null ? panel_FurnitureRePlacement : (panel_FurniturePlacement != null ? panel_FurniturePlacement : panel_Result);
+                return panel_FurnitureRePlacement != null ? panel_FurnitureRePlacement : panel_FurniturePlacement;
             default:
-                return panel_RoomInfoInput != null ? panel_RoomInfoInput : panel_BuildingInfo;
+                return panel_RoomInfoInput;
         }
     }
 
@@ -456,44 +341,13 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    private void UpdateWorkflowButtonVisibility(RoomBuildWorkflowManager.WorkflowState state)
-    {
-        if (!manageWorkflowButtonVisibility)
-        {
-            return;
-        }
-
-        SetButtonActive(completeRoomInfoInputButton, state == RoomBuildWorkflowManager.WorkflowState.RoomInfoInput);
-        SetButtonActive(switchToManualWallButton, state == RoomBuildWorkflowManager.WorkflowState.RoomBuild);
-        SetButtonActive(returnToRoomBuildButton, state == RoomBuildWorkflowManager.WorkflowState.ManualWallGenerate);
-        SetButtonActive(confirmManualWallsButton, state == RoomBuildWorkflowManager.WorkflowState.ManualWallGenerate);
-        SetButtonActive(backToManualWallButton, state == RoomBuildWorkflowManager.WorkflowState.ManualWallConfirmed);
-        SetButtonActive(confirmRoomButton, state == RoomBuildWorkflowManager.WorkflowState.ManualWallConfirmed);
-        SetButtonActive(completeRoomCaptureButton, state == RoomBuildWorkflowManager.WorkflowState.RoomCapture);
-        SetButtonActive(completeFurniturePlacementButton, state == RoomBuildWorkflowManager.WorkflowState.FurniturePlacement);
-        SetButtonActive(completeSimulationProcessButton, false);
-        SetButtonActive(startRunSimulationButton, state == RoomBuildWorkflowManager.WorkflowState.SimulationSuccess);
-        SetButtonActive(completeRunSimulationButton, state == RoomBuildWorkflowManager.WorkflowState.RunSimulation);
-        SetButtonActive(startFurnitureRePlacementButton, state == RoomBuildWorkflowManager.WorkflowState.FurniturePlacement || state == RoomBuildWorkflowManager.WorkflowState.SimulationSuccess);
-        SetButtonActive(completeFurnitureRePlacementButton, state == RoomBuildWorkflowManager.WorkflowState.FurnitureRePlacement);
-        SetButtonActive(returnToRoomCaptureButton, false);
-    }
-
-    private static void SetButtonActive(PressableButton button, bool active)
-    {
-        if (button != null)
-        {
-            button.gameObject.SetActive(active);
-        }
-    }
-
     private bool RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand command)
     {
         RoomBuildWorkflowManager workflow = GetWorkflowManager();
 
         if (workflow == null)
         {
-            ShowWarningMessage("WorkflowManager가 연결되어 있지 않습니다.");
+            ShowWarningMessage("WorkflowManager媛 ?곌껐?섏뼱 ?덉? ?딆뒿?덈떎.");
             return false;
         }
 
@@ -511,7 +365,7 @@ public class UIManager : MonoBehaviour
 
         if (workflowManager != null && workflowManager.currentState != RoomBuildWorkflowManager.WorkflowState.RoomInfoInput)
         {
-            ShowWarningMessage("현재 상태에서는 RoomInfoInput 패널로 돌아갈 수 없습니다.");
+            ShowWarningMessage("?꾩옱 ?곹깭?먯꽌??RoomInfoInput ?⑤꼸濡??뚯븘媛????놁뒿?덈떎.");
             return;
         }
 
@@ -532,11 +386,6 @@ public class UIManager : MonoBehaviour
     {
         SetMainPanelActive(panel_Opening, false);
         SetMainPanelActive(panel_RoomInfoInput, false);
-        SetMainPanelActive(panel_BuildingInfo, false);
-        SetMainPanelActive(panel_AutoScanCheck, false);
-        SetMainPanelActive(panel_ManualWall, false);
-        SetMainPanelActive(panel_MeshAndSimSetup, false);
-        SetMainPanelActive(panel_Result, false);
         SetMainPanelActive(panel_RoomBuild, false);
         SetMainPanelActive(panel_ManualWallGenerate, false);
         SetMainPanelActive(panel_ManualWallConfirmed, false);
@@ -549,9 +398,20 @@ public class UIManager : MonoBehaviour
 
         HideAllSubPanels();
 
+        currentMainPanel = targetPanel;
+
         if (targetPanel != null)
         {
             targetPanel.SetActive(true);
+        }
+    }
+
+    // Help 而⑦듃濡ㅻ윭?먯꽌 ?몄텧. ?꾩옱 硫붿씤 ?⑤꼸??耳쒓굅?????덊띁?곗뒪???좎?).
+    public void SetCurrentMainPanelInteractable(bool interactable)
+    {
+        if (currentMainPanel != null)
+        {
+            currentMainPanel.SetActive(interactable);
         }
     }
 

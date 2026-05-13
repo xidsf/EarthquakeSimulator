@@ -123,7 +123,10 @@ public class FurnitureCaptureManager : MonoBehaviour
             photoCaptureDebugger.SetRoomObjects(root, floor.transform, ceiling.transform, wallTransforms);
 
         if (roomSnapshotProvider != null)
+        {
+            roomSnapshotProvider.SetConfirmRoomManager(confirmRoomManager);
             roomSnapshotProvider.SetRoomObjects(root, floor.transform, ceiling.transform, wallTransforms);
+        }
 
         lastBindSucceeded = true;
         lastBoundWallCount = wallTransforms.Count;

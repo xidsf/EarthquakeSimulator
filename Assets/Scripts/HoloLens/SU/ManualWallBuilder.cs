@@ -468,7 +468,7 @@ public partial class ManualWallBuilder : MonoBehaviour
     {
         if (!active)
         {
-            SetManualCreateMode();
+            SetNoneMode();
             return;
         }
 

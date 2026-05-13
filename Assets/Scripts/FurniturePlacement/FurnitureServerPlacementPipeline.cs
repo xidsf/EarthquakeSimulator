@@ -99,6 +99,14 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
             StopCoroutine(runningCoroutine);
         }
 
+        IsRunning = true;
+        ActiveScanSessionId = scanSessionId;
+        LastStatus = "started";
+        LastResult = null;
+        SelectedPendingObjectIndex = -1;
+        ResetPendingTracking();
+        ResultListChanged?.Invoke(this);
+
         runningCoroutine = StartCoroutine(RunPlacementFlow(scanSessionId));
     }
 
@@ -152,23 +160,46 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
                placedPendingInstances[index] != null;
     }
 
-    public void SelectPendingObject(int index)
+    public int GetPlacedPendingObjectCount()
     {
-        if (HasPendingUnconfirmedPlacement && index != PendingConfirmationIndex)
+        if (placedPendingInstances == null)
         {
-            Debug.LogWarning($"[FurnitureServerPlacementPipeline] Selection locked until current placed object is confirmed. pendingIndex:{PendingConfirmationIndex}");
-            return;
+            return 0;
         }
 
+        int count = 0;
+        for (int i = 0; i < placedPendingInstances.Length; i++)
+        {
+            if (placedPendingInstances[i] != null)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    public int GetUnplacedPendingObjectCount()
+    {
+        return Mathf.Max(0, PendingObjectCount - GetPlacedPendingObjectCount());
+    }
+
+    public bool AreAllPendingObjectsPlaced()
+    {
+        return PendingObjectCount > 0 && GetPlacedPendingObjectCount() >= PendingObjectCount;
+    }
+
+    public void SelectPendingObject(int index)
+    {
         if (GetPendingObject(index) == null)
         {
             Debug.LogWarning($"[FurnitureServerPlacementPipeline] SelectPendingObject failed. index:{index}, count:{PendingObjectCount}");
             return;
         }
 
-        if (IsPendingObjectConfirmed(index))
+        if (IsPendingObjectLoadedForPlacement(index))
         {
-            Debug.LogWarning($"[FurnitureServerPlacementPipeline] SelectPendingObject ignored. Object already confirmed. index:{index}");
+            Debug.LogWarning($"[FurnitureServerPlacementPipeline] SelectPendingObject ignored. Object is already placed. index:{index}");
             return;
         }
 
@@ -221,12 +252,6 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
 
     public void PlacePendingObject(int index)
     {
-        if (HasPendingUnconfirmedPlacement)
-        {
-            Debug.LogWarning($"[FurnitureServerPlacementPipeline] PlacePendingObject ignored. Confirm the current object before placing another one. pendingIndex:{PendingConfirmationIndex}");
-            return;
-        }
-
         FurnitureServerResultObject obj = GetPendingObject(index);
         if (obj == null)
         {
@@ -234,10 +259,27 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
             return;
         }
 
-        if (IsPendingObjectConfirmed(index))
+        if (IsPendingObjectLoadedForPlacement(index))
         {
-            Debug.LogWarning($"[FurnitureServerPlacementPipeline] PlacePendingObject ignored. Object already confirmed. index:{index}");
+            Debug.LogWarning($"[FurnitureServerPlacementPipeline] PlacePendingObject ignored. Object already placed. index:{index}");
             return;
+        }
+
+        if (HasPendingUnconfirmedPlacement)
+        {
+            FurniturePlacementManager placementManager = resultPlacer != null ? resultPlacer.furniturePlacementManager : null;
+            if (placementManager != null)
+            {
+                if (!placementManager.ConfirmActiveNotConfirmedFurniture())
+                {
+                    Debug.LogWarning("[FurnitureServerPlacementPipeline] PlacePendingObject blocked. Current furniture could not be confirmed.");
+                    return;
+                }
+            }
+            else if (!ConfirmPlacedPendingObjectAndSelectNext())
+            {
+                return;
+            }
         }
 
         if (resultPlacer == null)
@@ -298,7 +340,10 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
             }
 
             PendingConfirmationIndex = index;
-            SelectedPendingObjectIndex = index;
+            int nextSelectableIndex = FindSelectablePendingIndex(index, 1);
+            SelectedPendingObjectIndex = nextSelectableIndex >= 0 ? nextSelectableIndex : index;
+            PlacedFurniture placedFurniture = instance != null ? instance.GetComponent<PlacedFurniture>() : null;
+            resultPlacer?.furniturePlacementManager?.SetActiveNotConfirmedFurniture(placedFurniture, "ServerObjectPlaced");
             PendingObjectLoadedForPlacement?.Invoke(index, obj, instance);
             ResultListChanged?.Invoke(this);
             Debug.Log($"[FurnitureServerPlacementPipeline] Manual server object placed. index:{index}, id:{obj.id}, label:{obj.label}", instance);
@@ -315,7 +360,7 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
 
         if (apiClient == null || resultPlacer == null)
         {
-            Debug.LogWarning("[FurnitureServerPlacementPipeline] Required references are missing.");
+            FinishWithFailure("Required references are missing.");
             yield break;
         }
 
@@ -445,21 +490,27 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         LastResult = result;
         EnsurePendingTrackingArrays();
 
+        if (!autoPlaceResultObjects)
+        {
+            LastStatus = "result_ready_manual_placement";
+        }
+
         if (PendingObjectCount > 0)
         {
             SelectedPendingObjectIndex = 0;
             PendingSelectionChanged?.Invoke(SelectedPendingObjectIndex, SelectedPendingObject);
         }
-        ResultListChanged?.Invoke(this);
 
         if (!autoPlaceResultObjects)
         {
-            LastStatus = "result_ready_manual_placement";
             IsRunning = false;
             runningCoroutine = null;
+            ResultListChanged?.Invoke(this);
             Debug.Log($"[FurnitureServerPlacementPipeline] Server result cached for manual placement. session:{scanSessionId}, objects:{PendingObjectCount}");
             yield break;
         }
+
+        ResultListChanged?.Invoke(this);
 
         int placed = 0;
         int failed = 0;
@@ -514,6 +565,52 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         return true;
     }
 
+    public bool MarkPlacedObjectNotConfirmed(PlacedFurniture furniture)
+    {
+        int index = FindPlacedFurnitureIndex(furniture);
+        if (index < 0)
+        {
+            return false;
+        }
+
+        EnsurePendingTrackingArrays();
+        if (confirmedPendingObjects != null && index < confirmedPendingObjects.Length)
+        {
+            confirmedPendingObjects[index] = false;
+        }
+
+        PendingConfirmationIndex = index;
+        int nextSelectableIndex = FindSelectablePendingIndex(index, 1);
+        SelectedPendingObjectIndex = nextSelectableIndex >= 0 ? nextSelectableIndex : index;
+        PendingSelectionChanged?.Invoke(SelectedPendingObjectIndex, SelectedPendingObject);
+        ResultListChanged?.Invoke(this);
+        return true;
+    }
+
+    public bool ConfirmPlacedObject(PlacedFurniture furniture)
+    {
+        int index = FindPlacedFurnitureIndex(furniture);
+        if (index < 0)
+        {
+            return false;
+        }
+
+        EnsurePendingTrackingArrays();
+        if (confirmedPendingObjects != null && index < confirmedPendingObjects.Length)
+        {
+            confirmedPendingObjects[index] = true;
+        }
+
+        if (PendingConfirmationIndex == index)
+        {
+            PendingConfirmationIndex = -1;
+        }
+
+        PendingObjectConfirmed?.Invoke(index, GetPendingObject(index));
+        ResultListChanged?.Invoke(this);
+        return true;
+    }
+
     public int GetConfirmedPendingObjectCount()
     {
         if (confirmedPendingObjects == null)
@@ -540,11 +637,6 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
             return -1;
         }
 
-        if (HasPendingUnconfirmedPlacement)
-        {
-            return PendingConfirmationIndex;
-        }
-
         int step = direction >= 0 ? 1 : -1;
         int index = startIndex;
         if (index < 0 || index >= PendingObjectCount)
@@ -555,7 +647,7 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         for (int i = 0; i < PendingObjectCount; i++)
         {
             index = (index + step + PendingObjectCount) % PendingObjectCount;
-            if (!IsPendingObjectConfirmed(index))
+            if (!IsPendingObjectLoadedForPlacement(index))
             {
                 return index;
             }
@@ -586,6 +678,31 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         }
     }
 
+    private int FindPlacedFurnitureIndex(PlacedFurniture furniture)
+    {
+        if (furniture == null || placedPendingInstances == null)
+        {
+            return -1;
+        }
+
+        for (int i = 0; i < placedPendingInstances.Length; i++)
+        {
+            GameObject instance = placedPendingInstances[i];
+            if (instance == null)
+            {
+                continue;
+            }
+
+            PlacedFurniture placedFurniture = instance.GetComponent<PlacedFurniture>();
+            if (placedFurniture == furniture)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
     private void ResetPendingTracking()
     {
         confirmedPendingObjects = null;
@@ -598,6 +715,7 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         LastStatus = "failed";
         IsRunning = false;
         runningCoroutine = null;
+        ResultListChanged?.Invoke(this);
         Debug.LogWarning($"[FurnitureServerPlacementPipeline] Flow failed. {reason}");
     }
 

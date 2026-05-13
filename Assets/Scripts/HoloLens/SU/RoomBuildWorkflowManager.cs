@@ -95,6 +95,9 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
     [Tooltip("Confirm Room 상태에서 사용자가 직접 만든 Manual Wall 원본 표시와 collider를 숨깁니다. 최종 방은 ConfirmedRoomRoot로만 표시됩니다.")]
     public bool hideManualWallVisualsInConfirmRoom = true;
 
+    [Tooltip("RoomCapture 단계부터 사진에 ConfirmedRoomRoot 시각화가 찍히지 않도록 Renderer를 숨깁니다. metadata 참조는 유지됩니다.")]
+    public bool hideConfirmedRoomRenderersInRoomCapture = true;
+
     [Tooltip("Confirm Room에서 Manual Wall로 돌아갈 때 기존 raw mesh / wall segmentation 표시를 다시 켭니다.")]
     public bool restoreAutoRoomVisualsWhenBackToManual = true;
 
@@ -232,6 +235,7 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
 
         if (scanner != null)
         {
+            scanner.workflowManager = this;
             scanner.UnlockRoom();
             scanner.StopScanning();
         }
@@ -269,6 +273,7 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
 
         if (scanner != null)
         {
+            scanner.workflowManager = this;
             scanner.UnlockRoom();
 
             if (startScannerWhenInitializingRoomBuild)
@@ -587,6 +592,8 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
             SetAutoRoomVisualsActive(false);
         }
 
+        DisableNonConfirmedRoomBuildGeometry();
+
         EnsureFurnitureCaptureManagerReference();
 
         bool boundRoomObjects = true;
@@ -858,6 +865,29 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
         manualWallBuilder.manualWallRoot.gameObject.SetActive(active);
     }
 
+    private void DisableNonConfirmedRoomBuildGeometry()
+    {
+        SetAutoRoomVisualsActive(false);
+        SetManualWallVisualsActive(false);
+
+        if (manualWallBuilder != null)
+        {
+            manualWallBuilder.SetNoneMode();
+            manualWallBuilder.ClearSelectableSurfaces();
+        }
+
+        if (scanner != null)
+        {
+            scanner.StopScanning();
+        }
+    }
+
+    private void SetConfirmedRoomRenderersVisible(bool visible)
+    {
+        EnsureConfirmRoomManagerReference();
+        confirmRoomManager?.SetConfirmedRoomRenderersVisible(visible);
+    }
+
     private int CountManualWalls()
     {
         if (manualWallBuilder == null)
@@ -1089,7 +1119,14 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
                currentState == WorkflowState.FurnitureRePlacement;
     }
 
-    private void OnEnterRoomInfoInputState() { }
+    private void OnEnterRoomInfoInputState()
+    {
+        if (scanner != null)
+        {
+            scanner.workflowManager = this;
+            scanner.StopScanning();
+        }
+    }
     private void OnExitRoomInfoInputState() { }
 
     private void OnEnterRoomBuildState()
@@ -1106,6 +1143,7 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
 
         if (scanner != null)
         {
+            scanner.workflowManager = this;
             scanner.UnlockRoom();
 
             if (startScannerWhenInitializingRoomBuild)
@@ -1114,17 +1152,33 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
             }
         }
     }
-    private void OnExitRoomBuildState() { }
+    private void OnExitRoomBuildState()
+    {
+        if (scanner != null)
+        {
+            scanner.StopScanning();
+        }
+    }
     private void OnEnterManualWallGenerateState() { }
     private void OnExitManualWallGenerateState() { }
     private void OnEnterManualWallConfirmedState()
     {
+        confirmRoomManager?.SetEntranceMarkerVisible(true);
         RefreshConfirmRoomValidation();
     }
     private void OnExitManualWallConfirmedState() { }
-    private void OnEnterRoomCaptureState() { }
+    private void OnEnterRoomCaptureState()
+    {
+        DisableNonConfirmedRoomBuildGeometry();
+        SetConfirmedRoomRenderersVisible(!hideConfirmedRoomRenderersInRoomCapture);
+        confirmRoomManager?.SetEntranceMarkerVisible(false);
+    }
     private void OnExitRoomCaptureState() { }
-    private void OnEnterFurniturePlacementState() { }
+    private void OnEnterFurniturePlacementState()
+    {
+        DisableNonConfirmedRoomBuildGeometry();
+        confirmRoomManager?.SetEntranceMarkerVisible(false);
+    }
     private void OnExitFurniturePlacementState() { }
     private void OnEnterSimulationProcessState()
     {

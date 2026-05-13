@@ -9,30 +9,36 @@ public class ManualWallPanelController : WorkflowPanelControllerBase
     public ManualWallBuilder manualWallBuilder;
 
     [Header("User Buttons")]
-    [Tooltip("벽 생성 모드로 전환합니다.")]
+    [Tooltip("Switches to manual wall create mode. Press again to turn all manual wall modes off.")]
     public PressableButton userSetManualCreateModeButton;
 
-    [Tooltip("벽 자르기 모드로 전환합니다.")]
+    [Tooltip("Switches to wall cut mode. Press again to turn all manual wall modes off.")]
     public PressableButton userSetWallCutModeButton;
 
-    [Tooltip("마지막 작업을 되돌리거나 진행 중인 선택을 취소합니다.")]
+    [Tooltip("Undoes the last operation or cancels the current selection.")]
     public PressableButton userUndoButton;
 
-    [Tooltip("방금 만든 수직 벽을 회전합니다.")]
+    [Tooltip("Rotates the most recently generated perpendicular wall.")]
     public PressableButton userRotateLastWallButton;
 
-    [Tooltip("모든 수동 벽을 초기화합니다.")]
+    [Tooltip("Clears all manually created walls.")]
     public PressableButton userClearManualWallsButton;
 
-    [Tooltip("Manual Wall 작업을 취소하고 RoomBuild 단계로 돌아갑니다.")]
+    [Tooltip("Cancels Manual Wall editing and returns to Room Build.")]
     public PressableButton userReturnToRoomBuildButton;
 
-    [Tooltip("Manual Wall 편집을 마치고 Confirm Room 패널로 이동합니다.")]
+    [Tooltip("Completes Manual Wall editing and opens Confirm Room.")]
     public PressableButton userOpenConfirmRoomButton;
 
     [Header("Text References")]
     public TMP_Text text_ManualCreateMode;
     public TMP_Text text_WallCutMode;
+
+    [Header("Mode Text")]
+    [SerializeField] private string manualCreateModeLabel = "\uBCBD \uC0DD\uC131 \uBAA8\uB4DC";
+    [SerializeField] private string wallCutModeLabel = "\uBCBD \uC790\uB974\uAE30 \uBAA8\uB4DC";
+    [SerializeField] private string modeOnText = "On";
+    [SerializeField] private string modeOffText = "Off";
 
     [Header("Debug Buttons - Optional")]
     public PressableButton rebuildSelectableSurfacesButton;
@@ -47,9 +53,8 @@ public class ManualWallPanelController : WorkflowPanelControllerBase
     public PressableButton returnToRoomBuildButton;
     public PressableButton confirmManualWallsButton;
 
-    // 현재 모드가 켜져 있는지 추적하는 상태 변수
-    private bool isCreateModeOn = false;
-    private bool isCutModeOn = false;
+    private bool isCreateModeOn;
+    private bool isCutModeOn;
 
     private UnityAction userSetManualCreateModeAction;
     private UnityAction userSetWallCutModeAction;
@@ -83,10 +88,7 @@ public class ManualWallPanelController : WorkflowPanelControllerBase
         EnsureManualWallBuilderReference();
         CreateActions();
         RegisterButtons();
-
-        // 패널이 켜질 때마다 두 모드를 모두 Off 상태로 초기화합니다.
-        isCreateModeOn = false;
-        isCutModeOn = false;
+        SyncModeStateFromBuilder();
         UpdateModeTexts();
     }
 
@@ -186,75 +188,75 @@ public class ManualWallPanelController : WorkflowPanelControllerBase
         RemoveClick(confirmManualWallsButton, confirmManualWallsAction);
     }
 
+    private void SyncModeStateFromBuilder()
+    {
+        if (manualWallBuilder == null)
+        {
+            isCreateModeOn = false;
+            isCutModeOn = false;
+            return;
+        }
+
+        isCreateModeOn = manualWallBuilder.currentMode == ManualWallBuilder.BuildMode.ManualWallCreate;
+        isCutModeOn = manualWallBuilder.currentMode == ManualWallBuilder.BuildMode.WallCut || manualWallBuilder.wallCutModeActive;
+    }
+
     private void UpdateModeTexts()
     {
         if (text_ManualCreateMode != null)
-            text_ManualCreateMode.text = "벽 생성 모드\n" + (isCreateModeOn ? "On" : "Off");
+        {
+            text_ManualCreateMode.text = BuildModeText(manualCreateModeLabel, isCreateModeOn);
+        }
 
         if (text_WallCutMode != null)
-            text_WallCutMode.text = "벽 자르기 모드\n" + (isCutModeOn ? "On" : "Off");
+        {
+            text_WallCutMode.text = BuildModeText(wallCutModeLabel, isCutModeOn);
+        }
+    }
+
+    private string BuildModeText(string label, bool isOn)
+    {
+        return label + "\n" + (isOn ? modeOnText : modeOffText);
     }
 
     public void OnClickSetManualCreateMode()
     {
         EnsureManualWallBuilderReference();
 
-        // 현재 꺼져있는 상태에서 켜려고 할 때
-        if (!isCreateModeOn)
-        {
-            // 상대방(자르기) 모드가 켜져 있다면 강제로 끕니다.
-            if (isCutModeOn)
-            {
-                isCutModeOn = false;
-                manualWallBuilder?.SetWallCutMode(false);
-            }
-        }
-
-        // 상태 토글 및 텍스트 업데이트
-        isCreateModeOn = !isCreateModeOn;
-        UpdateModeTexts();
-
-        // 실제 빌더 로직 실행
         if (isCreateModeOn)
         {
-            manualWallBuilder?.SetManualCreateMode();
+            SetNoManualWallMode();
+            return;
         }
-        else
-        {
-            // 벽 생성 모드를 끄는 로직 (구현되어 있다면 호출)
-            // manualWallBuilder?.CancelManualCreateMode();
-        }
+
+        isCreateModeOn = true;
+        isCutModeOn = false;
+        manualWallBuilder?.SetManualCreateMode();
+        UpdateModeTexts();
     }
 
     public void OnClickSetWallCutMode()
     {
         EnsureManualWallBuilderReference();
 
-        // 현재 꺼져있는 상태에서 켜려고 할 때
-        if (!isCutModeOn)
-        {
-            // 상대방(생성) 모드가 켜져 있다면 강제로 끕니다.
-            if (isCreateModeOn)
-            {
-                isCreateModeOn = false;
-                // 벽 생성 모드를 끄는 로직 (구현되어 있다면 호출)
-                // manualWallBuilder?.CancelManualCreateMode();
-            }
-        }
-
-        // 상태 토글 및 텍스트 업데이트
-        isCutModeOn = !isCutModeOn;
-        UpdateModeTexts();
-
-        // 실제 빌더 로직 실행
         if (isCutModeOn)
         {
-            manualWallBuilder?.SetWallCutMode(true);
+            SetNoManualWallMode();
+            return;
         }
-        else
-        {
-            manualWallBuilder?.SetWallCutMode(false);
-        }
+
+        isCreateModeOn = false;
+        isCutModeOn = true;
+        manualWallBuilder?.SetWallCutMode(true);
+        UpdateModeTexts();
+    }
+
+    private void SetNoManualWallMode()
+    {
+        isCreateModeOn = false;
+        isCutModeOn = false;
+        manualWallBuilder?.SetNoneMode();
+        UpdateModeTexts();
     }
 
     public void OnClickRebuildSelectableSurfaces()
@@ -267,6 +269,8 @@ public class ManualWallPanelController : WorkflowPanelControllerBase
     {
         EnsureManualWallBuilderReference();
         manualWallBuilder?.ToggleManualWallEditMode();
+        SyncModeStateFromBuilder();
+        UpdateModeTexts();
     }
 
     public void OnClickRotateLastWall()

@@ -5,6 +5,7 @@ public enum FurniturePlacementState
 {
     None,
     Registered,
+    NotConfirmed,
     Moved,
     Confirmed,
     Invalid

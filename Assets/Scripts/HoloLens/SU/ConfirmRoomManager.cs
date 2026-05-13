@@ -1,9 +1,9 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Confirm Room 단계에서 방 닫힘 검증, 열린 gap marker 표시, 최종 ConfirmedRoomRoot 시각화를 담당합니다.
-/// WorkflowManager는 상태 전환만 관리하고, ConfirmRoomManager가 자동 벽 + 수동 벽 segment를 기반으로 검증/생성을 수행합니다.
+/// Confirm Room ?④퀎?먯꽌 諛??ロ옒 寃利? ?대┛ gap marker ?쒖떆, 理쒖쥌 ConfirmedRoomRoot ?쒓컖?붾? ?대떦?⑸땲??
+/// WorkflowManager???곹깭 ?꾪솚留?愿由ы븯怨? ConfirmRoomManager媛 ?먮룞 踰?+ ?섎룞 踰?segment瑜?湲곕컲?쇰줈 寃利??앹꽦???섑뻾?⑸땲??
 /// </summary>
 public class ConfirmRoomManager : MonoBehaviour
 {
@@ -33,14 +33,14 @@ public class ConfirmRoomManager : MonoBehaviour
     public SceneUnderstandingRoomScanner scanner;
     public ManualWallBuilder manualWallBuilder;
 
-    [Tooltip("최종 확정 방 오브젝트들이 생성될 Root입니다. 보통 RoomBuildWorkflowManager의 ConfirmedRoomRoot를 연결합니다.")]
+    [Tooltip("理쒖쥌 ?뺤젙 諛??ㅻ툕?앺듃?ㅼ씠 ?앹꽦??Root?낅땲?? 蹂댄넻 RoomBuildWorkflowManager??ConfirmedRoomRoot瑜??곌껐?⑸땲??")]
     public Transform confirmedRoomRoot;
 
     [Header("Furniture Placement")]
-    [Tooltip("확정된 벽/바닥/천장 정보를 가구 배치/이동 검증 시스템에 전달합니다.")]
+    [Tooltip("?뺤젙??踰?諛붾떏/泥쒖옣 ?뺣낫瑜?媛援?諛곗튂/?대룞 寃利??쒖뒪?쒖뿉 ?꾨떖?⑸땲??")]
     public ConfirmedRoomGeometryProvider confirmedRoomGeometryProvider;
 
-    [Tooltip("방 확정 성공 시 ConfirmedRoomGeometryProvider를 자동 초기화합니다.")]
+    [Tooltip("諛??뺤젙 ?깃났 ??ConfirmedRoomGeometryProvider瑜??먮룞 珥덇린?뷀빀?덈떎.")]
     public bool bindFurniturePlacementGeometryOnConfirm = true;
 
     [Header("Boundary Sources")]
@@ -56,19 +56,19 @@ public class ConfirmRoomManager : MonoBehaviour
     public float boundaryMinSegmentLength = 0.05f;
 
     [Header("Corner Gap Tolerance")]
-    [Tooltip("벽 endpoint가 다른 벽 segment의 중간 근처에 닿아 있는데 endpoint끼리는 맞지 않는 T-junction/코너 오차를 보정합니다.")]
+    [Tooltip("踰?endpoint媛 ?ㅻⅨ 踰?segment??以묎컙 洹쇱쿂???우븘 ?덈뒗??endpoint?쇰━??留욎? ?딅뒗 T-junction/肄붾꼫 ?ㅼ감瑜?蹂댁젙?⑸땲??")]
     public bool snapEndpointsToNearbySegments = true;
 
-    [Tooltip("endpoint를 주변 segment 위로 붙일 최대 거리입니다. 자동 인식 벽 모서리가 살짝 어긋나는 경우 이 값 안에서 같은 코너로 봅니다.")]
+    [Tooltip("endpoint瑜?二쇰? segment ?꾨줈 遺숈씪 理쒕? 嫄곕━?낅땲?? ?먮룞 ?몄떇 踰?紐⑥꽌由ш? ?댁쭩 ?닿툔?섎뒗 寃쎌슦 ??媛??덉뿉??媛숈? 肄붾꼫濡?遊낅땲??")]
     public float endpointToSegmentSnapDistance = 0.18f;
 
-    [Tooltip("정규화 후에도 남은 열린 endpoint끼리 거리가 가까우면 검증용 짧은 bridge segment를 추가해 코너 gap을 닫습니다.")]
+    [Tooltip("?뺢퇋???꾩뿉???⑥? ?대┛ endpoint?쇰━ 嫄곕━媛 媛源뚯슦硫?寃利앹슜 吏㏃? bridge segment瑜?異붽???肄붾꼫 gap???レ뒿?덈떎.")]
     public bool bridgeSmallOpenEndpointGaps = true;
 
-    [Tooltip("열린 endpoint 사이를 자동 bridge로 닫을 최대 거리입니다. 문/통로까지 닫지 않도록 너무 크게 두지 않는 것을 권장합니다.")]
+    [Tooltip("?대┛ endpoint ?ъ씠瑜??먮룞 bridge濡??レ쓣 理쒕? 嫄곕━?낅땲?? 臾??듬줈源뚯? ?レ? ?딅룄濡??덈Т ?ш쾶 ?먯? ?딅뒗 寃껋쓣 沅뚯옣?⑸땲??")]
     public float openEndpointBridgeDistance = 0.24f;
 
-    [Tooltip("endpoint-to-segment 보정 시 segment를 나누지 않을 endpoint 근처 t 여유값입니다.")]
+    [Tooltip("endpoint-to-segment 蹂댁젙 ??segment瑜??섎늻吏 ?딆쓣 endpoint 洹쇱쿂 t ?ъ쑀媛믪엯?덈떎.")]
     public float endpointProjectionSplitEpsilon = 0.03f;
 
     [Header("User Room Flood Fill Validation")]
@@ -77,24 +77,28 @@ public class ConfirmRoomManager : MonoBehaviour
     public float wallBlockDistance = 0.08f;
     public int maxGridCellsPerAxis = 220;
     public int nearestFreeCellSearchRadius = 8;
+    public bool trimConfirmedBoundarySegmentsToSelectedRoom = true;
+    public float confirmedBoundaryTrimSampleStepMultiplier = 0.5f;
+    public float confirmedBoundaryTrimSelectedCellRadiusMultiplier = 2.75f;
+    public float confirmedBoundaryTrimEndPaddingMeters = 0.24f;
 
     [Header("Cube Footprint Flood Fill Validation")]
-    [Tooltip("벽을 얇은 선분이 아니라 Cube의 XZ footprint 사각형 장애물로 보고 flood fill을 수행합니다. 모서리 endpoint가 완전히 붙지 않아도 실제 벽 두께/끝단 패딩으로 막히면 닫힌 공간으로 판단합니다.")]
+    [Tooltip("踰쎌쓣 ?뉗? ?좊텇???꾨땲??Cube??XZ footprint ?ш컖???μ븷臾쇰줈 蹂닿퀬 flood fill???섑뻾?⑸땲?? 紐⑥꽌由?endpoint媛 ?꾩쟾??遺숈? ?딆븘???ㅼ젣 踰??먭퍡/?앸떒 ?⑤뵫?쇰줈 留됲엳硫??ロ엺 怨듦컙?쇰줈 ?먮떒?⑸땲??")]
     public bool useCubeFootprintFloodFill = true;
 
-    [Tooltip("닫힘 검증에 사용할 최소 벽 footprint 두께입니다. 실제 ConfirmedRoom 벽 두께, ManualWallBuilder.wallThickness, wallBlockDistance*2보다 작은 경우 자동으로 더 큰 값을 사용합니다.")]
+    [Tooltip("?ロ옒 寃利앹뿉 ?ъ슜??理쒖냼 踰?footprint ?먭퍡?낅땲?? ?ㅼ젣 ConfirmedRoom 踰??먭퍡, ManualWallBuilder.wallThickness, wallBlockDistance*2蹂대떎 ?묒? 寃쎌슦 ?먮룞?쇰줈 ????媛믪쓣 ?ъ슜?⑸땲??")]
     public float cubeFootprintWallThickness = 0.16f;
 
-    [Tooltip("벽 segment 양 끝을 이 거리만큼 길이 방향으로 확장해서 Cube 끝단이 코너에서 살짝 맞물리는 것으로 판단합니다. 자동 인식 벽끼리 코너가 조금 벌어지는 문제를 완화합니다.")]
+    [Tooltip("踰?segment ???앹쓣 ??嫄곕━留뚰겮 湲몄씠 諛⑺뼢?쇰줈 ?뺤옣?댁꽌 Cube ?앸떒??肄붾꼫?먯꽌 ?댁쭩 留욌Ъ由щ뒗 寃껋쑝濡??먮떒?⑸땲?? ?먮룞 ?몄떇 踰쎈겮由?肄붾꼫媛 議곌툑 踰뚯뼱吏??臾몄젣瑜??꾪솕?⑸땲??")]
     public float cubeFootprintEndPadding = 0.10f;
 
-    [Tooltip("grid cell center와 이동 선분을 footprint와 비교할 때 사각형을 추가로 확장하는 여유값입니다.")]
+    [Tooltip("grid cell center? ?대룞 ?좊텇??footprint? 鍮꾧탳?????ш컖?뺤쓣 異붽?濡??뺤옣?섎뒗 ?ъ쑀媛믪엯?덈떎.")]
     public float cubeFootprintCollisionPadding = 0.01f;
 
-    [Tooltip("Cube footprint 검증을 사용할 때도 open endpoint가 하나라도 있으면 실패 처리합니다. 기본값 false이면 open endpoint는 gap marker/debug 용도로만 사용합니다.")]
+    [Tooltip("Cube footprint 寃利앹쓣 ?ъ슜???뚮룄 open endpoint媛 ?섎굹?쇰룄 ?덉쑝硫??ㅽ뙣 泥섎━?⑸땲?? 湲곕낯媛?false?대㈃ open endpoint??gap marker/debug ?⑸룄濡쒕쭔 ?ъ슜?⑸땲??")]
     public bool openEndpointsBlockCubeFootprintValidation = false;
 
-    [Tooltip("Cube footprint 검증 중에도 작은 open endpoint gap을 bridge segment로 자동 추가합니다. 기본값 false이면 실제 segment에는 인공 bridge를 추가하지 않고, footprint 두께/끝단 패딩으로만 닫힘을 판단합니다.")]
+    [Tooltip("Cube footprint 寃利?以묒뿉???묒? open endpoint gap??bridge segment濡??먮룞 異붽??⑸땲?? 湲곕낯媛?false?대㈃ ?ㅼ젣 segment?먮뒗 ?멸났 bridge瑜?異붽??섏? ?딄퀬, footprint ?먭퍡/?앸떒 ?⑤뵫?쇰줈留??ロ옒???먮떒?⑸땲??")]
     public bool useAutoBridgeSegmentsForCubeFootprintValidation = false;
 
 
@@ -119,31 +123,31 @@ public class ConfirmRoomManager : MonoBehaviour
     public int openEndpointCount = -1;
 
     [Header("Debug - Segment Source Counts")]
-    [Tooltip("마지막 Confirm Room 검증/미리보기에서 사용한 detected wall segment 개수입니다.")]
+    [Tooltip("留덉?留?Confirm Room 寃利?誘몃━蹂닿린?먯꽌 ?ъ슜??detected wall segment 媛쒖닔?낅땲??")]
     public int lastDetectedWallSourceCount;
 
-    [Tooltip("마지막 Confirm Room 검증/미리보기에서 사용한 closure edge segment 개수입니다.")]
+    [Tooltip("留덉?留?Confirm Room 寃利?誘몃━蹂닿린?먯꽌 ?ъ슜??closure edge segment 媛쒖닔?낅땲??")]
     public int lastClosureEdgeSourceCount;
 
-    [Tooltip("마지막 Confirm Room 검증/미리보기에서 사용한 직접 생성 Manual Wall segment 개수입니다. manualWallRoot가 숨겨져 있어도 포함됩니다.")]
+    [Tooltip("留덉?留?Confirm Room 寃利?誘몃━蹂닿린?먯꽌 ?ъ슜??吏곸젒 ?앹꽦 Manual Wall segment 媛쒖닔?낅땲?? manualWallRoot媛 ?④꺼???덉뼱???ы븿?⑸땲??")]
     public int lastManualWallSourceCount;
 
-    [Tooltip("마지막 Confirm Room 미리보기로 생성한 wall cube 개수입니다.")]
+    [Tooltip("留덉?留?Confirm Room 誘몃━蹂닿린濡??앹꽦??wall cube 媛쒖닔?낅땲??")]
     public int lastReviewWallSegmentCount;
 
-    [Tooltip("마지막 정규화에서 endpoint를 주변 segment 위로 붙인 횟수입니다.")]
+    [Tooltip("留덉?留??뺢퇋?붿뿉??endpoint瑜?二쇰? segment ?꾨줈 遺숈씤 ?잛닔?낅땲??")]
     public int lastEndpointToSegmentSnapCount;
 
-    [Tooltip("마지막 정규화에서 열린 코너 gap을 닫기 위해 자동 추가한 bridge segment 개수입니다.")]
+    [Tooltip("留덉?留??뺢퇋?붿뿉???대┛ 肄붾꼫 gap???リ린 ?꾪빐 ?먮룞 異붽???bridge segment 媛쒖닔?낅땲??")]
     public int lastAutoBridgeSegmentCount;
 
-    [Tooltip("마지막 Cube footprint flood fill에 사용한 벽 footprint 개수입니다.")]
+    [Tooltip("留덉?留?Cube footprint flood fill???ъ슜??踰?footprint 媛쒖닔?낅땲??")]
     public int lastCubeFootprintCount;
 
-    [Tooltip("마지막 Cube footprint flood fill에서 벽 footprint에 막힌 cell 판정 횟수입니다. Debug 확인용입니다.")]
+    [Tooltip("留덉?留?Cube footprint flood fill?먯꽌 踰?footprint??留됲엺 cell ?먯젙 ?잛닔?낅땲?? Debug ?뺤씤?⑹엯?덈떎.")]
     public int lastCubeBlockedCellCheckCount;
 
-    [Tooltip("마지막 Cube footprint flood fill에서 이동 경로가 벽 footprint를 가로질러 차단된 횟수입니다. Debug 확인용입니다.")]
+    [Tooltip("留덉?留?Cube footprint flood fill?먯꽌 ?대룞 寃쎈줈媛 踰?footprint瑜?媛濡쒖쭏??李⑤떒???잛닔?낅땲?? Debug ?뺤씤?⑹엯?덈떎.")]
     public int lastCubeBlockedMovementCheckCount;
 
     [Header("Gap Markers")]
@@ -152,6 +156,16 @@ public class ConfirmRoomManager : MonoBehaviour
     public Material gapMarkerMaterial;
     public float gapMarkerSize = 0.12f;
     public float gapMarkerYOffset = 0.12f;
+
+    [Header("Entrance")]
+    public bool requireEntranceBeforeProceed = true;
+    public bool entrancePlacementMode;
+    public bool hasEntrance;
+    public Vector3 entrancePointWorld;
+    public float entranceRadiusMeters = 1.5f;
+    public Transform entranceMarkerRoot;
+    public Material entrancePointMarkerMaterial;
+    public float entrancePointMarkerSize = 0.12f;
 
     private readonly HashSet<Vector2Int> selectedCells = new HashSet<Vector2Int>();
     private readonly List<Segment2D> confirmedBoundarySegments = new List<Segment2D>();
@@ -169,6 +183,7 @@ public class ConfirmRoomManager : MonoBehaviour
 
     private GameObject confirmedRoomFloorObject;
     private GameObject confirmedRoomCeilingObject;
+    private GameObject entrancePointMarkerObject;
 
     public GameObject ConfirmedRoomFloorObject => confirmedRoomFloorObject;
     public GameObject ConfirmedRoomCeilingObject => confirmedRoomCeilingObject;
@@ -181,8 +196,8 @@ public class ConfirmRoomManager : MonoBehaviour
             return;
         }
 
-        // WorkflowManager는 상태 전환만 담당합니다.
-        // Confirm Room 검증/시각화 옵션은 ConfirmRoomManager Inspector에서 직접 관리합니다.
+        // WorkflowManager???곹깭 ?꾪솚留??대떦?⑸땲??
+        // Confirm Room 寃利??쒓컖???듭뀡? ConfirmRoomManager Inspector?먯꽌 吏곸젒 愿由ы빀?덈떎.
         scanner = workflow.scanner;
         manualWallBuilder = workflow.manualWallBuilder;
 
@@ -209,6 +224,16 @@ public class ConfirmRoomManager : MonoBehaviour
                 markerRootObject.transform.SetParent(fallbackParent, false);
             }
             gapMarkerRoot = markerRootObject.transform;
+        }
+
+        if (entranceMarkerRoot == null)
+        {
+            GameObject entranceRootObject = new GameObject("ConfirmRoomEntranceMarkers");
+            if (fallbackParent != null)
+            {
+                entranceRootObject.transform.SetParent(fallbackParent, false);
+            }
+            entranceMarkerRoot = entranceRootObject.transform;
         }
     }
 
@@ -255,9 +280,9 @@ public class ConfirmRoomManager : MonoBehaviour
             return false;
         }
 
-        // 선분 기반 검증에서는 open endpoint가 곧 실패 조건입니다.
-        // Cube footprint 기반 검증에서는 실제 벽 Cube의 두께/끝단 패딩으로 막혀 있으면 닫힌 방으로 인정하므로,
-        // open endpoint는 기본적으로 gap marker/debug 용도로만 사용합니다.
+        // ?좊텇 湲곕컲 寃利앹뿉?쒕뒗 open endpoint媛 怨??ㅽ뙣 議곌굔?낅땲??
+        // Cube footprint 湲곕컲 寃利앹뿉?쒕뒗 ?ㅼ젣 踰?Cube???먭퍡/?앸떒 ?⑤뵫?쇰줈 留됲? ?덉쑝硫??ロ엺 諛⑹쑝濡??몄젙?섎?濡?
+        // open endpoint??湲곕낯?곸쑝濡?gap marker/debug ?⑸룄濡쒕쭔 ?ъ슜?⑸땲??
         if (openEndpointCount > 0 && (!useCubeFootprintFloodFill || openEndpointsBlockCubeFootprintValidation))
         {
             floodReachedOutside = true;
@@ -287,18 +312,7 @@ public class ConfirmRoomManager : MonoBehaviour
             return false;
         }
 
-        if (useCubeFootprintFloodFill)
-        {
-            // Cube footprint 방식에서는 endpoint graph가 아니라 벽 Cube footprint가 닫힘 판정의 기준입니다.
-            // 따라서 선택 cell 인접 선분만 다시 추리는 기존 line 기반 boundary 추출 대신,
-            // 검증에 사용한 normalized segment 전체를 최종 벽 후보로 유지합니다.
-            confirmedBoundarySegments.Clear();
-            confirmedBoundarySegments.AddRange(allSegments);
-        }
-        else
-        {
-            BuildConfirmedBoundarySegments(allSegments);
-        }
+        BuildConfirmedBoundarySegments(allSegments);
 
         confirmedBoundarySegmentCount = confirmedBoundarySegments.Count;
 
@@ -320,10 +334,10 @@ public class ConfirmRoomManager : MonoBehaviour
 
 
     /// <summary>
-    /// Confirm Room 검토 단계에서 사용자가 보게 될 방 미리보기입니다.
-    /// 자동 생성 시각화 오브젝트가 아니라, 현재 scanner.currentRoom에 반영된 detected/closure segment와
-    /// ManualWallBuilder의 manual wall segment snapshot을 합친 결과를 ConfirmedRoomRoot 아래에 다시 생성합니다.
-    /// 따라서 ManualWall 단계에서 잘라낸 자동 벽 수정과 새로 만든 수동 벽이 모두 반영됩니다.
+    /// Confirm Room 寃???④퀎?먯꽌 ?ъ슜?먭? 蹂닿쾶 ??諛?誘몃━蹂닿린?낅땲??
+    /// ?먮룞 ?앹꽦 ?쒓컖???ㅻ툕?앺듃媛 ?꾨땲?? ?꾩옱 scanner.currentRoom??諛섏쁺??detected/closure segment?
+    /// ManualWallBuilder??manual wall segment snapshot???⑹튇 寃곌낵瑜?ConfirmedRoomRoot ?꾨옒???ㅼ떆 ?앹꽦?⑸땲??
+    /// ?곕씪??ManualWall ?④퀎?먯꽌 ?섎씪???먮룞 踰??섏젙怨??덈줈 留뚮뱺 ?섎룞 踰쎌씠 紐⑤몢 諛섏쁺?⑸땲??
     /// </summary>
     public bool BuildReviewRoomVisualization()
     {
@@ -408,7 +422,7 @@ public class ConfirmRoomManager : MonoBehaviour
             return false;
         }
 
-        // 현재 플로우에서는 바닥/천장을 polygon이 아니라 box slab으로 생성하는 것이 더 안정적입니다.
+        // ?꾩옱 ?뚮줈?곗뿉?쒕뒗 諛붾떏/泥쒖옣??polygon???꾨땲??box slab?쇰줈 ?앹꽦?섎뒗 寃껋씠 ???덉젙?곸엯?덈떎.
         BuildConfirmedHorizontalBoxSlabsFromSegments(wallSegments, floorY, ceilingY);
         BuildConfirmedWallCubesFromSegments(wallSegments, floorY, ceilingY);
 
@@ -426,6 +440,275 @@ public class ConfirmRoomManager : MonoBehaviour
 
         validationStatus = $"Confirmed room visualization built. walls:{confirmedRoomWallObjects.Count}";
         return success;
+    }
+
+    public void BeginEntrancePlacementMode()
+    {
+        EnsureRoots(transform);
+
+        if (!CanPlaceEntrance(out string reason))
+        {
+            entrancePlacementMode = false;
+            validationStatus = reason;
+            Debug.LogWarning($"[ConfirmRoomManager] {validationStatus}");
+            return;
+        }
+
+        EnsureEntranceSelectableSurface(confirmedRoomFloorObject);
+        entrancePlacementMode = true;
+        validationStatus = "?낃뎄 ?꾩튂瑜?諛붾떏?먯꽌 ?좏깮?섏꽭??";
+        Debug.Log("[ConfirmRoomManager] Entrance placement mode started.");
+    }
+
+    public void CancelEntrancePlacementMode()
+    {
+        entrancePlacementMode = false;
+        validationStatus = hasEntrance ? "Entrance point assigned." : "Entrance point is not assigned.";
+    }
+
+    public void ClearEntrance()
+    {
+        hasEntrance = false;
+        entrancePlacementMode = false;
+        entrancePointWorld = Vector3.zero;
+
+        if (entrancePointMarkerObject != null)
+        {
+            Destroy(entrancePointMarkerObject);
+            entrancePointMarkerObject = null;
+        }
+
+        validationStatus = "Entrance point is not assigned.";
+        Debug.Log("[ConfirmRoomManager] Entrance cleared.");
+    }
+
+    public void SetEntrancePoint(Vector3 worldPoint)
+    {
+        TrySetEntrancePoint(worldPoint);
+    }
+
+    public bool TrySetEntrancePoint(Vector3 worldPoint)
+    {
+        if (!CanPlaceEntrance(out string reason))
+        {
+            entrancePlacementMode = false;
+            validationStatus = reason;
+            Debug.LogWarning($"[ConfirmRoomManager] {validationStatus}");
+            return false;
+        }
+
+        if (!TrySnapEntrancePointToNearestWall(worldPoint, out Vector3 snappedWallPoint))
+        {
+            validationStatus = "?낃뎄 ?꾩튂瑜?遺李⑺븷 踰쎈㈃??李얠쓣 ???놁뒿?덈떎.";
+            Debug.LogWarning($"[ConfirmRoomManager] {validationStatus}");
+            return false;
+        }
+
+        entrancePointWorld = snappedWallPoint;
+        hasEntrance = true;
+        entrancePlacementMode = false;
+        CreateOrUpdateEntrancePointMarker(snappedWallPoint);
+        SetEntranceMarkerVisible(true);
+        validationStatus = "?낃뎄 ?꾩튂 吏???꾨즺";
+        Debug.Log(
+            $"[ConfirmRoomManager] Entrance point assigned. " +
+            $"floorPoint:{worldPoint}, snappedWallPoint:{entrancePointWorld}, radius:{entranceRadiusMeters:0.00}m");
+        return true;
+    }
+
+    public bool CanPlaceEntrance(out string reason)
+    {
+        reason = string.Empty;
+
+        if (!roomReady || !finalRoomClosed)
+        {
+            reason = "?낃뎄 ?꾩튂???ロ엺 諛⑹뿉?쒕쭔 吏?뺥븷 ???덉뒿?덈떎.";
+            return false;
+        }
+
+        if (confirmedRoomFloorObject == null)
+        {
+            reason = "?낃뎄 ?꾩튂瑜?吏?뺥븷 ConfirmedRoom_Floor媛 ?놁뒿?덈떎.";
+            return false;
+        }
+
+        List<Segment2D> wallSegments = BuildConfirmedWallSegmentsForVisualization();
+        if (wallSegments.Count == 0)
+        {
+            reason = "?낃뎄 ?꾩튂瑜?遺李⑺븷 踰쎈㈃???놁뒿?덈떎.";
+            return false;
+        }
+
+        return true;
+    }
+
+    public bool CanProceedWithEntrance(out string reason)
+    {
+        reason = string.Empty;
+
+        if (!requireEntranceBeforeProceed)
+        {
+            return true;
+        }
+
+        if (!roomReady || !finalRoomClosed)
+        {
+            reason = "?낃뎄 ?꾩튂???ロ엺 諛⑹뿉?쒕쭔 吏?뺥븷 ???덉뒿?덈떎.";
+            return false;
+        }
+
+        if (!hasEntrance)
+        {
+            reason = "?낃뎄 ?꾩튂瑜?癒쇱? 吏?뺥븯?몄슂.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private void EnsureEntranceSelectableSurface(GameObject floorObject)
+    {
+        if (floorObject == null)
+        {
+            return;
+        }
+
+        Collider floorCollider = floorObject.GetComponent<Collider>();
+        if (floorCollider == null)
+        {
+            floorObject.AddComponent<BoxCollider>();
+        }
+
+        MixedReality.Toolkit.StatefulInteractable interactable =
+            floorObject.GetComponent<MixedReality.Toolkit.StatefulInteractable>();
+        if (interactable == null)
+        {
+            floorObject.AddComponent<MixedReality.Toolkit.StatefulInteractable>();
+        }
+
+        ConfirmRoomEntranceSelectableSurface selectable =
+            floorObject.GetComponent<ConfirmRoomEntranceSelectableSurface>();
+        if (selectable == null)
+        {
+            selectable = floorObject.AddComponent<ConfirmRoomEntranceSelectableSurface>();
+        }
+
+        selectable.confirmRoomManager = this;
+    }
+
+    private float GetEntranceFloorY(float fallbackY)
+    {
+        if (confirmedRoomFloorObject != null)
+        {
+            Renderer renderer = confirmedRoomFloorObject.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                return renderer.bounds.max.y;
+            }
+
+            Collider collider = confirmedRoomFloorObject.GetComponent<Collider>();
+            if (collider != null)
+            {
+                return collider.bounds.max.y;
+            }
+        }
+
+        if (scanner != null && scanner.currentRoom != null && !float.IsNaN(scanner.currentRoom.floorY))
+        {
+            return scanner.currentRoom.floorY + confirmedFloorYOffset;
+        }
+
+        return fallbackY;
+    }
+
+    private bool TrySnapEntrancePointToNearestWall(Vector3 floorPoint, out Vector3 snappedWallPoint)
+    {
+        snappedWallPoint = floorPoint;
+
+        List<Segment2D> wallSegments = BuildConfirmedWallSegmentsForVisualization();
+        if (wallSegments.Count == 0)
+        {
+            return false;
+        }
+
+        Vector2 floorPoint2D = new Vector2(floorPoint.x, floorPoint.z);
+        Vector2 bestPoint = Vector2.zero;
+        Vector2 bestDirection = Vector2.zero;
+        float bestDistanceSqr = float.MaxValue;
+
+        foreach (Segment2D segment in wallSegments)
+        {
+            Vector2 segmentVector = segment.end - segment.start;
+            float segmentLengthSqr = segmentVector.sqrMagnitude;
+
+            if (segmentLengthSqr < boundaryMinSegmentLength * boundaryMinSegmentLength)
+            {
+                continue;
+            }
+
+            float t = Mathf.Clamp01(Vector2.Dot(floorPoint2D - segment.start, segmentVector) / segmentLengthSqr);
+            Vector2 candidatePoint = segment.start + segmentVector * t;
+            float distanceSqr = (floorPoint2D - candidatePoint).sqrMagnitude;
+
+            if (distanceSqr < bestDistanceSqr)
+            {
+                bestDistanceSqr = distanceSqr;
+                bestPoint = candidatePoint;
+                bestDirection = segmentVector.normalized;
+            }
+        }
+
+        if (bestDirection.sqrMagnitude < 0.0001f)
+        {
+            return false;
+        }
+
+        Vector2 wallNormal = new Vector2(-bestDirection.y, bestDirection.x);
+        Vector2 toSelectedFloorPoint = floorPoint2D - bestPoint;
+
+        if (toSelectedFloorPoint.sqrMagnitude > 0.0001f &&
+            Vector2.Dot(wallNormal, toSelectedFloorPoint) < 0.0f)
+        {
+            wallNormal = -wallNormal;
+        }
+
+        float wallSurfaceOffset = Mathf.Max(0.0f, confirmedWallThickness * 0.5f);
+        Vector2 snappedPoint2D = bestPoint + wallNormal * wallSurfaceOffset;
+
+        snappedWallPoint = new Vector3(
+            snappedPoint2D.x,
+            GetEntranceFloorY(floorPoint.y),
+            snappedPoint2D.y
+        );
+
+        return true;
+    }
+
+    private void CreateOrUpdateEntrancePointMarker(Vector3 point)
+    {
+        EnsureRoots(transform);
+
+        if (entrancePointMarkerObject == null)
+        {
+            entrancePointMarkerObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            entrancePointMarkerObject.name = "ConfirmedRoom_EntrancePoint";
+            entrancePointMarkerObject.transform.SetParent(entranceMarkerRoot, true);
+
+            Collider collider = entrancePointMarkerObject.GetComponent<Collider>();
+            if (collider != null)
+            {
+                collider.enabled = false;
+            }
+        }
+
+        entrancePointMarkerObject.transform.position = point;
+        entrancePointMarkerObject.transform.localScale = Vector3.one * Mathf.Max(0.02f, entrancePointMarkerSize);
+
+        Renderer markerRenderer = entrancePointMarkerObject.GetComponent<Renderer>();
+        if (markerRenderer != null && entrancePointMarkerMaterial != null)
+        {
+            markerRenderer.sharedMaterial = entrancePointMarkerMaterial;
+        }
     }
 
     private void BindConfirmedRoomToFurniturePlacement()
@@ -467,6 +750,36 @@ public class ConfirmRoomManager : MonoBehaviour
         }
     }
 
+    public void SetConfirmedRoomRenderersVisible(bool visible)
+    {
+        if (confirmedRoomRoot == null)
+        {
+            return;
+        }
+
+        Renderer[] renderers = confirmedRoomRoot.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            if (renderers[i] != null)
+            {
+                renderers[i].enabled = visible;
+            }
+        }
+    }
+
+    public void SetEntranceMarkerVisible(bool visible)
+    {
+        if (entranceMarkerRoot != null)
+        {
+            entranceMarkerRoot.gameObject.SetActive(visible);
+        }
+
+        if (entrancePointMarkerObject != null)
+        {
+            entrancePointMarkerObject.SetActive(visible);
+        }
+    }
+
     public void ClearConfirmedRoomVisualization()
     {
         ClearConfirmedRoomObjectsOnly();
@@ -480,6 +793,14 @@ public class ConfirmRoomManager : MonoBehaviour
         selectedCellCount = 0;
         confirmedBoundarySegmentCount = 0;
         openEndpointCount = -1;
+        hasEntrance = false;
+        entrancePlacementMode = false;
+        entrancePointWorld = Vector3.zero;
+        if (entrancePointMarkerObject != null)
+        {
+            Destroy(entrancePointMarkerObject);
+            entrancePointMarkerObject = null;
+        }
         validationStatus = string.Empty;
     }
 
@@ -588,8 +909,8 @@ public class ConfirmRoomManager : MonoBehaviour
             return;
         }
 
-        // Confirm Room 단계에서는 manualWallRoot를 숨긴 뒤 검증/미리보기를 만들 수 있습니다.
-        // 따라서 activeInHierarchy가 false인 직접 생성 ManualWall도 반드시 포함합니다.
+        // Confirm Room ?④퀎?먯꽌??manualWallRoot瑜??④릿 ??寃利?誘몃━蹂닿린瑜?留뚮뱾 ???덉뒿?덈떎.
+        // ?곕씪??activeInHierarchy媛 false??吏곸젒 ?앹꽦 ManualWall??諛섎뱶???ы븿?⑸땲??
         List<ManualWallBuilder.ManualWallSegmentSnapshot> snapshots =
             manualWallBuilder.GetManualWallSegmentsSnapshot(includeInactiveObjects: true);
 
@@ -630,26 +951,26 @@ public class ConfirmRoomManager : MonoBehaviour
             }
         }
 
-        // 1. 실제로 교차하는 선분은 교차점에서 나눕니다.
+        // 1. ?ㅼ젣濡?援먯감?섎뒗 ?좊텇? 援먯감?먯뿉???섎닏?덈떎.
         cleaned = SplitSegmentsAtIntersections(cleaned);
 
-        // 2. 자동 인식 벽에서 자주 생기는 "endpoint가 다른 벽 중간 근처에 닿아 있는" 코너 오차를 보정합니다.
-        //    이 단계가 없으면 벽은 시각적으로 닫혀 보여도 endpoint graph에서는 열린 endpoint로 남습니다.
+        // 2. ?먮룞 ?몄떇 踰쎌뿉???먯＜ ?앷린??"endpoint媛 ?ㅻⅨ 踰?以묎컙 洹쇱쿂???우븘 ?덈뒗" 肄붾꼫 ?ㅼ감瑜?蹂댁젙?⑸땲??
+        //    ???④퀎媛 ?놁쑝硫?踰쎌? ?쒓컖?곸쑝濡??ロ? 蹂댁뿬??endpoint graph?먯꽌???대┛ endpoint濡??⑥뒿?덈떎.
         if (snapEndpointsToNearbySegments)
         {
             cleaned = SnapEndpointsToNearbySegmentsAndSplit(cleaned, out lastEndpointToSegmentSnapCount);
         }
 
-        // 3. endpoint끼리 가까운 점은 같은 코너로 합칩니다.
+        // 3. endpoint?쇰━ 媛源뚯슫 ?먯? 媛숈? 肄붾꼫濡??⑹묩?덈떎.
         SnapCloseEndpoints(cleaned);
         RemoveShortSegments(cleaned);
 
-        // 4. 같은 선 위에서 닿거나 겹친 segment를 합칩니다.
+        // 4. 媛숈? ???꾩뿉???욧굅??寃뱀튇 segment瑜??⑹묩?덈떎.
         MergeCollinearTouchingSegments(cleaned);
         RemoveShortSegments(cleaned);
 
-        // 5. 그래도 남은 작은 코너 gap은 검증/미리보기용 bridge segment로 닫습니다.
-        //    문/통로를 닫지 않도록 openEndpointBridgeDistance는 endpointSnapDistance보다 약간 큰 정도로만 둡니다.
+        // 5. 洹몃옒???⑥? ?묒? 肄붾꼫 gap? 寃利?誘몃━蹂닿린??bridge segment濡??レ뒿?덈떎.
+        //    臾??듬줈瑜??レ? ?딅룄濡?openEndpointBridgeDistance??endpointSnapDistance蹂대떎 ?쎄컙 ???뺣룄濡쒕쭔 ?〓땲??
         if (bridgeSmallOpenEndpointGaps && (!useCubeFootprintFloodFill || useAutoBridgeSegmentsForCubeFootprintValidation))
         {
             AddBridgeSegmentsForNearbyOpenEndpoints(cleaned, out lastAutoBridgeSegmentCount);
@@ -1668,11 +1989,118 @@ public class ConfirmRoomManager : MonoBehaviour
 
         foreach (Segment2D segment in allSegments)
         {
-            if (IsSegmentAdjacentToSelectedRoom(segment))
+            if (trimConfirmedBoundarySegmentsToSelectedRoom)
+            {
+                AddSelectedRoomAdjacentSegmentPortions(segment, confirmedBoundarySegments);
+            }
+            else if (IsSegmentAdjacentToSelectedRoom(segment))
             {
                 confirmedBoundarySegments.Add(segment);
             }
         }
+
+        if (trimConfirmedBoundarySegmentsToSelectedRoom)
+        {
+            SnapCloseEndpoints(confirmedBoundarySegments);
+            RemoveShortSegments(confirmedBoundarySegments);
+            MergeCollinearTouchingSegments(confirmedBoundarySegments);
+            RemoveShortSegments(confirmedBoundarySegments);
+
+            if (confirmedBoundarySegments.Count < 3)
+            {
+                confirmedBoundarySegments.Clear();
+                foreach (Segment2D segment in allSegments)
+                {
+                    if (IsSegmentAdjacentToSelectedRoom(segment))
+                    {
+                        confirmedBoundarySegments.Add(segment);
+                    }
+                }
+            }
+        }
+    }
+
+    private void AddSelectedRoomAdjacentSegmentPortions(Segment2D segment, List<Segment2D> target)
+    {
+        float length = Vector2.Distance(segment.start, segment.end);
+        if (length < boundaryMinSegmentLength)
+        {
+            return;
+        }
+
+        float step = Mathf.Max(
+            boundaryMinSegmentLength,
+            gridCellSize * Mathf.Max(0.1f, confirmedBoundaryTrimSampleStepMultiplier)
+        );
+
+        int sampleCount = Mathf.Max(2, Mathf.CeilToInt(length / step));
+        bool inRun = false;
+        float runStartT = 0.0f;
+
+        for (int i = 0; i < sampleCount; i++)
+        {
+            float t0 = i / (float)sampleCount;
+            float t1 = (i + 1) / (float)sampleCount;
+            float midT = (t0 + t1) * 0.5f;
+            Vector2 midPoint = Vector2.Lerp(segment.start, segment.end, midT);
+            bool nearSelectedRoom = IsPointNearSelectedRoomCell(midPoint);
+
+            if (nearSelectedRoom && !inRun)
+            {
+                inRun = true;
+                runStartT = t0;
+            }
+
+            if ((!nearSelectedRoom || i == sampleCount - 1) && inRun)
+            {
+                float runEndT = nearSelectedRoom && i == sampleCount - 1 ? t1 : t0;
+                float endPaddingT = Mathf.Clamp01(Mathf.Max(0.0f, confirmedBoundaryTrimEndPaddingMeters) / length);
+                float paddedStartT = Mathf.Clamp01(runStartT - endPaddingT);
+                float paddedEndT = Mathf.Clamp01(runEndT + endPaddingT);
+                Vector2 start = Vector2.Lerp(segment.start, segment.end, paddedStartT);
+                Vector2 end = Vector2.Lerp(segment.start, segment.end, paddedEndT);
+
+                if (Vector2.Distance(start, end) >= boundaryMinSegmentLength)
+                {
+                    target.Add(new Segment2D { start = start, end = end });
+                }
+
+                inRun = false;
+            }
+        }
+    }
+
+    private bool IsPointNearSelectedRoomCell(Vector2 point)
+    {
+        if (selectedCells.Count == 0 || !TryWorldToCell(point, out Vector2Int centerCell))
+        {
+            return false;
+        }
+
+        float radius = Mathf.Max(
+            wallBlockDistance + gridCellSize,
+            gridCellSize * Mathf.Max(0.5f, confirmedBoundaryTrimSelectedCellRadiusMultiplier)
+        );
+        int radiusCells = Mathf.Max(1, Mathf.CeilToInt(radius / gridCellSize));
+
+        for (int x = -radiusCells; x <= radiusCells; x++)
+        {
+            for (int y = -radiusCells; y <= radiusCells; y++)
+            {
+                Vector2Int cell = new Vector2Int(centerCell.x + x, centerCell.y + y);
+                if (!selectedCells.Contains(cell))
+                {
+                    continue;
+                }
+
+                if (Vector2.Distance(CellToWorld(cell), point) <= radius)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private bool IsSegmentAdjacentToSelectedRoom(Segment2D segment)
@@ -1741,11 +2169,6 @@ public class ConfirmRoomManager : MonoBehaviour
         List<Segment2D> result = new List<Segment2D>();
 
         foreach (Segment2D segment in confirmedBoundarySegments)
-        {
-            AddUniqueCandidateSegment(result, segment);
-        }
-
-        foreach (Segment2D segment in normalizedBoundarySegmentsForConfirm)
         {
             AddUniqueCandidateSegment(result, segment);
         }
@@ -1857,6 +2280,7 @@ public class ConfirmRoomManager : MonoBehaviour
         if (isFloor)
         {
             confirmedRoomFloorObject = slab;
+            EnsureEntranceSelectableSurface(slab);
         }
         else
         {

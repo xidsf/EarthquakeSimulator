@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using MixedReality.Toolkit.UX;
 using TMPro;
 using UnityEngine;
@@ -92,6 +93,20 @@ public class UIManager : MonoBehaviour
     public GameObject panel_SystemMessage;
     public TMP_Text text_SystemMessage;
 
+    [Header("4. Notification UI")]
+    [Tooltip("알림 UI 루트 GameObject입니다. RectTransform을 가진 UI 오브젝트를 연결합니다.")]
+    public GameObject notificationUI;
+    [Tooltip("알림 문구를 표시할 TextMeshPro 컴포넌트입니다. 비워두면 notificationUI 하위에서 자동 탐색합니다.")]
+    public TMP_Text text_Notification;
+    [Tooltip("알림이 숨겨져 있을 때 RectTransform Pos Y 값입니다.")]
+    public float notificationHiddenY = -180.0f;
+    [Tooltip("알림이 표시될 때 RectTransform Pos Y 값입니다.")]
+    public float notificationVisibleY = -75.0f;
+    [Tooltip("알림이 표시된 뒤 유지되는 시간입니다.")]
+    public float notificationVisibleSeconds = 3.0f;
+    [Tooltip("알림이 이동하는 데 걸리는 시간입니다.")]
+    public float notificationSlideSeconds = 0.25f;
+
     [Header("5. Workflow 상태 표시")]
     public TMP_Text text_WorkflowStatus;
 
@@ -102,6 +117,8 @@ public class UIManager : MonoBehaviour
 
     // 현재 활성화된 메인 패널을 추적합니다. Help 열림 시 비활성화에 사용합니다.
     private GameObject currentMainPanel;
+    private RectTransform notificationRectTransform;
+    private Coroutine notificationCoroutine;
 
     public GameObject CurrentMainPanel => currentMainPanel;
 
@@ -119,6 +136,12 @@ public class UIManager : MonoBehaviour
     {
         HideAllSubPanels();
         HideWarningMessage();
+        InitializeNotificationUI();
+        SetNotificationY(notificationHiddenY);
+        if (notificationUI != null)
+        {
+            notificationUI.SetActive(false);
+        }
 
         EnsureWorkflowManagerReference();
 
@@ -462,5 +485,115 @@ public class UIManager : MonoBehaviour
         {
             panel_SystemMessage.SetActive(false);
         }
+    }
+
+    public void ShowNotification(string message)
+    {
+        InitializeNotificationUI();
+
+        if (notificationUI == null || notificationRectTransform == null)
+        {
+            return;
+        }
+
+        if (text_Notification != null)
+        {
+            text_Notification.text = message;
+        }
+
+        if (notificationCoroutine != null)
+        {
+            StopCoroutine(notificationCoroutine);
+        }
+
+        SetNotificationY(notificationHiddenY);
+        notificationUI.SetActive(true);
+        notificationCoroutine = StartCoroutine(ShowNotificationRoutine());
+    }
+
+    public void HideNotification()
+    {
+        InitializeNotificationUI();
+
+        if (notificationCoroutine != null)
+        {
+            StopCoroutine(notificationCoroutine);
+            notificationCoroutine = null;
+        }
+
+        SetNotificationY(notificationHiddenY);
+
+        if (notificationUI != null)
+        {
+            notificationUI.SetActive(false);
+        }
+    }
+
+    private void InitializeNotificationUI()
+    {
+        if (notificationUI == null)
+        {
+            return;
+        }
+
+        if (notificationRectTransform == null)
+        {
+            notificationRectTransform = notificationUI.GetComponent<RectTransform>();
+        }
+
+        if (text_Notification == null)
+        {
+            text_Notification = notificationUI.GetComponentInChildren<TMP_Text>(true);
+        }
+    }
+
+    private IEnumerator ShowNotificationRoutine()
+    {
+        yield return SlideNotificationToY(notificationVisibleY);
+        yield return new WaitForSecondsRealtime(Mathf.Max(0.0f, notificationVisibleSeconds));
+        yield return SlideNotificationToY(notificationHiddenY);
+
+        if (notificationUI != null)
+        {
+            notificationUI.SetActive(false);
+        }
+
+        notificationCoroutine = null;
+    }
+
+    private IEnumerator SlideNotificationToY(float targetY)
+    {
+        if (notificationRectTransform == null)
+        {
+            yield break;
+        }
+
+        Vector2 start = notificationRectTransform.anchoredPosition;
+        Vector2 target = new Vector2(start.x, targetY);
+        float duration = Mathf.Max(0.01f, notificationSlideSeconds);
+        float elapsed = 0.0f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = Mathf.Clamp01(elapsed / duration);
+            t = t * t * (3.0f - 2.0f * t);
+            notificationRectTransform.anchoredPosition = Vector2.LerpUnclamped(start, target, t);
+            yield return null;
+        }
+
+        notificationRectTransform.anchoredPosition = target;
+    }
+
+    private void SetNotificationY(float y)
+    {
+        if (notificationRectTransform == null)
+        {
+            return;
+        }
+
+        Vector2 position = notificationRectTransform.anchoredPosition;
+        position.y = y;
+        notificationRectTransform.anchoredPosition = position;
     }
 }

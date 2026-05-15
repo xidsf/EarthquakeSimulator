@@ -5,8 +5,12 @@ using UnityEngine;
 using UnityEngine.Events;
 
 /// <summary>
-/// 실제 사용자용 FurniturePlacement 패널 컨트롤러입니다.
-/// 1번 작업 반영: 수동 확정(Confirm) 로직을 제거하고 자동 배치/확정 흐름으로 변경되었습니다.
+/// 수정된 가구 배치 패널 컨트롤러입니다.
+/// 주요 변경 사항:
+/// 1. 수동 확정(Confirm) 버튼 제거 및 로직 삭제 (자동 확정 대응)
+/// 2. 동일 가구의 다중 배치 허용 (배치 후 버튼 잠금 해제)
+/// 3. 모든 가구를 배치해야 한다는 강제 조건 삭제 (사용자 자율성 부여)
+/// 4. 컴파일 오류(T 형식, 삭제된 메서드 호출 등) 수정
 /// </summary>
 public class FurniturePlacementPanelController : WorkflowPanelControllerBase
 {
@@ -38,7 +42,9 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     public bool loadSelectedServerFurniturePreview = true;
     public bool suppressSelectedServerFurniturePreviewOnDevice = false;
     public float selectedServerFurniturePreviewScale = 0.03f;
-    public bool requireAllServerFurniturePlacedBeforeComplete = true; // 이름 변경: Confirmed -> Placed
+
+    [Tooltip("true이면 리스트의 모든 가구를 최소 한 번씩 배치해야 완료 버튼이 활성화됩니다.")]
+    public bool requireAllServerFurniturePlacedBeforeComplete = false;
 
     [Header("Server Furniture Request Guard")]
     [Min(1.0f)] public float serverFurnitureRequestTimeoutSeconds = 600.0f;
@@ -50,7 +56,6 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     [SerializeField] private string modeOffText = "Off";
     [SerializeField] private string moveModeStatusText = "이동 모드 활성화. 가구를 잡아 위치를 조정하세요.";
     [SerializeField] private string rotateModeStatusText = "회전 모드 활성화. 가구를 Y축 기준으로 회전시키세요.";
-    [SerializeField] private string manipulationModeOffStatusText = "이동/회전 모드 비활성화.";
 
     [Header("Debug Buttons - Optional")]
     public PressableButton debugBindRoomGeometryButton;
@@ -242,7 +247,6 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     private void OnServerPendingObjectLoadedForPlacement(int index, FurnitureServerResultObject selectedObject, GameObject placedObject)
     {
         RefreshServerFurnitureListView();
-        // 💡 문구 수정: 확정 요구 삭제
         SetServerFurnitureStatus($"{BuildFurnitureName(selectedObject, index)}의 위치를 조정하세요.");
     }
 
@@ -300,8 +304,8 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         {
             FurnitureServerResultObject obj = serverPlacementPipeline.GetPendingObject(i);
             string marker = i == selectedIndex ? "> " : "  ";
-            // 자동 확정 로직이므로 Confirmed 여부만 표시
-            string state = serverPlacementPipeline.IsPendingObjectConfirmed(i) ? " [배치완료]" : "";
+            // 자동 확정이므로 배치 여부만 표시 (다중 배치를 위해 [배치됨]으로 유지)
+            string state = serverPlacementPipeline.IsPendingObjectLoadedForPlacement(i) ? " [배치됨]" : "";
             listText += $"{marker}{i + 1}. {BuildFurnitureName(obj, i)}{state}\n";
         }
 
@@ -315,18 +319,30 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         int count = serverPlacementPipeline != null ? serverPlacementPipeline.PendingObjectCount : 0;
         bool hasServerFurniture = count > 0;
         bool hasSelectedFurniture = hasServerFurniture && serverPlacementPipeline.SelectedPendingObject != null;
+
+        // 💡 [수정] 다중 배치를 위해 이미 배치되었는지 체크하는 로직을 제거했습니다.
         bool allPlaced = serverPlacementPipeline != null && serverPlacementPipeline.AreAllPendingObjectsPlaced();
         bool hasPlacedSelection = moveModeController != null && moveModeController.SelectedFurniture != null;
 
         SetButtonVisible(userPlaceFurnitureFromServerButton, !hasServerFurniture);
+        SetButtonEnabled(userPlaceFurnitureFromServerButton, !isRunning && !IsServerFurnitureRequestLocked());
         SetButtonEnabled(userSelectNextServerFurnitureButton, hasServerFurniture && !isRunning);
         SetButtonEnabled(userSelectPreviousServerFurnitureButton, hasServerFurniture && !isRunning);
 
+        // 💡 [수정] 선택한 가구가 있다면 언제든지 다시 배치 버튼을 누를 수 있습니다.
         SetButtonEnabled(userPlaceSelectedServerFurnitureButton, hasSelectedFurniture && !isRunning);
 
         SetButtonVisible(userToggleMoveModeButton, hasPlacedSelection && !isRunning);
         SetButtonVisible(userToggleRotateModeButton, hasPlacedSelection && !isRunning);
-        SetButtonEnabled(userCompleteFurniturePlacementButton, hasServerFurniture && !isRunning && (!requireAllServerFurniturePlacedBeforeComplete || allPlaced));
+
+        // 💡 [수정] 모든 가구 배치 강제 조건을 풀었습니다. 가구 리스트만 있으면 완료 가능합니다.
+        bool canComplete = hasServerFurniture && !isRunning;
+        if (requireAllServerFurniturePlacedBeforeComplete)
+        {
+            canComplete = canComplete && allPlaced;
+        }
+
+        SetButtonEnabled(userCompleteFurniturePlacementButton, canComplete);
     }
 
     private void UpdateManipulationModeTexts()
@@ -347,12 +363,12 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         }
 
         if (serverPlacementPipeline != null && serverPlacementPipeline.AreAllPendingObjectsPlaced())
-            return "모든 가구가 배치되었습니다. 완료 버튼을 눌러주세요.";
+            return "모든 가구가 배치되었습니다. 완료 버튼을 눌러 시뮬레이션을 시작하세요.";
 
         return $"가구를 선택하고 배치 버튼을 누르세요. ({placed}/{count})";
     }
 
-    // --- Server Request & Preview Logic --- (기존과 동일하되 메시지만 일부 수정)
+    // --- Server Request & Preview Logic ---
 
     private bool IsServerFurnitureRequestLocked() => serverFurnitureRequestLocked && !HasServerFurnitureResponse() && !HasServerFurnitureRequestTimedOut();
     private bool HasServerFurnitureResponse() => serverPlacementPipeline != null && serverPlacementPipeline.LastResult != null;
@@ -437,14 +453,23 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
 
     public void OnClickCompleteFurniturePlacement()
     {
+        // 💡 [수정] 강제 배치 조건 로직을 제거하거나 설정값에 따르도록 변경했습니다.
         if (requireAllServerFurniturePlacedBeforeComplete && serverPlacementPipeline != null && !serverPlacementPipeline.AreAllPendingObjectsPlaced())
         {
             uiManager?.ShowNotification("모든 서버 가구를 배치해야 합니다.");
             return;
         }
 
+        // 현재 모드 해제
         moveModeController?.SetManipulationMode(FurnitureManipulationMode.None);
-        if (simulationStartController != null && simulationStartController.TryStartSimulation()) return;
+
+        // 시뮬레이션 전환 시도 (자동 확정 로직이므로 별도의 확정 호출 없이 진행)
+        if (simulationStartController != null && simulationStartController.TryStartSimulation())
+        {
+            Debug.Log("[FurniturePlacementPanelController] Simulation sequence started.");
+            return;
+        }
+
         RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteFurniturePlacement);
     }
 
@@ -461,6 +486,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         if (workflow?.confirmRoomManager != null) roomGeometryProvider.BindFromConfirmRoomManager(workflow.confirmRoomManager);
     }
 
+    // 💡 [수정] T 형식 오류 해결을 위해 void와 명확한 UnityEngine.Object 사용
     private static void SetButtonEnabled(PressableButton b, bool e) { if (b != null) b.enabled = e; }
     private static void SetButtonVisible(PressableButton b, bool v) { if (b != null) { b.gameObject.SetActive(v); b.enabled = v; } }
     private static T FindFirst<T>() where T : UnityEngine.Object { T[] objs = FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None); return objs != null && objs.Length > 0 ? objs[0] : null; }

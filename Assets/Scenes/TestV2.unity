@@ -415,10 +415,7 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 7256543900600860858, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
 --- !u!4 &36939921 stripped
 Transform:
@@ -1461,17 +1458,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &227401847 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 5092507606405556714, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
-  m_PrefabInstance: {fileID: 1975987375}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9541d86e2fd84c1d9990edf0852d74ab, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!1 &252017145
 GameObject:
   m_ObjectHideFlags: 0
@@ -2167,6 +2153,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: PressableButton_32x32mm_IconAndText
       objectReference: {fileID: 0}
+    - target: {fileID: 5092507606858315802, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 5572466351762964349, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
       propertyPath: <OnClicked>k__BackingField.m_PersistentCalls.m_Calls.Array.size
       value: 1
@@ -2641,6 +2631,8 @@ MonoBehaviour:
   manualWallMaterial: {fileID: 2100000, guid: 0848c863e111ad949b1345fbcf764ad2, type: 2}
   selectableFloorMaterial: {fileID: 2100000, guid: 4499b032a79f920498d9f55573381eb0, type: 2}
   selectableWallMaterial: {fileID: 2100000, guid: 0d7126a4f1515764bad49745568e190f, type: 2}
+  selectableActiveWallCandidateMaterial: {fileID: 0}
+  selectableIgnoredWallCandidateMaterial: {fileID: 0}
   markerMaterial: {fileID: 2100000, guid: 9e80787e295caa2419a86e9027b3c434, type: 2}
   lastCreatedWallMaterial: {fileID: 0}
   wallThickness: 0.06
@@ -2664,6 +2656,9 @@ MonoBehaviour:
   includeClosureEdgesAsManualWallSelectable: 1
   includeManualWallsForPerpendicularExtend: 1
   maxPerpendicularWallLength: 5
+  enableLongPerpendicularConnect: 1
+  perpendicularAutoConnectDistance: 4
+  perpendicularLongConnectDistance: 8
   perpendicularWallEndPadding: 0.02
   minPerpendicularIntersectionDistance: 0.15
   rotatedWallIntersectionMinDistance: 0.02
@@ -2677,9 +2672,20 @@ MonoBehaviour:
   wallCutLineDepth: 0.09
   wallCutLineHeightPadding: 0.04
   showSelectableSurfaces: 1
+  showSelectableDetectedWalls: 1
+  showSelectableActiveWallCandidates: 0
+  showSelectableIgnoredWallCandidates: 0
+  forceShowSelectableSurfacesOnRebuild: 1
   selectableFloorThickness: 0.03
   selectableWallThickness: 0.05
   floorMargin: 0.3
+  extendTwoPointWallToNearbyWalls: 1
+  twoPointAutoConnectDistance: 0.25
+  twoPointAutoConnectMaxAngleDegrees: 8
+  wallExtendMaxDistance: 3
+  wallExtendMinDelta: 0.05
+  wallExtendTargetPadding: 0.02
+  wallExtendTargetPointTolerance: 0.25
   registerLegacyButtonListeners: 0
   rebuildSelectableSurfacesButton: {fileID: 0}
   manualWallModeToggleButton: {fileID: 0}
@@ -2690,12 +2696,18 @@ MonoBehaviour:
   clearSelectableSurfacesButton: {fileID: 0}
   currentMode: 0
   status: 
+  lastSelectableSurfaceCount: 0
+  lastSelectableDetectedWallCount: 0
+  lastSelectableActiveWallCandidateCount: 0
+  lastSelectableIgnoredWallCandidateCount: 0
+  lastSelectableClosureEdgeCount: 0
   hasFirstFloorPoint: 0
   previewRayHasValidHit: 0
   lastPreviewPoint: {x: 0, y: 0, z: 0}
   hasLastGeneratedWall: 0
   lastGeneratedWallType: 
   hasCutTarget: 0
+  hasWallExtendTarget: 0
   cutModeStatus: 
 --- !u!4 &415795964
 Transform:
@@ -3222,17 +3234,6 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 5092507605265006331, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
   m_PrefabInstance: {fileID: 468670587}
   m_PrefabAsset: {fileID: 0}
---- !u!114 &468670589 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 5572466351762964349, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
-  m_PrefabInstance: {fileID: 468670587}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c32e8a7644144f8419bb881ad588ed0e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!1 &468789641
 GameObject:
   m_ObjectHideFlags: 0
@@ -3750,7 +3751,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &580925311
 Transform:
   m_ObjectHideFlags: 0
@@ -4608,7 +4609,10 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 7256543900600860858, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
 --- !u!4 &671255560 stripped
 Transform:
@@ -4685,19 +4689,31 @@ MonoBehaviour:
   workflowManager: {fileID: 1385463943}
   autoFindReferences: 1
   manualWallBuilder: {fileID: 415795963}
-  userSetManualCreateModeButton: {fileID: 1975987377}
-  userSetWallCutModeButton: {fileID: 468670589}
-  userUndoButton: {fileID: 1719449314}
+  userOpenWallAddRootButton: {fileID: 0}
+  userOpenWallEditRootButton: {fileID: 0}
   userRotateLastWallButton: {fileID: 1788128105}
   userClearManualWallsButton: {fileID: 950376590}
   userReturnToRoomBuildButton: {fileID: 79709553}
   userOpenConfirmRoomButton: {fileID: 742976829}
-  text_ManualCreateMode: {fileID: 227401847}
-  text_WallCutMode: {fileID: 1302358410}
-  manualCreateModeLabel: "\uBCBD \uC0DD\uC131 \uBAA8\uB4DC"
-  wallCutModeLabel: "\uBCBD \uC790\uB974\uAE30 \uBAA8\uB4DC"
-  modeOnText: On
-  modeOffText: Off
+  userMainRoot: {fileID: 0}
+  userWallAddRoot: {fileID: 0}
+  userWallEditRoot: {fileID: 0}
+  userAlwaysRoot: {fileID: 0}
+  userWallAddBackButton: {fileID: 0}
+  userWallAddUndoButton: {fileID: 0}
+  userWallAddRotateLastWallButton: {fileID: 0}
+  userWallEditCutButton: {fileID: 0}
+  userWallEditDeleteButton: {fileID: 0}
+  userWallEditExtendButton: {fileID: 0}
+  userWallEditBackButton: {fileID: 0}
+  userWallEditUndoButton: {fileID: 0}
+  userToggleDetectedWallsButton: {fileID: 0}
+  userToggleActiveCandidatesButton: {fileID: 0}
+  userToggleIgnoredWallsButton: {fileID: 0}
+  toggleOnMaterial: {fileID: 0}
+  hideAdvancedUserButtons: 1
+  hideUserRotateLastWallButton: 1
+  hideUserClearManualWallsButton: 1
   rebuildSelectableSurfacesButton: {fileID: 0}
   toggleManualWallEditModeButton: {fileID: 0}
   setManualCreateModeButton: {fileID: 0}
@@ -4973,7 +4989,10 @@ PrefabInstance:
     m_RemovedGameObjects:
     - {fileID: 1811028555225687572, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 5092507606405556712, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
 --- !u!4 &690439774 stripped
 Transform:
@@ -5281,7 +5300,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &719812167
 Transform:
   m_ObjectHideFlags: 0
@@ -5328,6 +5347,7 @@ MonoBehaviour:
   text_LoadingStatus: {fileID: 1018718685}
   tipShowDuration: 5
   tipFadeDuration: 1
+  tipCanvasGroup: {fileID: 0}
 --- !u!4 &720841115 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 7256543901607729065, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
@@ -7803,10 +7823,7 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 7256543900600860858, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
 --- !u!1 &1001287131
 GameObject:
@@ -8715,6 +8732,12 @@ MonoBehaviour:
   sub_IntensitySlider: {fileID: 416736704}
   panel_SystemMessage: {fileID: 900332666}
   text_SystemMessage: {fileID: 159521143}
+  notificationUI: {fileID: 0}
+  text_Notification: {fileID: 0}
+  notificationHiddenY: -180
+  notificationVisibleY: -75
+  notificationVisibleSeconds: 3
+  notificationSlideSeconds: 0.25
   text_WorkflowStatus: {fileID: 1343992415}
   workflowHelpPanel: {fileID: 0}
   autoFindWorkflowHelpPanel: 1
@@ -10001,17 +10024,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1300973087}
   m_CullTransparentMesh: 1
---- !u!114 &1302358410 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 5092507606405556714, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
-  m_PrefabInstance: {fileID: 468670587}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9541d86e2fd84c1d9990edf0852d74ab, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!1 &1315669145
 GameObject:
   m_ObjectHideFlags: 0
@@ -13689,17 +13701,6 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 5092507605265006331, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
   m_PrefabInstance: {fileID: 1719449312}
   m_PrefabAsset: {fileID: 0}
---- !u!114 &1719449314 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 5572466351762964349, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
-  m_PrefabInstance: {fileID: 1719449312}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c32e8a7644144f8419bb881ad588ed0e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!4 &1736509822 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 7256543901607729065, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
@@ -14835,10 +14836,7 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 7256543900600860858, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
 --- !u!4 &1886631724 stripped
 Transform:
@@ -15153,7 +15151,10 @@ PrefabInstance:
     m_RemovedGameObjects:
     - {fileID: 1811028555225687572, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 5092507606405556712, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
 --- !u!4 &1939912812 stripped
 Transform:
@@ -15462,17 +15463,6 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 5092507605265006331, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
   m_PrefabInstance: {fileID: 1975987375}
   m_PrefabAsset: {fileID: 0}
---- !u!114 &1975987377 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 5572466351762964349, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
-  m_PrefabInstance: {fileID: 1975987375}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c32e8a7644144f8419bb881ad588ed0e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!1 &2001685799
 GameObject:
   m_ObjectHideFlags: 0
@@ -15638,15 +15628,30 @@ MonoBehaviour:
   maxCloseGapMeters: 0.45
   createClosureEdges: 1
   showClosureEdges: 1
+  attachSourceMeshDebugChild: 1
+  enableWallCandidateFiltering: 1
+  maxWallThicknessMeters: 0.3
+  minWallAspectRatio: 3
+  minWallDirectionConfidence: 0.45
+  maxWallBottomFloorGapMeters: 0.35
+  maxWallTopCeilingGapMeters: 0.6
+  ignoreActiveCandidatesContainedInDetectedWalls: 1
+  containedCandidateMaxAngleDegrees: 10
+  containedCandidateMaxDistanceMeters: 0.2
+  containedCandidateEndpointPaddingMeters: 0.05
   sceneRoot: {fileID: 278886460}
   wallMaterial: {fileID: 2100000, guid: 19f6cecbc5acf25478fd0df088ba3b8b, type: 2}
   floorMaterial: {fileID: 2100000, guid: 505dfa66215018d41b4b9d586b13ae14, type: 2}
   ceilingMaterial: {fileID: 2100000, guid: 32e705e3c9484bb428b3518c390549f8, type: 2}
   closureEdgeMaterial: {fileID: 2100000, guid: b7df683085762a14c86b1a0f2be1b038, type: 2}
+  activeWallCandidateMaterial: {fileID: 0}
+  ignoredWallCandidateMaterial: {fileID: 0}
   showRawSceneMeshes: 1
   showDetectedWallSegments: 1
   showReconstructedFloor: 1
   showReconstructedCeiling: 1
+  showActiveWallCandidates: 0
+  showIgnoredWallCandidates: 0
   sceneRootAligned: 0
   sceneRootAlignStatus: 
   lastComputeTimeSeconds: 0

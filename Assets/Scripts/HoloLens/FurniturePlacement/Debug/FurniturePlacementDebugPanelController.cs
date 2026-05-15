@@ -202,7 +202,6 @@ public class FurniturePlacementDebugPanelController : WorkflowPanelControllerBas
     public void OnClickConfirmSelectedFurniture()
     {
         EnsureDebugReferences();
-        furniturePlacementManager?.ConfirmSelectedFurniture();
         Debug.Log("[FurniturePlacementDebugPanelController] Confirm selected requested.");
     }
 

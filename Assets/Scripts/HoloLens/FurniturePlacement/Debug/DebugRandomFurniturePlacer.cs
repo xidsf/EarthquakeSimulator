@@ -162,7 +162,6 @@ public class DebugRandomFurniturePlacer : MonoBehaviour
         }
 
         PlacedFurniture placedFurniture = instance.GetComponent<PlacedFurniture>();
-        furniturePlacementManager.SetActiveNotConfirmedFurniture(placedFurniture, "DebugManualPlacement");
 
         if (enableMoveModeAfterManualDebugPlacement && furniturePlacementManager.moveModeController != null)
         {

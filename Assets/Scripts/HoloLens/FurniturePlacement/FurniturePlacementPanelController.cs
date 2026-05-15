@@ -29,6 +29,8 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     public FurnitureSimulationStartController simulationStartController;
     public ConfirmedRoomGeometryProvider roomGeometryProvider;
     public FurnitureServerPlacementPipeline serverPlacementPipeline;
+    [Tooltip("촬영 세션 정보를 읽어 가구 생성 버튼 활성화 조건을 판단합니다. 비어 있으면 Scene에서 자동 탐색합니다.")]
+    public FurnitureCaptureManager furnitureCaptureManager;
 
     [Header("User Buttons")]
     [Tooltip("촬영 단계에서 만들어진 scan_session_id로 detect/process/result를 실행하고 서버 결과를 배치합니다.")]
@@ -254,6 +256,11 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         if (serverPlacementPipeline == null)
         {
             serverPlacementPipeline = FindFirst<FurnitureServerPlacementPipeline>();
+        }
+
+        if (furnitureCaptureManager == null)
+        {
+            furnitureCaptureManager = FindFirst<FurnitureCaptureManager>();
         }
     }
 
@@ -563,7 +570,10 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         bool canCompletePlacement = hasServerFurniture &&
                                     !isRunning &&
                                     (!requireAllServerFurnitureConfirmedBeforeComplete || allPlaced);
-        bool canRequestServerFurniture = !isRunning && !hasServerFurniture && !IsServerFurnitureRequestLocked();
+        bool hasCapturedFrames = furnitureCaptureManager != null &&
+                                 furnitureCaptureManager.HasActiveServerScanSession &&
+                                 furnitureCaptureManager.NextFrameNumber > 1;
+        bool canRequestServerFurniture = !isRunning && !hasServerFurniture && !IsServerFurnitureRequestLocked() && hasCapturedFrames;
 
         SetButtonVisible(userPlaceFurnitureFromServerButton, !hasServerFurniture);
         SetButtonEnabled(userPlaceFurnitureFromServerButton, canRequestServerFurniture);
@@ -844,6 +854,8 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
             RefreshServerFurnitureListView();
             return;
         }
+
+        uiManager?.ShowNotification("가구를 불러오는 중입니다. 조금만 기다려주세요.");
 
         SubscribeServerPlacementPipelineEvents();
         serverPlacementPipeline.StartPlacementFromCurrentScanSession();

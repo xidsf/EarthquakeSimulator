@@ -383,7 +383,9 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
             FurnitureServerStatusResponse finishResponse = null;
             string finishError = string.Empty;
 
-            if (string.IsNullOrWhiteSpace(finishScanRequestJson))
+            string resolvedFinishJson = ResolveFinishScanRequestJson();
+
+            if (string.IsNullOrWhiteSpace(resolvedFinishJson))
             {
                 yield return apiClient.PostFinishScanSession(scanSessionId, (ok, response, error) =>
                 {
@@ -394,7 +396,7 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
             }
             else
             {
-                yield return apiClient.PostFinishScanSession(scanSessionId, finishScanRequestJson, (ok, response, error) =>
+                yield return apiClient.PostFinishScanSession(scanSessionId, resolvedFinishJson, (ok, response, error) =>
                 {
                     finishOk = ok;
                     finishResponse = response;
@@ -408,9 +410,20 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
 
             if (!finishOk)
             {
-                // 409 = 파이프라인이 이미 실행 중 → 실패로 처리하지 않고 polling으로 계속 진행.
-                bool alreadyRunning = !string.IsNullOrWhiteSpace(finishError) && finishError.Contains("409");
-                if (!alreadyRunning)
+                // 409 케이스 분기:
+                // - "already_processing" : 파이프라인이 이미 실행 중 → polling으로 계속 진행.
+                // - "upload_incomplete"  : 사진이 아직 서버에 다 도착하지 않음 → 즉시 실패.
+                bool is409 = !string.IsNullOrWhiteSpace(finishError) && finishError.Contains("409");
+                bool isUploadIncomplete = is409 && !string.IsNullOrWhiteSpace(finishError) &&
+                                         finishError.Contains("upload_incomplete");
+
+                if (isUploadIncomplete)
+                {
+                    FinishWithFailure($"finish scan-session failed: upload not complete. Take more photos and try again. {finishError}");
+                    yield break;
+                }
+
+                if (!is409)
                 {
                     FinishWithFailure($"finish scan-session failed. {finishError}");
                     yield break;
@@ -497,6 +510,7 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         }
 
         LastResult = result;
+        LogSkippedObjects(result);
         EnsurePendingTrackingArrays();
 
         if (!autoPlaceResultObjects)
@@ -719,6 +733,36 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         PendingConfirmationIndex = -1;
     }
 
+    private void LogSkippedObjects(FurnitureServerResultResponse result)
+    {
+        if (!logPipeline || result == null || result.skipped_objects == null || result.skipped_objects.Length == 0)
+        {
+            return;
+        }
+
+        Debug.Log($"[FurnitureServerPlacementPipeline] Server skipped objects. count:{result.skipped_objects.Length}");
+        for (int i = 0; i < result.skipped_objects.Length; i++)
+        {
+            FurnitureServerSkippedObject skipped = result.skipped_objects[i];
+            if (skipped == null)
+            {
+                continue;
+            }
+
+            Debug.Log(
+                "[FurnitureServerPlacementPipeline] Skipped object. " +
+                $"index:{i}, id:{skipped.id}, label:{skipped.label}, raw:{skipped.raw_label}, " +
+                $"reason:{skipped.reason}, status:{skipped.status}, hint:{skipped.hint}, " +
+                $"sam3d_status:{skipped.sam3d_status}, sam3d_quality:{skipped.sam3d_quality_score:F3}, " +
+                $"quality_flags:{FormatStringArray(skipped.quality_flags)}");
+        }
+    }
+
+    private static string FormatStringArray(string[] values)
+    {
+        return values == null || values.Length == 0 ? "[]" : "[" + string.Join(",", values) + "]";
+    }
+
     private void FinishWithFailure(string reason)
     {
         LastStatus = "failed";
@@ -726,6 +770,37 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         runningCoroutine = null;
         ResultListChanged?.Invoke(this);
         Debug.LogWarning($"[FurnitureServerPlacementPipeline] Flow failed. {reason}");
+    }
+
+    /// <summary>
+    /// finishScanRequestJson 필드가 비어 있으면 FurnitureCaptureManager.NextFrameNumber 기준으로
+    /// expected_frame_count를 자동 생성합니다.
+    /// 사용자에게 프레임 수를 입력받지 않고도 서버가 "사진이 다 올라왔는지" 검증할 수 있습니다.
+    /// </summary>
+    private string ResolveFinishScanRequestJson()
+    {
+        if (!string.IsNullOrWhiteSpace(finishScanRequestJson))
+        {
+            return finishScanRequestJson;
+        }
+
+        if (furnitureCaptureManager == null)
+        {
+            return string.Empty;
+        }
+
+        int frameCount = furnitureCaptureManager.NextFrameNumber - 1;
+        if (frameCount <= 0)
+        {
+            return string.Empty;
+        }
+
+        if (logPipeline)
+        {
+            Debug.Log($"[FurnitureServerPlacementPipeline] Auto-setting expected_frame_count={frameCount} from capture manager.");
+        }
+
+        return $"{{\"expected_frame_count\":{frameCount}}}";
     }
 
     private string ResolveCurrentScanSessionId()

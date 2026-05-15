@@ -76,7 +76,7 @@ public class FurnitureServerResultResponse
     public int frame_count;
     public string[] frames;
     public FurnitureServerResultObject[] objects;
-    public string[] skipped_objects;
+    public FurnitureServerSkippedObject[] skipped_objects;
     public string detector_mode;
     public int detection_count;
     public bool used_confirmed_detections;
@@ -149,9 +149,12 @@ public class FurnitureServerResultObject
     public string mesh_role;
     public bool mesh_texture_required;
     public string mesh_decimation_policy;
+    public string mesh_cache_policy;
     public string mesh_strategy;
     public string mesh_strategy_reason;
     public string sam3d_status;
+    public float sam3d_quality_score;
+    public string[] quality_flags;
     public string source;
     public string detection_id;
     public string frame_id;
@@ -175,6 +178,7 @@ public class FurnitureServerResultObject
 
     public float[] size_world;
     public float[] target_size;
+    public FurnitureServerSizeAdjustment size_adjustment;
 
     public string collider_type;
     public float[] collider_center;
@@ -242,6 +246,41 @@ public class FurnitureServerResultObject
     public string connected_wall_policy;
     public float[] placement_pixel;
     public float width_estimate;
+}
+
+[Serializable]
+public class FurnitureServerSizeAdjustment
+{
+    public string reason;
+    public float[] raw_size_world;
+    public string mesh_long_axis;
+    public float min_width_m;
+    public float min_length_m;
+    public float min_height_m;
+}
+
+[Serializable]
+public class FurnitureServerSkippedObject
+{
+    public string id;
+    public string label;
+    public string raw_label;
+    public string reason;
+    public string status;
+    public string hint;
+    public float[] bbox;
+    public float confidence;
+    public string source;
+    public string detection_id;
+    public string frame_id;
+    public string image_filename;
+    public string metadata_filename;
+    public int instance_index;
+    public string mesh_strategy;
+    public string mesh_strategy_reason;
+    public string sam3d_status;
+    public float sam3d_quality_score;
+    public string[] quality_flags;
 }
 
 [Serializable]

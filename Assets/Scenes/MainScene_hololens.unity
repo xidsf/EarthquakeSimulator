@@ -2196,7 +2196,8 @@ MonoBehaviour:
   simulationStartController: {fileID: 701234946}
   roomGeometryProvider: {fileID: 701234949}
   serverPlacementPipeline: {fileID: 701234951}
-  userPlaceFurnitureFromServerButton: {fileID: 0}
+  furnitureCaptureManager: {fileID: 47393007}
+  userPlaceFurnitureFromServerButton: {fileID: 1380731}
   userSelectNextServerFurnitureButton: {fileID: 8537063}
   userSelectPreviousServerFurnitureButton: {fileID: 1398200730}
   userPlaceSelectedServerFurnitureButton: {fileID: 1651060313}
@@ -2210,12 +2211,12 @@ MonoBehaviour:
   text_RotateMode: {fileID: 0}
   userSelectedServerFurniturePreviewAnchor: {fileID: 2132128683}
   loadSelectedServerFurniturePreview: 1
-  suppressSelectedServerFurniturePreviewOnDevice: 1
+  suppressSelectedServerFurniturePreviewOnDevice: 0
   selectedServerFurniturePreviewScale: 0.03
   requireAllServerFurnitureConfirmedBeforeComplete: 1
   serverFurnitureRequestTimeoutSeconds: 600
-  moveModeLabel: Move
-  rotateModeLabel: Rotate
+  moveModeLabel: "\uC774\uB3D9 \uBAA8\uB4DC"
+  rotateModeLabel: "\uD68C\uC804 \uBAA8\uB4DC"
   modeOnText: On
   modeOffText: Off
   moveModeStatusText: Move mode is on. Drag the selected furniture to adjust its
@@ -2251,23 +2252,12 @@ MonoBehaviour:
   m_GameObject: {fileID: 148157389}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9bddd04ad74514c40b3ab2b4c6b20ccc, type: 3}
+  m_Script: {fileID: 11500000, guid: 597c0d3480163cf449293d1dab9fd279, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  captureUploader: {fileID: 47393003}
-  furnitureGenerationButton: {fileID: 1380731}
-  placementPipeline: {fileID: 701234951}
-  optionalStatusText: {fileID: 0}
-  loadingBlocker: {fileID: 0}
-  serverBaseUrl: https://api.earquake.xyz
-  minimumFrameCount: 1
-  pollIntervalSeconds: 0.75
-  requestTimeoutSeconds: 10
-  autoFindReferences: 1
-  logStatus: 0
-  lastSessionId: 
-  lastExpectedFrameCount: 0
-  lastReady: 0
+  furnitureList: []
+  previewAnchor: {fileID: 0}
+  previewScale: 0.03
 --- !u!1001 &157016824
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -6309,10 +6299,7 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 7256543900600860858, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
 --- !u!4 &465936300 stripped
 Transform:
@@ -7449,6 +7436,7 @@ MonoBehaviour:
   validateManualObjectOnRegister: 0
   continueWhenSingleObjectFails: 1
   logPlacement: 1
+  logMeshSizeValidation: 1
 --- !u!114 &701234953
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -18845,10 +18833,7 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 7256543900600860858, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
 --- !u!4 &1779598985 stripped
 Transform:
@@ -21458,7 +21443,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 2132128682}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6ea7b1ffc6c7f8a4c961306558652881, type: 3}
+  m_Script: {fileID: 11500000, guid: 8f32d68c7ba0e3b48ac1eda10686aa6f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   rotationSpeed: 45

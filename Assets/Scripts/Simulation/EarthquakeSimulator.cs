@@ -153,11 +153,22 @@ public class EarthquakeSimulator : MonoBehaviour
     [SerializeField] private bool setFurnitureContinuousDynamic = true;
     [SerializeField] private bool enableFurnitureInterpolation = true;
 
+    [Header("Building Info")]
+    [Tooltip("주거 건물 종류")]
+    [SerializeField] private ResidentialBuildingType buildingType = ResidentialBuildingType.Apartment;
+
+    [Tooltip("거주(시뮬레이션 대상) 층수")]
+    [Min(1)]
+    [SerializeField] private int currentFloor = 1;
+
+    [Tooltip("전체 층수. 0이면 건물 종류별 대표값을 자동 사용한다.")]
+    [Min(0)]
+    [SerializeField] private int explicitTotalFloors = 0;
+
+    [Tooltip("필로티 구조 여부")]
+    [SerializeField] private PilotiCondition pilotiCondition = PilotiCondition.Unknown;
+
     [Header("Runtime Debug - Read Only")]
-    [SerializeField] private ResidentialBuildingType debugBuildingType;
-    [SerializeField] private int debugCurrentFloor;
-    [SerializeField] private int debugExplicitTotalFloors;
-    [SerializeField] private PilotiCondition debugPilotiCondition;
     [SerializeField] private bool isLoaded;
     [SerializeField] private bool isSimulating;
     [SerializeField] private int loadedFrameCount;
@@ -188,11 +199,6 @@ public class EarthquakeSimulator : MonoBehaviour
 
     public event Action SimulationStarted;
     public event Action SimulationCompleted;
-
-    private ResidentialBuildingType buildingType = ResidentialBuildingType.Apartment;
-    private int currentFloor = 1;
-    private int explicitTotalFloors = 0;
-    private PilotiCondition pilotiCondition = PilotiCondition.Unknown;
 
     private float measuredRoomClearHeightMeters = DefaultRoomClearHeightMeters;
     private bool hasMeasuredRoomClearHeight;
@@ -227,7 +233,6 @@ public class EarthquakeSimulator : MonoBehaviour
 
     private void Awake()
     {
-        SyncDebugFields();
         CacheRigidbodies();
         StoreInitialTransforms();
         ConfigurePhysicsObjects();
@@ -261,7 +266,6 @@ public class EarthquakeSimulator : MonoBehaviour
             explicitTotalFloors = Mathf.Max(explicitTotalFloors, currentFloor);
 
         pilotiCondition = piloti;
-        SyncDebugFields();
     }
 
     public void SetCurrentFloor(int livingFloor)
@@ -270,8 +274,6 @@ public class EarthquakeSimulator : MonoBehaviour
 
         if (explicitTotalFloors > 0)
             explicitTotalFloors = Mathf.Max(explicitTotalFloors, currentFloor);
-
-        SyncDebugFields();
     }
 
     /// <summary>
@@ -283,14 +285,11 @@ public class EarthquakeSimulator : MonoBehaviour
 
         if (explicitTotalFloors > 0)
             explicitTotalFloors = Mathf.Max(explicitTotalFloors, currentFloor);
-
-        SyncDebugFields();
     }
 
     public void SetPilotiCondition(PilotiCondition piloti)
     {
         pilotiCondition = piloti;
-        SyncDebugFields();
     }
 
     /// <summary>
@@ -570,8 +569,6 @@ public class EarthquakeSimulator : MonoBehaviour
         estimatedBuildingHeightMeters = (float)floorMotion.estimatedBuildingHeightMeters;
         pilotiResponseMultiplier = (float)floorMotion.pilotiMultiplier;
         totalDuration = Mathf.Max(0f, (frames.Count - 1) * detectedDt);
-
-        SyncDebugFields();
     }
 
     private string GetCsvText()
@@ -1591,26 +1588,18 @@ public class EarthquakeSimulator : MonoBehaviour
         return value;
     }
 
-    private void SyncDebugFields()
-    {
-        debugBuildingType = buildingType;
-        debugCurrentFloor = currentFloor;
-        debugExplicitTotalFloors = explicitTotalFloors;
-        debugPilotiCondition = pilotiCondition;
-    }
-
     private void OnValidate()
     {
         playbackSpeed = Mathf.Max(0.01f, playbackSpeed);
         fallbackDt = Mathf.Max(0.001f, fallbackDt);
 
+        currentFloor = Mathf.Max(1, currentFloor);
+        explicitTotalFloors = Mathf.Max(0, explicitTotalFloors);
         if (explicitTotalFloors > 0)
             explicitTotalFloors = Mathf.Max(explicitTotalFloors, currentFloor);
 
         minScaleFactor = Mathf.Max(0.01f, minScaleFactor);
         maxScaleFactor = Mathf.Max(minScaleFactor, maxScaleFactor);
         strongScenarioMmi = Mathf.Clamp(strongScenarioMmi, 5, 9);
-
-        SyncDebugFields();
     }
 }

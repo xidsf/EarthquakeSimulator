@@ -93,6 +93,7 @@ public class FurnitureServerResultPlacer : MonoBehaviour
 
     [Header("Log")]
     public bool logPlacement = true;
+    public bool logMeshSizeValidation = true;
 
     public bool IsPlacing { get; private set; }
     public int LastPlacedCount { get; private set; }
@@ -254,6 +255,7 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         ApplyTargetSize(instance, serverObject);
         NormalizeModelIfNeeded(instance);
         yield return ApplyServerColliderRoutine(instance, serverObject);
+        LogMeshSizeValidation(instance, serverObject);
 
         if (!configureBeforeTargetSize && setup != null)
         {
@@ -533,6 +535,7 @@ public class FurnitureServerResultPlacer : MonoBehaviour
             useServerConvexHullCollider &&
             !string.IsNullOrWhiteSpace(serverObject.collider_mesh_url) &&
             IsServerConvexHullCollider(serverObject);
+        bool forceBoxFallback = false;
 
         if (hasServerColliderMesh)
         {
@@ -554,32 +557,45 @@ public class FurnitureServerResultPlacer : MonoBehaviour
 
             if (colliderLoaded && colliderRoot != null)
             {
-                AttachConvexHullCollider(instance, colliderRoot, serverObject);
-                yield break;
-            }
+                if (AttachConvexHullCollider(instance, colliderRoot, serverObject))
+                {
+                    AddBroadInteractionBoxCollider(instance, serverObject);
+                    yield break;
+                }
 
-            Debug.LogWarning($"[FurnitureServerResultPlacer] Server collider mesh load failed. id:{serverObject.id}, error:{colliderError}. Falling back to box collider.", instance);
+                Destroy(colliderRoot);
+                forceBoxFallback = true;
+            }
+            else
+            {
+                forceBoxFallback = true;
+                Debug.LogWarning($"[FurnitureServerResultPlacer] Server collider mesh load failed. id:{serverObject.id}, error:{colliderError}. Falling back to box collider.", instance);
+            }
         }
 
         string colliderType = string.IsNullOrWhiteSpace(serverObject.collider_type)
             ? "box"
             : serverObject.collider_type.Trim().ToLowerInvariant();
 
-        if (preferServerProvidedColliders && instance.GetComponentInChildren<Collider>(true) != null)
+        if (!forceBoxFallback && preferServerProvidedColliders && instance.GetComponentInChildren<Collider>(true) != null)
         {
             yield break;
         }
 
-        if (colliderType != "box" && colliderType != "unity_runtime_box_fallback")
+        if (!forceBoxFallback && colliderType != "box" && colliderType != "unity_runtime_box_fallback")
         {
             yield break;
         }
 
-        Vector3 colliderSize = ToVector3(serverObject.collider_size, Vector3.zero);
-        if (!HasAllPositiveComponents(colliderSize))
+        Vector3 colliderSizeWorld = GetFallbackColliderWorldSize(serverObject);
+        if (!HasAllPositiveComponents(colliderSizeWorld))
         {
             yield break;
         }
+
+        Vector3 colliderCenterWorld = ToVector3(
+            serverObject.collider_center,
+            new Vector3(0f, colliderSizeWorld.y * 0.5f, 0f));
 
         BoxCollider boxCollider = instance.GetComponent<BoxCollider>();
         if (boxCollider == null)
@@ -587,9 +603,154 @@ public class FurnitureServerResultPlacer : MonoBehaviour
             boxCollider = instance.AddComponent<BoxCollider>();
         }
 
-        boxCollider.center = ToVector3(serverObject.collider_center, new Vector3(0f, colliderSize.y * 0.5f, 0f));
-        boxCollider.size = colliderSize;
+        boxCollider.center = WorldSizeToLocalSize(colliderCenterWorld, instance.transform);
+        boxCollider.size = WorldSizeToLocalSize(colliderSizeWorld, instance.transform);
         boxCollider.enabled = true;
+    }
+
+    private void AddBroadInteractionBoxCollider(GameObject instance, FurnitureServerResultObject serverObject)
+    {
+        Vector3 colliderSizeWorld = GetFallbackColliderWorldSize(serverObject);
+        if (!HasAllPositiveComponents(colliderSizeWorld))
+        {
+            return;
+        }
+
+        Vector3 colliderCenterWorld = ToVector3(
+            serverObject.collider_center,
+            new Vector3(0f, colliderSizeWorld.y * 0.5f, 0f));
+
+        BoxCollider boxCollider = instance.GetComponent<BoxCollider>();
+        if (boxCollider == null)
+        {
+            boxCollider = instance.AddComponent<BoxCollider>();
+        }
+
+        boxCollider.center = WorldSizeToLocalSize(colliderCenterWorld, instance.transform);
+        boxCollider.size = WorldSizeToLocalSize(colliderSizeWorld, instance.transform);
+        boxCollider.enabled = true;
+    }
+
+    private void LogMeshSizeValidation(GameObject instance, FurnitureServerResultObject serverObject)
+    {
+        if (!logPlacement || !logMeshSizeValidation || instance == null || serverObject == null)
+        {
+            return;
+        }
+
+        string rendererBoundsText = "none";
+        if (TryGetVisibleRendererBounds(instance, out Bounds rendererBounds))
+        {
+            rendererBoundsText =
+                $"center:{FormatVector(rendererBounds.center)}, size:{FormatVector(rendererBounds.size)}";
+        }
+
+        Debug.Log(
+            "[FurnitureServerResultPlacer] Mesh/size validation. " +
+            $"id:{serverObject.id}, label:{serverObject.label}, " +
+            $"mesh:{serverObject.mesh_filename}, mesh_cache_policy:{serverObject.mesh_cache_policy}, " +
+            $"sam3d_status:{serverObject.sam3d_status}, sam3d_quality:{serverObject.sam3d_quality_score:F3}, " +
+            $"quality_flags:{FormatStringArray(serverObject.quality_flags)}, " +
+            $"server_scale:{FormatVector(serverObject.scale)}, " +
+            $"glb_native_size:{FormatVector(serverObject.glb_native_size)}, " +
+            $"size_world:{FormatVector(serverObject.size_world)}, " +
+            $"target_size:{FormatVector(serverObject.target_size)}, " +
+            $"size_adjustment:{FormatSizeAdjustment(serverObject.size_adjustment)}, " +
+            $"unity_local_scale:{FormatVector(instance.transform.localScale)}, " +
+            $"renderer_bounds:{rendererBoundsText}, " +
+            $"collider_source:{serverObject.collider_source}, " +
+            $"collider_type:{serverObject.collider_type}, " +
+            $"collider_size:{FormatVector(serverObject.collider_size)}, " +
+            $"collider_count:{CountColliders(instance)}",
+            instance);
+    }
+
+    private static int CountColliders(GameObject root)
+    {
+        if (root == null)
+        {
+            return 0;
+        }
+
+        Collider[] colliders = root.GetComponentsInChildren<Collider>(true);
+        return colliders != null ? colliders.Length : 0;
+    }
+
+    private static string FormatStringArray(string[] values)
+    {
+        return values == null || values.Length == 0 ? "[]" : "[" + string.Join(",", values) + "]";
+    }
+
+    private static string FormatVector(float[] values)
+    {
+        if (values == null || values.Length == 0)
+        {
+            return "[]";
+        }
+
+        string[] parts = new string[values.Length];
+        for (int i = 0; i < values.Length; i++)
+        {
+            parts[i] = values[i].ToString("F3");
+        }
+
+        return "[" + string.Join(",", parts) + "]";
+    }
+
+    private static string FormatVector(Vector3 value)
+    {
+        return $"[{value.x:F3},{value.y:F3},{value.z:F3}]";
+    }
+
+    private static string FormatSizeAdjustment(FurnitureServerSizeAdjustment adjustment)
+    {
+        if (adjustment == null || string.IsNullOrWhiteSpace(adjustment.reason))
+        {
+            return "none";
+        }
+
+        return
+            $"{adjustment.reason}, " +
+            $"raw:{FormatVector(adjustment.raw_size_world)}, " +
+            $"mesh_axis:{adjustment.mesh_long_axis}, " +
+            $"min:[{adjustment.min_width_m:F3},{adjustment.min_height_m:F3},{adjustment.min_length_m:F3}]";
+    }
+
+    private Vector3 GetFallbackColliderWorldSize(FurnitureServerResultObject serverObject)
+    {
+        Vector3 colliderSize = ToVector3(serverObject.collider_size, Vector3.zero);
+        if (HasAllPositiveComponents(colliderSize))
+        {
+            return colliderSize;
+        }
+
+        Vector3 sizeWorld = ToVector3(serverObject.size_world, Vector3.zero);
+        if (HasAllPositiveComponents(sizeWorld))
+        {
+            return sizeWorld;
+        }
+
+        Vector3 targetSize = ToVector3(serverObject.target_size, Vector3.zero);
+        if (HasAllPositiveComponents(targetSize))
+        {
+            return targetSize;
+        }
+
+        return Vector3.zero;
+    }
+
+    private static Vector3 WorldSizeToLocalSize(Vector3 worldValue, Transform target)
+    {
+        if (target == null)
+        {
+            return worldValue;
+        }
+
+        Vector3 scale = target.lossyScale;
+        return new Vector3(
+            Mathf.Abs(scale.x) > 0.0001f ? worldValue.x / Mathf.Abs(scale.x) : worldValue.x,
+            Mathf.Abs(scale.y) > 0.0001f ? worldValue.y / Mathf.Abs(scale.y) : worldValue.y,
+            Mathf.Abs(scale.z) > 0.0001f ? worldValue.z / Mathf.Abs(scale.z) : worldValue.z);
     }
 
     private static bool IsServerConvexHullCollider(FurnitureServerResultObject serverObject)
@@ -606,7 +767,7 @@ public class FurnitureServerResultPlacer : MonoBehaviour
                serverObject.collider_convex;
     }
 
-    private static void AttachConvexHullCollider(GameObject visualRoot, GameObject colliderRoot, FurnitureServerResultObject serverObject)
+    private static bool AttachConvexHullCollider(GameObject visualRoot, GameObject colliderRoot, FurnitureServerResultObject serverObject)
     {
         colliderRoot.name = $"{visualRoot.name}_ServerConvexCollider";
         colliderRoot.transform.SetParent(visualRoot.transform, false);
@@ -641,7 +802,10 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         if (added <= 0)
         {
             Debug.LogWarning($"[FurnitureServerResultPlacer] Collider GLB loaded but no MeshFilter was found. id:{serverObject.id}", visualRoot);
+            return false;
         }
+
+        return true;
     }
 
     private static void RemoveColliders(GameObject root)
@@ -821,6 +985,33 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         foreach (Renderer renderer in renderers)
         {
             if (renderer == null)
+            {
+                continue;
+            }
+
+            if (!hasBounds)
+            {
+                bounds = renderer.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(renderer.bounds);
+            }
+        }
+
+        return hasBounds;
+    }
+
+    private static bool TryGetVisibleRendererBounds(GameObject root, out Bounds bounds)
+    {
+        bounds = default;
+        Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+        bool hasBounds = false;
+
+        foreach (Renderer renderer in renderers)
+        {
+            if (renderer == null || !renderer.enabled)
             {
                 continue;
             }

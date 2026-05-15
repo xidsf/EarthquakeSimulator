@@ -4,7 +4,7 @@ using UnityEngine;
 
 /// <summary>
 /// FurnitureCaptureManager.CurrentScanSessionId를 이어받아 서버 detect/process/result 흐름을 실행합니다.
-/// 수정 내역: 다중 배치(무한 도장 찍기) 허용 및 불필요한 UI 락 해제
+/// 💡 수정 내역: UI 선택 인덱스를 강제로 되돌리는(Desync) 악성 Confirm 추적 로직 완전 제거
 /// </summary>
 public class FurnitureServerPlacementPipeline : MonoBehaviour
 {
@@ -18,24 +18,17 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
     public bool autoFindReferences = true;
 
     [Header("Session")]
-    [Tooltip("테스트용 수동 scan_session_id입니다. 비어 있으면 FurnitureCaptureManager.CurrentScanSessionId를 사용합니다.")]
     public string debugOverrideScanSessionId;
 
     [Header("Server Flow")]
-    [Tooltip("Calls POST /scan-session/{scan_session_id}/finish before polling. Keep this enabled for normal HoloLens capture flow.")]
     public bool callFinishScanBeforePolling = true;
-
-    [Tooltip("Optional JSON body for /scan-session/{scan_session_id}/finish. Leave empty to use the server defaults.")]
     [TextArea(2, 6)] public string finishScanRequestJson = string.Empty;
 
     [HideInInspector] public bool callDetectSessionBeforeProcess = false;
     [HideInInspector] public bool getDetectionsAfterDetect = false;
     [HideInInspector] public bool callProcessScanBeforeResult = false;
 
-    [Tooltip("true이면 서버 result를 받자마자 모든 가구를 자동 배치합니다.")]
     public bool autoPlaceResultObjects = false;
-
-    [Tooltip("같은 scan_session_id에 detect/process를 다시 호출할 수 있는지 서버와 합의되기 전에는 true로 두고 버튼 연타를 막는 용도로만 사용합니다.")]
     public bool blockWhileRunning = true;
 
     [Header("Polling")]
@@ -52,13 +45,15 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
     public int PendingObjectCount => LastResult != null && LastResult.objects != null ? LastResult.objects.Length : 0;
     public int SelectedPendingObjectIndex { get; private set; } = -1;
     public FurnitureServerResultObject SelectedPendingObject => GetPendingObject(SelectedPendingObjectIndex);
+
+    // 💡 [핵심 버그 수정] 이 값이 true가 되면서 강제로 인덱스를 되돌렸습니다. 무조건 false로 고정합니다.
     public int PendingConfirmationIndex { get; private set; } = -1;
-    public bool HasPendingUnconfirmedPlacement => PendingConfirmationIndex >= 0;
+    public bool HasPendingUnconfirmedPlacement => false;
 
     public event Action<FurnitureServerPlacementPipeline> ResultListChanged;
     public event Action<int, FurnitureServerResultObject> PendingSelectionChanged;
     public event Action<int, FurnitureServerResultObject, GameObject> PendingObjectLoadedForPlacement;
-    public event Action<int, FurnitureServerResultObject> PendingObjectConfirmed; // 💡 복구됨
+    public event Action<int, FurnitureServerResultObject> PendingObjectConfirmed;
 
     private Coroutine runningCoroutine;
     private bool[] confirmedPendingObjects;
@@ -70,7 +65,7 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
     public void StartPlacementFromCurrentScanSession()
     {
         EnsureReferences();
-        string scanSessionId = ResolveCurrentScanSessionId(); // 💡 복구됨
+        string scanSessionId = ResolveCurrentScanSessionId();
         StartPlacementForSession(scanSessionId);
     }
 
@@ -116,10 +111,8 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         return confirmedPendingObjects != null && index >= 0 && index < confirmedPendingObjects.Length && confirmedPendingObjects[index];
     }
 
-    public bool IsPendingObjectLoadedForPlacement(int index)
-    {
-        return placedPendingInstances != null && index >= 0 && index < placedPendingInstances.Length && placedPendingInstances[index] != null;
-    }
+    // 💡 [수정] 다중 배치를 위해 이미 생성된 오브젝트가 있는지 여부는 무시하고 도장 찍기를 허용합니다.
+    public bool IsPendingObjectLoadedForPlacement(int index) => false;
 
     public int GetPlacedPendingObjectCount()
     {
@@ -130,17 +123,14 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
     }
 
     public int GetUnplacedPendingObjectCount() => Mathf.Max(0, PendingObjectCount - GetPlacedPendingObjectCount());
-
     public bool AreAllPendingObjectsPlaced() => PendingObjectCount > 0 && GetPlacedPendingObjectCount() >= PendingObjectCount;
 
     public void SelectPendingObject(int index)
     {
         if (GetPendingObject(index) == null) return;
 
-        // 💡 [수정] 다중 배치를 위해 "이미 배치되었으면 건너뛰는" 로직 제거
         SelectedPendingObjectIndex = index;
-        FurnitureServerResultObject selected = SelectedPendingObject;
-        PendingSelectionChanged?.Invoke(index, selected);
+        PendingSelectionChanged?.Invoke(index, SelectedPendingObject);
     }
 
     public void SelectNextPendingObject()
@@ -166,10 +156,7 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         FurnitureServerResultObject obj = GetPendingObject(index);
         if (obj == null) return;
 
-        if (HasPendingUnconfirmedPlacement)
-        {
-            ConfirmPlacedPendingObjectAndSelectNext();
-        }
+        // 💡 [핵심 버그 1 제거] 여기서 선택을 강제로 되돌리던 ConfirmPlacedPendingObjectAndSelectNext() 호출 삭제
 
         if (resultPlacer == null) EnsureReferences();
         if (resultPlacer == null) return;
@@ -210,15 +197,20 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
             EnsurePendingTrackingArrays();
             if (placedPendingInstances != null && index >= 0 && index < placedPendingInstances.Length)
             {
-                placedPendingInstances[index] = instance; // 다중 배치라도 최근 인스턴스로 갱신
+                placedPendingInstances[index] = instance;
             }
 
-            PendingConfirmationIndex = index;
+            if (confirmedPendingObjects != null && index >= 0 && index < confirmedPendingObjects.Length)
+            {
+                confirmedPendingObjects[index] = true; // 배치 즉시 확정 처리
+            }
+
+            // 💡 [핵심 버그 2 제거] PendingConfirmationIndex 족쇄 삭제
             SelectedPendingObjectIndex = index;
 
             PendingObjectLoadedForPlacement?.Invoke(index, obj, instance);
             ResultListChanged?.Invoke(this);
-            Debug.Log($"[FurnitureServerPlacementPipeline] Manual server object placed. index:{index}, id:{obj.id}, label:{obj.label}", instance);
+            Debug.Log($"[FurnitureServerPlacementPipeline] Server object placed. index:{index}, id:{obj.id}, label:{obj.label}", instance);
         }
     }
 
@@ -242,13 +234,9 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
             string resolvedFinishJson = ResolveFinishScanRequestJson();
 
             if (string.IsNullOrWhiteSpace(resolvedFinishJson))
-            {
                 yield return apiClient.PostFinishScanSession(scanSessionId, (ok, response, error) => { finishOk = ok; finishResponse = response; finishError = error; });
-            }
             else
-            {
                 yield return apiClient.PostFinishScanSession(scanSessionId, resolvedFinishJson, (ok, response, error) => { finishOk = ok; finishResponse = response; finishError = error; });
-            }
 
             LastStatus = finishResponse != null && !string.IsNullOrWhiteSpace(finishResponse.status) ? finishResponse.status : (finishOk ? "finish_requested" : "finish_failed");
 
@@ -311,38 +299,7 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         runningCoroutine = null;
     }
 
-    public bool ConfirmPlacedPendingObjectAndSelectNext()
-    {
-        if (!HasPendingUnconfirmedPlacement) return false;
-
-        int confirmedIndex = PendingConfirmationIndex;
-        FurnitureServerResultObject confirmedObject = GetPendingObject(confirmedIndex);
-
-        EnsurePendingTrackingArrays();
-        if (confirmedPendingObjects != null && confirmedIndex >= 0 && confirmedIndex < confirmedPendingObjects.Length)
-        {
-            confirmedPendingObjects[confirmedIndex] = true;
-        }
-
-        PendingConfirmationIndex = -1;
-        PendingObjectConfirmed?.Invoke(confirmedIndex, confirmedObject);
-
-        // 💡 [수정] 자동 확정 후에도 다음 가구로 강제로 넘어가지 않고 현재 인덱스 유지
-        int next = confirmedIndex;
-        if (next >= 0)
-        {
-            SelectedPendingObjectIndex = next;
-            PendingSelectionChanged?.Invoke(next, SelectedPendingObject);
-        }
-        else
-        {
-            SelectedPendingObjectIndex = -1;
-            PendingSelectionChanged?.Invoke(-1, null);
-        }
-
-        ResultListChanged?.Invoke(this);
-        return true;
-    }
+    public bool ConfirmPlacedPendingObjectAndSelectNext() { return true; } // 다른 스크립트 에러 방지용 더미
 
     public bool MarkPlacedObjectNotConfirmed(PlacedFurniture furniture)
     {
@@ -352,9 +309,10 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         EnsurePendingTrackingArrays();
         if (confirmedPendingObjects != null && index < confirmedPendingObjects.Length) confirmedPendingObjects[index] = false;
 
-        PendingConfirmationIndex = index;
-        SelectedPendingObjectIndex = index;
-        PendingSelectionChanged?.Invoke(SelectedPendingObjectIndex, SelectedPendingObject);
+        // 💡 [핵심 버그 3 제거] 기존 가구를 터치했을 때 UI 선택을 강제로 해당 가구로 되돌리는 악성 코드 삭제
+        // SelectedPendingObjectIndex = index;
+        // PendingSelectionChanged?.Invoke(SelectedPendingObjectIndex, SelectedPendingObject);
+
         ResultListChanged?.Invoke(this);
         return true;
     }
@@ -366,7 +324,6 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
 
         EnsurePendingTrackingArrays();
         if (confirmedPendingObjects != null && index < confirmedPendingObjects.Length) confirmedPendingObjects[index] = true;
-        if (PendingConfirmationIndex == index) PendingConfirmationIndex = -1;
 
         PendingObjectConfirmed?.Invoke(index, GetPendingObject(index));
         ResultListChanged?.Invoke(this);
@@ -388,14 +345,14 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         int index = startIndex;
         if (index < 0 || index >= PendingObjectCount) index = step > 0 ? -1 : 0;
 
-        // 💡 [수정] "이미 배치된 오브젝트를 건너뛰는" 로직 삭제. 바로 다음 인덱스 리턴.
+        // "이미 배치된 거 건너뛰기" 삭제, 무조건 다음 인덱스 반환
         return (index + step + PendingObjectCount) % PendingObjectCount;
     }
 
     private void EnsurePendingTrackingArrays()
     {
         int count = PendingObjectCount;
-        if (count <= 0) { confirmedPendingObjects = null; placedPendingInstances = null; PendingConfirmationIndex = -1; return; }
+        if (count <= 0) { confirmedPendingObjects = null; placedPendingInstances = null; return; }
         if (confirmedPendingObjects == null || confirmedPendingObjects.Length != count) confirmedPendingObjects = new bool[count];
         if (placedPendingInstances == null || placedPendingInstances.Length != count) placedPendingInstances = new GameObject[count];
     }
@@ -406,8 +363,7 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         for (int i = 0; i < placedPendingInstances.Length; i++)
         {
             GameObject instance = placedPendingInstances[i];
-            if (instance == null) continue;
-            if (instance.GetComponent<PlacedFurniture>() == furniture) return i;
+            if (instance != null && instance.GetComponent<PlacedFurniture>() == furniture) return i;
         }
         return -1;
     }
@@ -416,7 +372,6 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
     {
         confirmedPendingObjects = null;
         placedPendingInstances = null;
-        PendingConfirmationIndex = -1;
     }
 
     private void FinishWithFailure(string reason)
@@ -433,16 +388,14 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         if (!string.IsNullOrWhiteSpace(finishScanRequestJson)) return finishScanRequestJson;
         if (furnitureCaptureManager == null) return string.Empty;
         int frameCount = furnitureCaptureManager.NextFrameNumber - 1;
-        if (frameCount <= 0) return string.Empty;
-        return $"{{\"expected_frame_count\":{frameCount}}}";
+        return frameCount > 0 ? $"{{\"expected_frame_count\":{frameCount}}}" : string.Empty;
     }
 
-    private string ResolveCurrentScanSessionId() // 💡 복구됨
+    private string ResolveCurrentScanSessionId()
     {
         if (!string.IsNullOrWhiteSpace(debugOverrideScanSessionId)) return debugOverrideScanSessionId.Trim();
         EnsureReferences();
-        if (furnitureCaptureManager == null) return string.Empty;
-        return furnitureCaptureManager.CurrentScanSessionId;
+        return furnitureCaptureManager != null ? furnitureCaptureManager.CurrentScanSessionId : string.Empty;
     }
 
     private void EnsureReferences()

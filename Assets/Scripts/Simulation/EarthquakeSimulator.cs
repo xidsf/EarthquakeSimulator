@@ -168,6 +168,18 @@ public class EarthquakeSimulator : MonoBehaviour
     [Tooltip("필로티 구조 여부")]
     [SerializeField] private PilotiCondition pilotiCondition = PilotiCondition.Unknown;
 
+    [Header("Strong-Motion Trimming")]
+    [Tooltip("강진 구간(peak 주변)만 잘라 재생합니다. 비활성화 시 전체 시간이력 재생.")]
+    [SerializeField] private bool enableStrongMotionTrimming = true;
+
+    [Tooltip("Peak 시점 이전에 포함할 시간(초). 본진 도입부를 보존하기 위함.")]
+    [Range(0f, 15f)]
+    [SerializeField] private float strongMotionPreSeconds = 5f;
+
+    [Tooltip("시뮬레이션 총 길이(초). Peak − preSeconds 시점부터 이만큼.")]
+    [Range(5f, 60f)]
+    [SerializeField] private float strongMotionTotalSeconds = 25f;
+
     [Header("Runtime Debug - Read Only")]
     [SerializeField] private bool isLoaded;
     [SerializeField] private bool isSimulating;
@@ -722,7 +734,6 @@ public class EarthquakeSimulator : MonoBehaviour
         double storyHeight = GetEstimatedStoryHeightMeters();
         double buildingHeight = totalFloorsForComputation * storyHeight;
         double period = GetApproximateBuildingPeriod(buildingType, buildingHeight);
-        double floorRatio = ComputeFloorModeShapeRatio(currentFloor, totalFloorsForComputation);
         double pilotiMultiplier = GetPilotiMultiplier();
 
         double scale = 1.0;
@@ -736,49 +747,125 @@ public class EarthquakeSimulator : MonoBehaviour
             ScaleInPlace(groundZ, scale);
         }
 
-        double[] roofAbsX = ApplySdofAbsoluteAccelerationGal(groundX, ground.dt, period, KdsDefaultDampingRatio);
-        double[] roofAbsZ = ApplySdofAbsoluteAccelerationGal(groundZ, ground.dt, period, KdsDefaultDampingRatio);
+        // 3-mode modal superposition (전단보 가정: T_n = T_1/(2n-1), Γ_n = 4/((2n-1)π)).
+        // ü_floor(z,t) = Σ_n Γ_n φ_n(z) ü_abs_n(t) + (1 − Σ_n Γ_n φ_n(z)) ü_g(t)
+        // 마지막 항은 3-mode truncation에 대한 static correction (잔여 ground motion 기여분).
+        int clampedFloor = Mathf.Clamp(currentFloor, 1, Math.Max(1, totalFloorsForComputation));
+        double normalizedHeight = (double)clampedFloor / Math.Max(1, totalFloorsForComputation);
 
-        double[] floorX = BlendGroundToRoof(groundX, roofAbsX, floorRatio);
-        double[] floorZ = BlendGroundToRoof(groundZ, roofAbsZ, floorRatio);
+        double[] modePeriods =
+        {
+            period,
+            period / 3.0,
+            period / 5.0
+        };
+        double[] modeShapes =
+        {
+            Math.Sin(0.5 * Math.PI * normalizedHeight),
+            Math.Sin(1.5 * Math.PI * normalizedHeight),
+            Math.Sin(2.5 * Math.PI * normalizedHeight)
+        };
+        double[] participationFactors =
+        {
+            4.0 / Math.PI,
+            4.0 / (3.0 * Math.PI),
+            4.0 / (5.0 * Math.PI)
+        };
+
+        double weightSum = 0.0;
+        double[] modeWeights = new double[3];
+        for (int m = 0; m < 3; m++)
+        {
+            modeWeights[m] = participationFactors[m] * modeShapes[m];
+            weightSum += modeWeights[m];
+        }
+        double groundResidual = 1.0 - weightSum;
+
+        double[] floorX = new double[ground.count];
+        double[] floorZ = new double[ground.count];
+        double[] floorY = applyVerticalFloorResponse ? new double[ground.count] : groundY;
+
+        for (int m = 0; m < 3; m++)
+        {
+            double[] modeRespX = ApplySdofAbsoluteAccelerationGal(groundX, ground.dt, modePeriods[m], KdsDefaultDampingRatio);
+            double[] modeRespZ = ApplySdofAbsoluteAccelerationGal(groundZ, ground.dt, modePeriods[m], KdsDefaultDampingRatio);
+            double w = modeWeights[m];
+            for (int i = 0; i < ground.count; i++)
+            {
+                floorX[i] += w * modeRespX[i];
+                floorZ[i] += w * modeRespZ[i];
+            }
+
+            if (applyVerticalFloorResponse)
+            {
+                double[] modeRespY = ApplySdofAbsoluteAccelerationGal(groundY, ground.dt, modePeriods[m], KdsDefaultDampingRatio);
+                for (int i = 0; i < ground.count; i++)
+                    floorY[i] += w * modeRespY[i];
+            }
+        }
+
+        for (int i = 0; i < ground.count; i++)
+        {
+            floorX[i] += groundResidual * groundX[i];
+            floorZ[i] += groundResidual * groundZ[i];
+            if (applyVerticalFloorResponse)
+                floorY[i] += groundResidual * groundY[i];
+        }
 
         ApplyMultiplierInPlace(floorX, pilotiMultiplier);
         ApplyMultiplierInPlace(floorZ, pilotiMultiplier);
-
-        double[] floorY;
         if (applyVerticalFloorResponse)
-        {
-            double[] roofAbsY = ApplySdofAbsoluteAccelerationGal(groundY, ground.dt, period, KdsDefaultDampingRatio);
-            floorY = BlendGroundToRoof(groundY, roofAbsY, floorRatio);
             ApplyMultiplierInPlace(floorY, pilotiMultiplier);
-        }
-        else
-        {
-            floorY = groundY;
-        }
 
+        // 변위는 필터 settling을 위해 full-length 시간이력에서 적분 후 trim.
         double[] dispXcm = CalculateDisplacementCm(floorX, ground.dt);
         double[] dispYcm = CalculateDisplacementCm(floorY, ground.dt);
         double[] dispZcm = CalculateDisplacementCm(floorZ, ground.dt);
 
-        int count = ground.count;
+        // Strong-motion phase trimming.
+        int sliceStart = 0;
+        int sliceEnd = ground.count;
+        if (enableStrongMotionTrimming && ground.count > 0)
+        {
+            int peakIndex = FindPeakHorizontalAccelerationIndex(floorX, floorZ, ground.count);
+            int preFrames = Math.Max(0, (int)Math.Round(strongMotionPreSeconds / ground.dt));
+            int maxFrames = Math.Max(1, (int)Math.Round(strongMotionTotalSeconds / ground.dt));
+            sliceStart = Math.Max(0, peakIndex - preFrames);
+            sliceEnd = Math.Min(ground.count, sliceStart + maxFrames);
+            if (sliceEnd <= sliceStart)
+            {
+                sliceStart = 0;
+                sliceEnd = ground.count;
+            }
+        }
+
+        int count = sliceEnd - sliceStart;
+
+        // 슬라이스 시작 시점의 변위를 원점으로 재설정 (ShakeTable이 초기위치에서 출발하도록).
+        double dxOrigin = dispXcm[sliceStart];
+        double dyOrigin = dispYcm[sliceStart];
+        double dzOrigin = dispZcm[sliceStart];
+
         Vector3[] displacementMeters = new Vector3[count];
         Vector3[] accelerationMps2 = new Vector3[count];
 
         for (int i = 0; i < count; i++)
         {
+            int idx = sliceStart + i;
             displacementMeters[i] = new Vector3(
-                (float)(dispXcm[i] * 0.01),
-                (float)(dispYcm[i] * 0.01),
-                (float)(dispZcm[i] * 0.01)
+                (float)((dispXcm[idx] - dxOrigin) * 0.01),
+                (float)((dispYcm[idx] - dyOrigin) * 0.01),
+                (float)((dispZcm[idx] - dzOrigin) * 0.01)
             );
 
             accelerationMps2[i] = new Vector3(
-                (float)(floorX[i] * 0.01),
-                (float)(floorY[i] * 0.01),
-                (float)(floorZ[i] * 0.01)
+                (float)(floorX[idx] * 0.01),
+                (float)(floorY[idx] * 0.01),
+                (float)(floorZ[idx] * 0.01)
             );
         }
+
+        double slicedFloorPga = ComputeMaxHorizontalAccelerationInRange(floorX, floorZ, sliceStart, sliceEnd);
 
         return new FloorMotion
         {
@@ -787,15 +874,50 @@ public class EarthquakeSimulator : MonoBehaviour
             accelerationMetersPerSecondSquared = accelerationMps2,
             count = count,
             buildingPeriod = period,
-            floorModeShapeRatio = floorRatio,
+            floorModeShapeRatio = modeShapes[0],
             scaleFactor = scale,
             inputPgaGal = inputPga,
-            floorPgaGal = FindMaxHorizontalAcceleration(floorX, floorZ),
+            floorPgaGal = slicedFloorPga,
             effectiveTotalFloors = totalFloorsForComputation,
             estimatedStoryHeightMeters = storyHeight,
             estimatedBuildingHeightMeters = buildingHeight,
             pilotiMultiplier = pilotiMultiplier
         };
+    }
+
+    private int FindPeakHorizontalAccelerationIndex(double[] xGal, double[] zGal, int length)
+    {
+        int count = Math.Min(length, Math.Min(xGal.Length, zGal.Length));
+        int peakIndex = 0;
+        double peakSquared = -1.0;
+
+        for (int i = 0; i < count; i++)
+        {
+            double combined = xGal[i] * xGal[i] + zGal[i] * zGal[i];
+            if (combined > peakSquared)
+            {
+                peakSquared = combined;
+                peakIndex = i;
+            }
+        }
+
+        return peakIndex;
+    }
+
+    private double ComputeMaxHorizontalAccelerationInRange(double[] xGal, double[] zGal, int startInclusive, int endExclusive)
+    {
+        int safeStart = Math.Max(0, startInclusive);
+        int safeEnd = Math.Min(Math.Min(xGal.Length, zGal.Length), endExclusive);
+        double maxSquared = 0.0;
+
+        for (int i = safeStart; i < safeEnd; i++)
+        {
+            double combined = xGal[i] * xGal[i] + zGal[i] * zGal[i];
+            if (combined > maxSquared)
+                maxSquared = combined;
+        }
+
+        return Math.Sqrt(maxSquared);
     }
 
     // ---------------------------------------------------------------------
@@ -969,21 +1091,6 @@ public class EarthquakeSimulator : MonoBehaviour
 
         double period = ct * Math.Pow(Math.Max(1.0, buildingHeightMeters), exponent);
         return Math.Max(0.05, period);
-    }
-
-    private double ComputeFloorModeShapeRatio(int floorValue, int totalFloorValue)
-    {
-        int total = Math.Max(1, totalFloorValue);
-        int floorClamped = Mathf.Clamp(floorValue, 1, total);
-
-        if (total <= 1)
-            return 1.0;
-
-        double normalizedHeight = (double)floorClamped / total;
-
-        // 1차 모드 형상 근사: phi(z) = sin(pi/2 * z/H)
-        // 아래층은 지반응답에 가깝고, 상층부는 roof response에 가까워진다.
-        return Math.Sin(0.5 * Math.PI * normalizedHeight);
     }
 
     private double GetPilotiMultiplier()
@@ -1186,18 +1293,6 @@ public class EarthquakeSimulator : MonoBehaviour
         return -damping * velocity - stiffness * displacement - groundAcceleration;
     }
 
-    private double[] BlendGroundToRoof(double[] ground, double[] roof, double floorRatio)
-    {
-        int count = Math.Min(ground.Length, roof.Length);
-        double[] result = new double[count];
-        double ratio = Clamp(floorRatio, 0.0, 1.0);
-
-        for (int i = 0; i < count; i++)
-            result[i] = ground[i] + ratio * (roof[i] - ground[i]);
-
-        return result;
-    }
-
     // ---------------------------------------------------------------------
     // 변위 적분 및 필터
     // ---------------------------------------------------------------------
@@ -1205,11 +1300,14 @@ public class EarthquakeSimulator : MonoBehaviour
     private double[] CalculateDisplacementCm(double[] accelerationGal, double dt)
     {
         // gal = cm/s^2 이므로 적분 결과는 cm/s, cm가 된다.
-        double[] accelerationFiltered = HighPassFilter(accelerationGal, dt, 0.1);
+        // cutoff 0.05Hz는 표준 strong-motion processing 관행 범위(0.05~0.1Hz)의 하한으로,
+        // 장주기 변위 성분을 가능한 보존하면서 baseline drift는 차단한다.
+        const double cutoffHz = 0.05;
+        double[] accelerationFiltered = HighPassFilter(accelerationGal, dt, cutoffHz);
         double[] velocity = CumulativeTrapezoid(accelerationFiltered, dt);
-        double[] velocityFiltered = HighPassFilter(velocity, dt, 0.1);
+        double[] velocityFiltered = HighPassFilter(velocity, dt, cutoffHz);
         double[] displacement = CumulativeTrapezoid(velocityFiltered, dt);
-        return HighPassFilter(displacement, dt, 0.1);
+        return HighPassFilter(displacement, dt, cutoffHz);
     }
 
     private double[] CumulativeTrapezoid(double[] values, double dt)
@@ -1227,16 +1325,12 @@ public class EarthquakeSimulator : MonoBehaviour
         if (values == null || values.Length == 0)
             return new double[0];
 
-        double[] filtered = (double[])values.Clone();
-
-        for (int pass = 0; pass < 2; pass++)
-        {
-            filtered = OnePoleHighPass(filtered, dt, cutoffHz);
-            Array.Reverse(filtered);
-            filtered = OnePoleHighPass(filtered, dt, cutoffHz);
-            Array.Reverse(filtered);
-        }
-
+        // Zero-phase: forward + reversed forward (총 2회). 이전 구현은 2-pass × forward/backward = 4회로
+        // 저주파 변위 성분을 과도하게 깎았음.
+        double[] filtered = OnePoleHighPass(values, dt, cutoffHz);
+        Array.Reverse(filtered);
+        filtered = OnePoleHighPass(filtered, dt, cutoffHz);
+        Array.Reverse(filtered);
         return filtered;
     }
 

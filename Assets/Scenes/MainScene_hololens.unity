@@ -525,7 +525,10 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 7256543900600860858, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
 --- !u!4 &8537062 stripped
 Transform:
@@ -2143,13 +2146,14 @@ GameObject:
   m_Component:
   - component: {fileID: 148157390}
   - component: {fileID: 148157391}
+  - component: {fileID: 148157392}
   m_Layer: 0
   m_Name: FuniturePlacementPanel
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &148157390
 Transform:
   m_ObjectHideFlags: 0
@@ -2192,7 +2196,7 @@ MonoBehaviour:
   simulationStartController: {fileID: 701234946}
   roomGeometryProvider: {fileID: 701234949}
   serverPlacementPipeline: {fileID: 701234951}
-  userPlaceFurnitureFromServerButton: {fileID: 1380731}
+  userPlaceFurnitureFromServerButton: {fileID: 0}
   userSelectNextServerFurnitureButton: {fileID: 8537063}
   userSelectPreviousServerFurnitureButton: {fileID: 1398200730}
   userPlaceSelectedServerFurnitureButton: {fileID: 1651060313}
@@ -2238,6 +2242,32 @@ MonoBehaviour:
   userConfirmSelectedFurnitureButton: {fileID: 0}
   debugMultiplePlacementCount: 3
   debugSelectedPrefabText: {fileID: 0}
+--- !u!114 &148157392
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 148157389}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9bddd04ad74514c40b3ab2b4c6b20ccc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  captureUploader: {fileID: 47393003}
+  furnitureGenerationButton: {fileID: 1380731}
+  placementPipeline: {fileID: 701234951}
+  optionalStatusText: {fileID: 0}
+  loadingBlocker: {fileID: 0}
+  serverBaseUrl: https://api.earquake.xyz
+  minimumFrameCount: 1
+  pollIntervalSeconds: 0.75
+  requestTimeoutSeconds: 10
+  autoFindReferences: 1
+  logStatus: 0
+  lastSessionId: 
+  lastExpectedFrameCount: 0
+  lastReady: 0
 --- !u!1001 &157016824
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -2386,7 +2416,10 @@ PrefabInstance:
     m_RemovedGameObjects:
     - {fileID: 1811028555225687572, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 5092507606405556712, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
 --- !u!4 &157016825 stripped
 Transform:
@@ -6276,7 +6309,10 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 7256543900600860858, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
 --- !u!4 &465936300 stripped
 Transform:
@@ -14376,7 +14412,10 @@ PrefabInstance:
     m_RemovedGameObjects:
     - {fileID: 1811028555225687572, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 5092507606405556712, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
 --- !u!4 &1398200729 stripped
 Transform:
@@ -16950,7 +16989,10 @@ PrefabInstance:
     m_RemovedGameObjects:
     - {fileID: 1811028555225687572, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 5092507606405556712, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
 --- !u!4 &1598366658 stripped
 Transform:
@@ -17240,6 +17282,14 @@ PrefabInstance:
       propertyPath: 'm_ActiveFontFeatures.Array.data[0]'
       value: 1801810542
       objectReference: {fileID: 0}
+    - target: {fileID: 428199738449796777, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 2488130582656226906, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 3538676005348672636, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
       propertyPath: 'managedReferences[1].tintables.Array.data[0]'
       value: 
@@ -17247,6 +17297,14 @@ PrefabInstance:
     - target: {fileID: 3538676005348672636, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
       propertyPath: 'managedReferences[1].tintables.Array.data[1]'
       value: 
+      objectReference: {fileID: 0}
+    - target: {fileID: 4575831610907532078, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 5092507605147645850, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 5092507605265006331, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
       propertyPath: m_LocalScale.x
@@ -17335,6 +17393,14 @@ PrefabInstance:
     - target: {fileID: 5572466351762964349, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
       propertyPath: <OnClicked>k__BackingField.m_PersistentCalls.m_Calls.Array.data[0].m_Arguments.m_ObjectArgumentAssemblyTypeName
       value: UnityEngine.Object, UnityEngine
+      objectReference: {fileID: 0}
+    - target: {fileID: 7547234444141664960, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7827596878716594666, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects:
@@ -18779,7 +18845,10 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 7256543900600860858, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: dc7ef7d5625c3454ab5097673a207485, type: 3}
 --- !u!4 &1779598985 stripped
 Transform:
@@ -20733,7 +20802,10 @@ PrefabInstance:
     m_RemovedGameObjects:
     - {fileID: 1811028555225687572, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 5092507606405556712, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 0}
   m_SourcePrefab: {fileID: 100100000, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
 --- !u!4 &2084656717 stripped
 Transform:

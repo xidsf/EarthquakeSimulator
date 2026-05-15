@@ -25,6 +25,7 @@ public enum FurnitureServerTargetSizeMode
 
 /// <summary>
 /// /result/{scan_session_id} 응답의 objects 배열을 Unity 오브젝트로 생성하고 FurniturePlacementManager에 등록합니다.
+/// 수정 내역: 완전 겹침 방지를 위한 스폰 오프셋 난수 추가 및 벽걸이 가구(isWallMounted) 식별 추가
 /// </summary>
 public class FurnitureServerResultPlacer : MonoBehaviour
 {
@@ -262,6 +263,24 @@ public class FurnitureServerResultPlacer : MonoBehaviour
             setup.ConfigureFurnitureObject(instance);
         }
 
+        // 💡 [추가] 액자, 거울, 시계, 칠판 등 벽에 붙어야 하는 가구를 식별하여 속성 부여
+        PlacedFurniture pf = instance.GetComponent<PlacedFurniture>();
+        if (pf != null && serverObject != null)
+        {
+            string labelLower = (serverObject.label ?? "").ToLowerInvariant();
+            string rawLabelLower = (serverObject.raw_label ?? "").ToLowerInvariant();
+
+            if (labelLower.Contains("frame") || labelLower.Contains("액자") ||
+                labelLower.Contains("clock") || labelLower.Contains("시계") ||
+                labelLower.Contains("mirror") || labelLower.Contains("거울") ||
+                labelLower.Contains("tv") || labelLower.Contains("board") ||
+                labelLower.Contains("칠판") || labelLower.Contains("whiteboard") ||
+                rawLabelLower.Contains("frame") || rawLabelLower.Contains("mirror"))
+            {
+                pf.isWallMounted = true;
+            }
+        }
+
         FurniturePlacementMetadata metadata = new FurniturePlacementMetadata
         {
             furnitureId = string.IsNullOrWhiteSpace(serverObject.id) ? Guid.NewGuid().ToString("N") : serverObject.id,
@@ -422,6 +441,10 @@ public class FurnitureServerResultPlacer : MonoBehaviour
                 rotation = Quaternion.Euler(0f, mainCamera.transform.eulerAngles.y, 0f);
             }
         }
+
+        // 완전 겹침(Perfect Overlap) 방지를 위한 1~2cm의 미세 랜덤 오프셋 적용
+        // 이 오프셋이 있어야 ConfirmedRoomGeometryProvider의 ComputePenetration이 방향을 계산해 가구들을 밀어냅니다.
+        position += new Vector3(UnityEngine.Random.Range(-0.02f, 0.02f), 0, UnityEngine.Random.Range(-0.02f, 0.02f));
 
         instance.transform.SetPositionAndRotation(position, rotation);
     }

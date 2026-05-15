@@ -6,11 +6,7 @@ using UnityEngine;
 
 /// <summary>
 /// 서버/인식/디버그 파이프라인이 생성한 개별 가구 오브젝트에 붙는 런타임 관리 컴포넌트입니다.
-///
-/// 이동 방식:
-/// - Move Mode ON일 때 moveBehaviours(ObjectManipulator 등)가 켜집니다.
-/// - 사용자가 손으로 가구를 움직이면 transform 변경을 감지해 이동 시작/종료를 자동 처리합니다.
-/// - ObjectManipulator 이벤트를 직접 연결할 수 있다면 NotifyMoveStarted/NotifyMoveEnded를 연결해도 됩니다.
+/// 수정 내역: 벽걸이(Wall Mounted) 가구 식별 및 실시간 벽면 스냅 로직 추가
 /// </summary>
 public class PlacedFurniture : MonoBehaviour
 {
@@ -25,37 +21,26 @@ public class PlacedFurniture : MonoBehaviour
     [SerializeField] private string rigidbodyMode;
     [SerializeField] private bool simulationUseGravity;
 
+    [Header("Wall Mount")]
+    [Tooltip("액자, 거울, 칠판 등 벽에 붙어야 하는 가구인지 여부입니다.")]
+    public bool isWallMounted = false;
+    [Tooltip("벽면 스냅을 시도할 최대 거리(미터)입니다.")]
+    public float wallSnapDistance = 1.5f;
+
     [Header("Move Control")]
-    [Tooltip("MRTK ObjectManipulator, BoundsControl 등 이동 모드에서만 켤 Behaviour들을 연결합니다. RuntimeFurnitureInteractionSetup이 ObjectManipulator를 자동 추가하면 여기에 자동 등록합니다.")]
     public Behaviour[] moveBehaviours;
-
-    [Tooltip("이동 중 반드시 꺼야 하는 무거운 collider가 있을 때만 연결합니다. 현재 테스트 prefab은 MeshCollider가 interaction에도 필요할 수 있으므로 기본적으로 비워두는 것을 권장합니다.")]
     public Collider[] heavyCollidersToDisableWhileMoving;
-
-    [Tooltip("true면 Initialize 시 Rigidbody를 추가/설정하고 kinematic 상태로 둡니다.")]
     public bool ensureKinematicRigidbody = true;
-
-    [Tooltip("true면 서버/디버그가 만든 Convex MeshCollider를 포함한 자식 colliders를 배치 검증용으로 자동 수집합니다.")]
     public bool autoCollectPlacementColliders = true;
-
-    [Tooltip("수동으로 지정하고 싶을 때 사용합니다. 비워두면 자식 Collider 전체를 자동 수집합니다.")]
     public Collider[] placementColliders;
 
     [Header("Touch Selection")]
-    [Tooltip("Move Mode ON에서 터치/움직임이 감지되면 해당 가구를 선택합니다.")]
     public bool selectWhenTouchedOrMoved = true;
 
     [Header("Transform Move Monitor")]
-    [Tooltip("ObjectManipulator 이벤트 연결이 없어도 transform 변경을 감지해 이동 종료 검증을 수행합니다.")]
     public bool autoDetectTransformMoveEnd = true;
-
-    [Tooltip("이 시간 동안 transform 변화가 없으면 이동이 끝난 것으로 판단합니다.")]
     public float moveEndIdleSeconds = 0.2f;
-
-    [Tooltip("이 값보다 작은 위치 변화는 무시합니다.")]
     public float movePositionEpsilon = 0.0005f;
-
-    [Tooltip("이 값보다 작은 회전 변화는 무시합니다.")]
     public float moveRotationEpsilonDegrees = 0.15f;
 
     private readonly List<Collider> runtimePlacementColliders = new List<Collider>();
@@ -87,12 +72,9 @@ public class PlacedFurniture : MonoBehaviour
     {
         ownerManager = manager;
 
-        if (metadata == null)
-        {
-            metadata = FurniturePlacementMetadata.CreateDefault(gameObject);
-        }
-
+        if (metadata == null) metadata = FurniturePlacementMetadata.CreateDefault(gameObject);
         metadata.EnsureDefaults(gameObject);
+
         furnitureId = metadata.furnitureId;
         label = metadata.label;
         displayName = metadata.displayName;
@@ -115,9 +97,20 @@ public class PlacedFurniture : MonoBehaviour
 
     private void Update()
     {
-        if (!initialized || !autoDetectTransformMoveEnd || !isMovable)
+        if (!initialized || !autoDetectTransformMoveEnd || !isMovable) return;
+
+        // 이동 중이고 벽걸이 가구라면 실시간으로 벽에 스냅시킵니다.
+        if (isMoving && isWallMounted && ownerManager?.roomGeometryProvider != null)
         {
-            return;
+            if (ownerManager.roomGeometryProvider.TrySnapToNearestWall(transform.position, wallSnapDistance, out Vector3 snapPos, out Vector3 snapNormal))
+            {
+                // 벽면에서 1.5cm 띄워서 파묻히지 않게 함
+                transform.position = Vector3.Lerp(transform.position, snapPos + snapNormal * 0.015f, Time.deltaTime * 15f);
+
+                // 가구의 앞면(Forward)이 벽의 법선(Normal)과 같은 방향이 되도록 회전 (벽을 등짐)
+                Quaternion targetRotation = Quaternion.LookRotation(snapNormal);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, Time.deltaTime * 15f);
+            }
         }
 
         bool changed = HasTransformChangedSinceLastObservation();
@@ -125,8 +118,6 @@ public class PlacedFurniture : MonoBehaviour
         {
             if (!isMoving)
             {
-                // transform monitor는 이미 한 프레임 움직인 뒤에 감지되므로,
-                // 직전 관측 pose를 last valid pose로 저장합니다.
                 lastValidPosition = lastObservedPosition;
                 lastValidRotation = lastObservedRotation;
                 BeginMove("TransformChanged", saveCurrentAsValid: false);
@@ -144,22 +135,12 @@ public class PlacedFurniture : MonoBehaviour
         }
     }
 
-    public void SetState(FurniturePlacementState nextState)
-    {
-        state = nextState;
-    }
-
-    public void SetMovable(bool movable)
-    {
-        SetManipulationMode(movable ? FurnitureManipulationMode.Move : FurnitureManipulationMode.None);
-    }
+    public void SetState(FurniturePlacementState nextState) => state = nextState;
+    public void SetMovable(bool movable) => SetManipulationMode(movable ? FurnitureManipulationMode.Move : FurnitureManipulationMode.None);
 
     public void SetManipulationMode(FurnitureManipulationMode mode)
     {
-        if (manipulationMode != FurnitureManipulationMode.None && mode == FurnitureManipulationMode.None && isMoving)
-        {
-            EndMove("MoveDisabled");
-        }
+        if (manipulationMode != FurnitureManipulationMode.None && mode == FurnitureManipulationMode.None && isMoving) EndMove("MoveDisabled");
 
         manipulationMode = mode;
         isMovable = mode != FurnitureManipulationMode.None;
@@ -171,78 +152,40 @@ public class PlacedFurniture : MonoBehaviour
             {
                 if (behaviour != null)
                 {
-                    ObjectManipulator manipulator = behaviour as ObjectManipulator;
-                    if (manipulator != null)
-                    {
-                        manipulator.AllowedManipulations = allowedManipulations;
-                    }
-
+                    if (behaviour is ObjectManipulator manipulator) manipulator.AllowedManipulations = allowedManipulations;
                     behaviour.enabled = isMovable;
                 }
             }
         }
-
         ResetTransformMonitor();
     }
 
     private static TransformFlags ToTransformFlags(FurnitureManipulationMode mode)
     {
-        switch (mode)
+        return mode switch
         {
-            case FurnitureManipulationMode.Move:
-                return TransformFlags.Move;
-            case FurnitureManipulationMode.Rotate:
-                return TransformFlags.Rotate;
-            default:
-                return TransformFlags.None;
-        }
+            FurnitureManipulationMode.Move => TransformFlags.Move,
+            FurnitureManipulationMode.Rotate => TransformFlags.Rotate,
+            _ => TransformFlags.None,
+        };
     }
 
-    public void NotifyTouched()
-    {
-        NotifyTouched("Touch");
-    }
-
+    public void NotifyTouched() => NotifyTouched("Touch");
     public void NotifyTouched(string inputSource)
     {
-        if (!initialized)
-        {
-            return;
-        }
-
+        if (!initialized) return;
         Touched?.Invoke(this);
         ownerManager?.HandleFurnitureTouched(this, inputSource);
     }
 
     public void NotifySelectedByController(string inputSource)
     {
-        if (!initialized)
-        {
-            return;
-        }
-
+        if (!initialized) return;
         ownerManager?.HandleFurnitureSelected(this, inputSource);
     }
 
-    public void NotifyMoveStarted()
-    {
-        if (!initialized)
-        {
-            return;
-        }
-
-        BeginMove("ExternalEvent", saveCurrentAsValid: true);
-    }
-
-    public void NotifyMoveEnded()
-    {
-        if (!initialized)
-        {
-            return;
-        }
-
-        EndMove("ExternalEvent");
-    }
+    public void NotifyMoveStarted() { if (initialized) BeginMove("ExternalEvent", saveCurrentAsValid: true); }
+    public void NotifyMoveEnded() { if (initialized) EndMove("ExternalEvent"); }
 
     public void SaveCurrentPoseAsValid()
     {
@@ -267,60 +210,38 @@ public class PlacedFurniture : MonoBehaviour
 
     public Collider[] GetActivePlacementColliders()
     {
-        if (runtimePlacementColliders.Count == 0)
-        {
-            CollectPlacementColliders();
-        }
-
+        if (runtimePlacementColliders.Count == 0) CollectPlacementColliders();
         return runtimePlacementColliders.ToArray();
     }
 
     private void BeginMove(string reason, bool saveCurrentAsValid)
     {
-        if (isMoving)
-        {
-            return;
-        }
-
-        if (selectWhenTouchedOrMoved)
-        {
-            ownerManager?.HandleFurnitureTouched(this, reason);
-        }
+        if (isMoving) return;
+        if (selectWhenTouchedOrMoved) ownerManager?.HandleFurnitureTouched(this, reason);
 
         isMoving = true;
         lastTransformChangeTime = Time.time;
-
-        if (saveCurrentAsValid)
-        {
-            SaveCurrentPoseAsValid();
-        }
+        if (saveCurrentAsValid) SaveCurrentPoseAsValid();
 
         SetHeavyCollidersEnabled(false);
         MoveStarted?.Invoke(this);
-        Debug.Log($"[PlacedFurniture] Move started. {DisplayName}, reason:{reason}", this);
     }
 
     private void EndMove(string reason)
     {
-        if (!isMoving)
-        {
-            return;
-        }
+        if (!isMoving) return;
 
         isMoving = false;
         SetHeavyCollidersEnabled(true);
         MoveEnded?.Invoke(this);
         ownerManager?.HandleFurnitureMoveEnded(this);
         ResetTransformMonitor();
-        Debug.Log($"[PlacedFurniture] Move ended. {DisplayName}, reason:{reason}", this);
     }
 
     private bool HasTransformChangedSinceLastObservation()
     {
-        float positionDelta = Vector3.Distance(transform.position, lastObservedPosition);
-        float rotationDelta = Quaternion.Angle(transform.rotation, lastObservedRotation);
-
-        return positionDelta > movePositionEpsilon || rotationDelta > moveRotationEpsilonDegrees;
+        return Vector3.Distance(transform.position, lastObservedPosition) > movePositionEpsilon ||
+               Quaternion.Angle(transform.rotation, lastObservedRotation) > moveRotationEpsilonDegrees;
     }
 
     private void ResetTransformMonitor()
@@ -333,43 +254,22 @@ public class PlacedFurniture : MonoBehaviour
     private void CollectPlacementColliders()
     {
         runtimePlacementColliders.Clear();
-
         if (placementColliders != null && placementColliders.Length > 0)
         {
-            foreach (Collider collider in placementColliders)
-            {
-                if (collider != null && !runtimePlacementColliders.Contains(collider))
-                {
-                    runtimePlacementColliders.Add(collider);
-                }
-            }
+            foreach (Collider c in placementColliders) if (c != null && !runtimePlacementColliders.Contains(c)) runtimePlacementColliders.Add(c);
         }
 
         if (runtimePlacementColliders.Count == 0 && autoCollectPlacementColliders)
         {
-            Collider[] colliders = GetComponentsInChildren<Collider>(true);
-            foreach (Collider collider in colliders)
-            {
-                if (collider != null && !runtimePlacementColliders.Contains(collider))
-                {
-                    runtimePlacementColliders.Add(collider);
-                }
-            }
+            foreach (Collider c in GetComponentsInChildren<Collider>(true)) if (c != null && !runtimePlacementColliders.Contains(c)) runtimePlacementColliders.Add(c);
         }
     }
 
     private void ConfigureRigidbody()
     {
-        if (!ensureKinematicRigidbody)
-        {
-            return;
-        }
-
+        if (!ensureKinematicRigidbody) return;
         Rigidbody rb = GetComponent<Rigidbody>();
-        if (rb == null)
-        {
-            rb = gameObject.AddComponent<Rigidbody>();
-        }
+        if (rb == null) rb = gameObject.AddComponent<Rigidbody>();
 
         rb.isKinematic = true;
         rb.useGravity = false;
@@ -379,23 +279,12 @@ public class PlacedFurniture : MonoBehaviour
     private void ApplySimulationRigidbodyMode()
     {
         Rigidbody rb = GetComponent<Rigidbody>();
-        if (rb == null)
-        {
-            return;
-        }
+        if (rb == null) return;
 
-        string normalizedRigidbodyMode = string.IsNullOrWhiteSpace(rigidbodyMode)
-            ? string.Empty
-            : rigidbodyMode.Trim().ToLowerInvariant();
-        string normalizedPhysicsMode = string.IsNullOrWhiteSpace(physicsMode)
-            ? string.Empty
-            : physicsMode.Trim().ToLowerInvariant();
+        string normalizedRigidbodyMode = string.IsNullOrWhiteSpace(rigidbodyMode) ? string.Empty : rigidbodyMode.Trim().ToLowerInvariant();
+        string normalizedPhysicsMode = string.IsNullOrWhiteSpace(physicsMode) ? string.Empty : physicsMode.Trim().ToLowerInvariant();
 
-        bool shouldBeDynamic =
-            simulationEnabled &&
-            (normalizedRigidbodyMode == "dynamic" ||
-             normalizedPhysicsMode == "dynamic_hazard" ||
-             normalizedPhysicsMode == "dynamic");
+        bool shouldBeDynamic = simulationEnabled && (normalizedRigidbodyMode == "dynamic" || normalizedPhysicsMode == "dynamic_hazard" || normalizedPhysicsMode == "dynamic");
 
         rb.isKinematic = !shouldBeDynamic;
         rb.useGravity = shouldBeDynamic && simulationUseGravity;
@@ -403,30 +292,16 @@ public class PlacedFurniture : MonoBehaviour
 
     private void WarnIfMeshCollidersAreNotConvex()
     {
-        Collider[] colliders = GetActivePlacementColliders();
-        foreach (Collider collider in colliders)
+        foreach (Collider collider in GetActivePlacementColliders())
         {
-            MeshCollider meshCollider = collider as MeshCollider;
-            if (meshCollider != null && !meshCollider.convex)
-            {
+            if (collider is MeshCollider meshCollider && !meshCollider.convex)
                 Debug.LogWarning($"[PlacedFurniture] MeshCollider is not convex: {meshCollider.name}. HoloLens2 이동/검증에서는 Convex MeshCollider 또는 단순 Proxy Collider를 권장합니다.", meshCollider);
-            }
         }
     }
 
     private void SetHeavyCollidersEnabled(bool enabled)
     {
-        if (heavyCollidersToDisableWhileMoving == null)
-        {
-            return;
-        }
-
-        foreach (Collider collider in heavyCollidersToDisableWhileMoving)
-        {
-            if (collider != null)
-            {
-                collider.enabled = enabled;
-            }
-        }
+        if (heavyCollidersToDisableWhileMoving == null) return;
+        foreach (Collider collider in heavyCollidersToDisableWhileMoving) if (collider != null) collider.enabled = enabled;
     }
 }

@@ -35,14 +35,12 @@ public class FurniturePlacementManager : MonoBehaviour
     public bool autoFindReferences = true;
 
     private readonly List<PlacedFurniture> placedFurnitures = new List<PlacedFurniture>();
-    private PlacedFurniture activeNotConfirmedFurniture;
 
     public event Action PlacementChanged;
 
     public IReadOnlyList<PlacedFurniture> PlacedFurnitures => placedFurnitures;
     public int PlacedCount => placedFurnitures.Count;
     public int ConfirmedCount => placedFurnitures.FindAll(f => f != null && f.State == FurniturePlacementState.Confirmed).Count;
-    public PlacedFurniture ActiveNotConfirmedFurniture => activeNotConfirmedFurniture;
     public bool HasAnyFurniture => placedFurnitures.Count > 0;
 
     private void Awake()
@@ -128,8 +126,11 @@ public class FurniturePlacementManager : MonoBehaviour
         }
 
         placedFurniture.SaveCurrentPoseAsValid();
-        placedFurniture.SetState(FurniturePlacementState.Registered);
-        Debug.Log($"[FurniturePlacementManager] Furniture registered. id:{placedFurniture.FurnitureId}, label:{placedFurniture.Label}, name:{placedFurniture.DisplayName}", furnitureObject);
+
+        // 💡 상태를 즉시 확정 처리합니다.
+        placedFurniture.SetState(FurniturePlacementState.Confirmed);
+
+        Debug.Log($"[FurniturePlacementManager] Furniture registered and auto-confirmed. id:{placedFurniture.FurnitureId}, label:{placedFurniture.Label}, name:{placedFurniture.DisplayName}", furnitureObject);
         PlacementChanged?.Invoke();
         return true;
     }
@@ -143,10 +144,7 @@ public class FurniturePlacementManager : MonoBehaviour
     {
         EnsureReferences();
 
-        if (furniture == null)
-        {
-            return;
-        }
+        if (furniture == null) return;
 
         if (moveModeController == null)
         {
@@ -160,32 +158,28 @@ public class FurniturePlacementManager : MonoBehaviour
             return;
         }
 
-        if (!SetActiveNotConfirmedFurniture(furniture, inputSource))
-        {
-            return;
-        }
-
+        // 💡 터치 시 NotConfirmed 상태 전환 없이 바로 선택만 진행합니다.
         moveModeController.SelectFurniture(furniture);
         Debug.Log($"[FurniturePlacementManager] Furniture selected by touch/move. source:{inputSource}, furniture:{furniture.DisplayName}", furniture);
     }
 
     public void HandleFurnitureSelected(PlacedFurniture furniture, string inputSource)
     {
-        SetActiveNotConfirmedFurniture(furniture, inputSource);
+        Debug.Log($"[FurniturePlacementManager] Furniture Selected. {furniture?.DisplayName}");
     }
 
+    // 💡 손에서 놓았을 때(Move Ended) 자동 확정 또는 원상 복구를 처리하는 핵심 로직입니다.
     public void HandleFurnitureMoveEnded(PlacedFurniture furniture)
     {
-        if (furniture == null)
-        {
-            return;
-        }
+        if (furniture == null) return;
 
         if (roomGeometryProvider == null)
         {
             furniture.SaveCurrentPoseAsValid();
-            SetActiveNotConfirmedFurniture(furniture, "MoveEndedNoRoomGeometry");
-            Debug.LogWarning("[FurniturePlacementManager] Room geometry provider is missing. Move validation skipped.");
+            furniture.SetState(FurniturePlacementState.Confirmed);
+            serverPlacementPipeline?.ConfirmPlacedObject(furniture);
+
+            Debug.LogWarning("[FurniturePlacementManager] Room geometry provider is missing. Auto-confirmed without validation.");
             PlacementChanged?.Invoke();
             return;
         }
@@ -193,92 +187,21 @@ public class FurniturePlacementManager : MonoBehaviour
         bool valid = roomGeometryProvider.ValidateAndCorrectFurniturePose(furniture, out string reason);
         if (valid)
         {
+            // 방 기하학적으로 유효하면 현재 위치를 저장하고 확정 상태로 만듭니다.
             furniture.SaveCurrentPoseAsValid();
-            SetActiveNotConfirmedFurniture(furniture, "MoveEnded");
-            Debug.Log($"[FurniturePlacementManager] Furniture move accepted. {furniture.DisplayName}", furniture);
+            furniture.SetState(FurniturePlacementState.Confirmed);
+            serverPlacementPipeline?.ConfirmPlacedObject(furniture);
+
+            Debug.Log($"[FurniturePlacementManager] Furniture move accepted and AUTO-CONFIRMED. {furniture.DisplayName}", furniture);
         }
         else
         {
+            // 유효하지 않으면 마지막으로 유효했던 위치로 되돌립니다.
             furniture.RestoreLastValidPose();
-            Debug.LogWarning($"[FurniturePlacementManager] Furniture move rejected. {furniture.DisplayName} / {reason}", furniture);
+            Debug.LogWarning($"[FurniturePlacementManager] Furniture move rejected. Restored to last valid pose. {furniture.DisplayName} / {reason}", furniture);
         }
 
         PlacementChanged?.Invoke();
-    }
-
-    public bool ConfirmSelectedFurniture()
-    {
-        EnsureReferences();
-
-        PlacedFurniture selected = moveModeController != null ? moveModeController.SelectedFurniture : null;
-        return ConfirmFurniture(selected);
-    }
-
-    public bool ConfirmActiveNotConfirmedFurniture()
-    {
-        return activeNotConfirmedFurniture == null || ConfirmFurniture(activeNotConfirmedFurniture);
-    }
-
-    public bool ConfirmFurniture(PlacedFurniture selected)
-    {
-        EnsureReferences();
-
-        if (selected == null)
-        {
-            Debug.LogWarning("[FurniturePlacementManager] Confirm failed. No furniture.");
-            return false;
-        }
-
-        if (roomGeometryProvider != null)
-        {
-            bool valid = roomGeometryProvider.ValidateAndCorrectFurniturePose(selected, out string reason);
-            if (!valid)
-            {
-                Debug.LogWarning($"[FurniturePlacementManager] Confirm failed. {selected.DisplayName} / {reason}", selected);
-                return false;
-            }
-        }
-
-        selected.SetState(FurniturePlacementState.Confirmed);
-        selected.SaveCurrentPoseAsValid();
-        if (activeNotConfirmedFurniture == selected)
-        {
-            activeNotConfirmedFurniture = null;
-        }
-
-        serverPlacementPipeline?.ConfirmPlacedObject(selected);
-        Debug.Log($"[FurniturePlacementManager] Furniture confirmed. {selected.DisplayName}", selected);
-        PlacementChanged?.Invoke();
-        return true;
-    }
-
-    public bool SetActiveNotConfirmedFurniture(PlacedFurniture furniture, string reason = "")
-    {
-        EnsureReferences();
-
-        if (furniture == null || !placedFurnitures.Contains(furniture))
-        {
-            return false;
-        }
-
-        if (activeNotConfirmedFurniture != null && activeNotConfirmedFurniture != furniture)
-        {
-            if (!ConfirmFurniture(activeNotConfirmedFurniture))
-            {
-                return false;
-            }
-        }
-
-        activeNotConfirmedFurniture = furniture;
-        if (furniture.State != FurniturePlacementState.NotConfirmed)
-        {
-            furniture.SetState(FurniturePlacementState.NotConfirmed);
-        }
-
-        serverPlacementPipeline?.MarkPlacedObjectNotConfirmed(furniture);
-        PlacementChanged?.Invoke();
-        Debug.Log($"[FurniturePlacementManager] Furniture marked NotConfirmed. {furniture.DisplayName}, reason:{reason}", furniture);
-        return true;
     }
 
     public void PrepareAllForSimulation()
@@ -308,16 +231,9 @@ public class FurniturePlacementManager : MonoBehaviour
 
     public void UnregisterFurniture(PlacedFurniture furniture, bool destroyObject)
     {
-        if (furniture == null)
-        {
-            return;
-        }
+        if (furniture == null) return;
 
         placedFurnitures.Remove(furniture);
-        if (activeNotConfirmedFurniture == furniture)
-        {
-            activeNotConfirmedFurniture = null;
-        }
 
         roomGeometryProvider?.UnregisterPlacedFurniture(furniture);
         moveModeController?.UnregisterFurniture(furniture);
@@ -330,38 +246,24 @@ public class FurniturePlacementManager : MonoBehaviour
 
     private void EnsureReferences()
     {
-        if (!autoFindReferences)
-        {
-            return;
-        }
+        if (!autoFindReferences) return;
 
         if (roomGeometryProvider == null)
-        {
             roomGeometryProvider = FindFirst<ConfirmedRoomGeometryProvider>();
-        }
 
         if (moveModeController == null)
-        {
             moveModeController = FindFirst<FurnitureMoveModeController>();
-        }
 
         if (serverPlacementPipeline == null)
-        {
             serverPlacementPipeline = FindFirst<FurnitureServerPlacementPipeline>();
-        }
 
         if (runtimeInteractionSetup == null)
-        {
             runtimeInteractionSetup = FindFirst<RuntimeFurnitureInteractionSetup>();
-        }
     }
 
     private void EnsureRuntimeInteractionSetup()
     {
-        if (runtimeInteractionSetup != null)
-        {
-            return;
-        }
+        if (runtimeInteractionSetup != null) return;
 
         runtimeInteractionSetup = GetComponent<RuntimeFurnitureInteractionSetup>();
         if (runtimeInteractionSetup == null)

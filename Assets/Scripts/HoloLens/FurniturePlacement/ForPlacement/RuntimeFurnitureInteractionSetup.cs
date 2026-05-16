@@ -113,6 +113,11 @@ public class RuntimeFurnitureInteractionSetup : MonoBehaviour
             {
                 manipulator.AllowedManipulations = TransformFlags.Move;
 
+                // 런타임 AddComponent 시 XRI 자동 collider 수집이 깊은 자식(server convex hull)을
+                // 누락하는 경우가 있어, 모든 자식 collider를 명시적으로 등록한다.
+                // 이후 Move 모드의 enable 시 OnEnable이 이 목록으로 InteractionManager에 재등록한다.
+                RefreshInteractableColliders(root, manipulator);
+
                 if (disableManipulatorInitially)
                 {
                     manipulator.enabled = false;
@@ -261,6 +266,28 @@ public class RuntimeFurnitureInteractionSetup : MonoBehaviour
         }
 
         return root.AddComponent<ObjectManipulator>();
+    }
+
+    private static void RefreshInteractableColliders(GameObject root, ObjectManipulator manipulator)
+    {
+        Collider[] childColliders = root.GetComponentsInChildren<Collider>(true);
+
+        manipulator.colliders.Clear();
+        foreach (Collider collider in childColliders)
+        {
+            if (collider != null)
+            {
+                manipulator.colliders.Add(collider);
+            }
+        }
+
+        // 이미 enable 상태라면 InteractionManager가 예전(빈) collider 목록으로 등록돼 있으므로
+        // enable을 토글해 OnDisable/OnEnable로 collider→interactable 맵을 재구성한다.
+        if (manipulator.enabled)
+        {
+            manipulator.enabled = false;
+            manipulator.enabled = true;
+        }
     }
 
     private RotationAxisConstraint EnsureYawOnlyRotationConstraint(GameObject root)

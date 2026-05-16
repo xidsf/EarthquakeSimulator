@@ -2198,7 +2198,7 @@ MonoBehaviour:
   serverPlacementPipeline: {fileID: 701234951}
   furnitureCaptureManager: {fileID: 47393007}
   userPlaceFurnitureFromServerButton: {fileID: 1380731}
-  userSelectNextServerFurnitureButton: {fileID: 8537063}
+  userSelectNextServerFurnitureButton: {fileID: 2084656718}
   userSelectPreviousServerFurnitureButton: {fileID: 1398200730}
   userPlaceSelectedServerFurnitureButton: {fileID: 1651060313}
   userToggleMoveModeButton: {fileID: 1598366659}
@@ -2213,7 +2213,7 @@ MonoBehaviour:
   loadSelectedServerFurniturePreview: 1
   suppressSelectedServerFurniturePreviewOnDevice: 0
   selectedServerFurniturePreviewScale: 0.03
-  requireAllServerFurnitureConfirmedBeforeComplete: 1
+  requireAllServerFurniturePlacedBeforeComplete: 1
   serverFurnitureRequestTimeoutSeconds: 600
   moveModeLabel: "\uC774\uB3D9 \uBAA8\uB4DC"
   rotateModeLabel: "\uD68C\uC804 \uBAA8\uB4DC"
@@ -2223,26 +2223,11 @@ MonoBehaviour:
     position.
   rotateModeStatusText: Rotate mode is on. Rotate the selected furniture around the
     Y axis.
-  manipulationModeOffStatusText: Move/Rotate mode is off.
-  debugRandomFurniturePlacer: {fileID: 0}
-  debugCaptureSimulationController: {fileID: 0}
+  toggleOnMaterial: {fileID: 2100000, guid: 0d7126a4f1515764bad49745568e190f, type: 2}
   debugBindRoomGeometryButton: {fileID: 0}
-  debugPlaceFurnitureFromServerButton: {fileID: 0}
-  debugPlaceRandomFurnitureButton: {fileID: 0}
-  debugPlaceMultipleRandomFurnitureButton: {fileID: 0}
-  debugSelectNextPrefabButton: {fileID: 0}
-  debugSelectPreviousPrefabButton: {fileID: 0}
-  debugPlaceSelectedPrefabButton: {fileID: 0}
-  debugSimulatedCaptureButton: {fileID: 0}
   debugClearPlacedFurnitureButton: {fileID: 0}
-  debugToggleMoveModeButton: {fileID: 0}
-  debugToggleRotateModeButton: {fileID: 0}
   debugSelectNextFurnitureButton: {fileID: 0}
   debugSelectPreviousFurnitureButton: {fileID: 0}
-  debugConfirmSelectedFurnitureButton: {fileID: 0}
-  userConfirmSelectedFurnitureButton: {fileID: 0}
-  debugMultiplePlacementCount: 3
-  debugSelectedPrefabText: {fileID: 0}
 --- !u!114 &148157392
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7301,7 +7286,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   roomGeometryProvider: {fileID: 701234949}
   moveModeController: {fileID: 701234947}
-  serverPlacementPipeline: {fileID: 0}
+  serverPlacementPipeline: {fileID: 701234951}
   runtimeInteractionSetup: {fileID: 701234950}
   placedFurnitureRoot: {fileID: 1610382584}
   configureRuntimeInteractionOnRegister: 1
@@ -7334,6 +7319,8 @@ MonoBehaviour:
   maxCollisionResolutionStepMeters: 0.35
   nearbyInsideSearchStepMeters: 0.05
   nearbyInsideSearchMaxRadiusMeters: 0.8
+  releaseFromWallInsteadOfRevert: 1
+  wallContactReleaseMargin: 0.03
   initialized: 0
   wallColliderCount: 0
   floorObject: {fileID: 0}
@@ -7386,7 +7373,7 @@ MonoBehaviour:
   apiClient: {fileID: 701234954}
   resultPlacer: {fileID: 701234952}
   autoFindReferences: 1
-  debugOverrideScanSessionId: 
+  debugOverrideScanSessionId: room_scan_70630b05-6ef2-4b5a-8741-54d20a5d9365
   callFinishScanBeforePolling: 1
   finishScanRequestJson: 
   callDetectSessionBeforeProcess: 1
@@ -7394,7 +7381,7 @@ MonoBehaviour:
   callProcessScanBeforeResult: 1
   autoPlaceResultObjects: 0
   blockWhileRunning: 1
-  maxJobPollAttempts: 120
+  maxJobPollAttempts: 300
   jobPollIntervalSeconds: 2
   logPipeline: 1
 --- !u!114 &701234952
@@ -7416,7 +7403,7 @@ MonoBehaviour:
   autoFindReferences: 1
   coordinateSpace: 0
   rotationMode: 0
-  targetSizeMode: 1
+  targetSizeMode: 2
   roomRoot: {fileID: 0}
   hololensCameraReference: {fileID: 0}
   configureRuntimeInteractionBeforeTargetSize: 1
@@ -20797,6 +20784,17 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 5092507605265006331, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
   m_PrefabInstance: {fileID: 2084656716}
   m_PrefabAsset: {fileID: 0}
+--- !u!114 &2084656718 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 5572466351762964349, guid: c25d8f2d22117bd40ad824684551fbde, type: 3}
+  m_PrefabInstance: {fileID: 2084656716}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c32e8a7644144f8419bb881ad588ed0e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1001 &2086144465
 PrefabInstance:
   m_ObjectHideFlags: 0

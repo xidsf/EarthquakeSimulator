@@ -146,17 +146,39 @@ public class PlacedFurniture : MonoBehaviour
         isMovable = mode != FurnitureManipulationMode.None;
         TransformFlags allowedManipulations = ToTransformFlags(mode);
 
+        int behaviourCount = 0;
+        int manipulatorCount = 0;
+        bool anyManipulatorEnabled = false;
         if (moveBehaviours != null)
         {
             foreach (Behaviour behaviour in moveBehaviours)
             {
                 if (behaviour != null)
                 {
-                    if (behaviour is ObjectManipulator manipulator) manipulator.AllowedManipulations = allowedManipulations;
+                    behaviourCount++;
+                    if (behaviour is ObjectManipulator manipulator)
+                    {
+                        manipulator.AllowedManipulations = allowedManipulations;
+                        manipulatorCount++;
+                    }
                     behaviour.enabled = isMovable;
+                    if (behaviour is ObjectManipulator m2 && m2.enabled) anyManipulatorEnabled = true;
                 }
             }
         }
+
+        int colliderCount = 0;
+        foreach (Collider c in GetComponentsInChildren<Collider>(true))
+        {
+            if (c != null && c.enabled) colliderCount++;
+        }
+
+        Debug.Log(
+            $"[PlacedFurniture] SetManipulationMode '{DisplayName}' mode:{mode}, " +
+            $"moveBehaviours:{behaviourCount}, manipulators:{manipulatorCount}, " +
+            $"manipulatorEnabled:{anyManipulatorEnabled}, activeColliders:{colliderCount}",
+            this);
+
         ResetTransformMonitor();
     }
 
@@ -257,11 +279,30 @@ public class PlacedFurniture : MonoBehaviour
         if (placementColliders != null && placementColliders.Length > 0)
         {
             foreach (Collider c in placementColliders) if (c != null && !runtimePlacementColliders.Contains(c)) runtimePlacementColliders.Add(c);
+            return;
         }
 
-        if (runtimePlacementColliders.Count == 0 && autoCollectPlacementColliders)
+        if (!autoCollectPlacementColliders) return;
+
+        Collider[] childColliders = GetComponentsInChildren<Collider>(true);
+
+        // 서버 convex hull MeshCollider가 있으면 검증/충돌은 그 정밀 collider만 사용한다.
+        // 넓은 interaction용 BoxCollider(AddBroadInteractionBoxCollider)를 검증에서 제외해
+        // 방 내/외부·침투 판정이 과도하게 보수적으로 되어 정상 배치가 거부되는 것을 막는다.
+        foreach (Collider c in childColliders)
         {
-            foreach (Collider c in GetComponentsInChildren<Collider>(true)) if (c != null && !runtimePlacementColliders.Contains(c)) runtimePlacementColliders.Add(c);
+            if (c is MeshCollider meshCollider && meshCollider.convex && !runtimePlacementColliders.Contains(c))
+            {
+                runtimePlacementColliders.Add(c);
+            }
+        }
+
+        if (runtimePlacementColliders.Count > 0) return;
+
+        // 서버 MeshCollider를 받지 못한 경우에만 BoxCollider 등으로 fallback한다.
+        foreach (Collider c in childColliders)
+        {
+            if (c != null && !runtimePlacementColliders.Contains(c)) runtimePlacementColliders.Add(c);
         }
     }
 

@@ -252,10 +252,10 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         }
 
         ApplyInitialTransform(instance, serverObject);
-        NormalizeModelIfNeeded(instance);
+        Vector3 normalizationOffset = NormalizeModelIfNeeded(instance);
         ApplyTargetSize(instance, serverObject);
-        NormalizeModelIfNeeded(instance);
-        yield return ApplyServerColliderRoutine(instance, serverObject);
+        normalizationOffset += NormalizeModelIfNeeded(instance);
+        yield return ApplyServerColliderRoutine(instance, serverObject, normalizationOffset);
         LogMeshSizeValidation(instance, serverObject);
 
         if (!configureBeforeTargetSize && setup != null)
@@ -547,7 +547,7 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         instance.transform.localScale = scale;
     }
 
-    private IEnumerator ApplyServerColliderRoutine(GameObject instance, FurnitureServerResultObject serverObject)
+    private IEnumerator ApplyServerColliderRoutine(GameObject instance, FurnitureServerResultObject serverObject, Vector3 visualNormalizationOffset)
     {
         if (instance == null || serverObject == null)
         {
@@ -580,7 +580,7 @@ public class FurnitureServerResultPlacer : MonoBehaviour
 
             if (colliderLoaded && colliderRoot != null)
             {
-                if (AttachConvexHullCollider(instance, colliderRoot, serverObject))
+                if (AttachConvexHullCollider(instance, colliderRoot, serverObject, visualNormalizationOffset))
                 {
                     AddBroadInteractionBoxCollider(instance, serverObject);
                     yield break;
@@ -790,11 +790,13 @@ public class FurnitureServerResultPlacer : MonoBehaviour
                serverObject.collider_convex;
     }
 
-    private static bool AttachConvexHullCollider(GameObject visualRoot, GameObject colliderRoot, FurnitureServerResultObject serverObject)
+    private static bool AttachConvexHullCollider(GameObject visualRoot, GameObject colliderRoot, FurnitureServerResultObject serverObject, Vector3 visualNormalizationOffset)
     {
         colliderRoot.name = $"{visualRoot.name}_ServerConvexCollider";
         colliderRoot.transform.SetParent(visualRoot.transform, false);
-        colliderRoot.transform.localPosition = Vector3.zero;
+        // visual GLB 자식은 NormalizeModelIfNeeded에서 바닥 정렬 offset만큼 이동된다.
+        // collider GLB는 그 이후에 붙으므로 동일 offset을 적용해야 visual world 좌표와 일치한다.
+        colliderRoot.transform.localPosition = visualNormalizationOffset;
         colliderRoot.transform.localRotation = Quaternion.identity;
         colliderRoot.transform.localScale = Vector3.one;
 
@@ -907,16 +909,16 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         furniturePlacementManager.moveModeController.SelectFurniture(placedFurniture);
     }
 
-    private void NormalizeModelIfNeeded(GameObject root)
+    private Vector3 NormalizeModelIfNeeded(GameObject root)
     {
         if (!normalizeModelToGround || root == null)
         {
-            return;
+            return Vector3.zero;
         }
 
         if (!TryGetLocalRendererBounds(root, out Bounds localBounds))
         {
-            return;
+            return Vector3.zero;
         }
 
         Vector3 offset = Vector3.zero;
@@ -933,6 +935,8 @@ public class FurnitureServerResultPlacer : MonoBehaviour
             Transform child = root.transform.GetChild(i);
             child.localPosition += offset;
         }
+
+        return offset;
     }
 
     private Vector3 GetTargetSize(FurnitureServerResultObject serverObject)

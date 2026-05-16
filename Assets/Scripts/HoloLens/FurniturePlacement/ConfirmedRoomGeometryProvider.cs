@@ -29,6 +29,12 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
     [Min(0.05f)] public float nearbyInsideSearchStepMeters = 0.05f;
     [Min(0.05f)] public float nearbyInsideSearchMaxRadiusMeters = 0.8f;
 
+    [Tooltip("벽으로 끝까지 끌어 살짝 침투했을 때, 마지막 유효 위치로 통째 원복하는 대신 접촉한 벽에서 살짝 떨어진 지점으로 보정해 사용자가 끌어둔 위치를 유지합니다.")]
+    public bool releaseFromWallInsteadOfRevert = true;
+
+    [Tooltip("releaseFromWallInsteadOfRevert가 켜졌을 때 접촉한 벽 표면에서 가구를 떨어뜨릴 여유(미터)입니다.")]
+    [Min(0.0f)] public float wallContactReleaseMargin = 0.03f;
+
     [Header("Runtime State - Read Only")]
     [SerializeField] private bool initialized;
     [SerializeField] private int wallColliderCount;
@@ -175,6 +181,13 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
         if (!furniture.isWallMounted && snapFurnitureToFloor) SnapFurnitureToFloor(furniture);
         if (IsFurniturePoseValid(furniture, out reason)) return true;
 
+        // 통째 원복 전에, 접촉한 벽에서만 살짝 떨어뜨려 사용자가 끌어둔 위치를 유지한다.
+        if (releaseFromWallInsteadOfRevert && !furniture.isWallMounted &&
+            TryReleaseFromContactingWalls(furniture, out reason))
+        {
+            return true;
+        }
+
         // 원상 복구
         furniture.transform.SetPositionAndRotation(originalPosition, originalRotation);
         if (!furniture.isWallMounted)
@@ -185,6 +198,103 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
 
         IsFurniturePoseValid(furniture, out reason);
         return false;
+    }
+
+    // 접촉(침투)한 벽에서만 법선 방향으로 margin만큼 떨어뜨려, 통째 원복 없이 사용자가 끌어둔 위치를 유지한다.
+    private bool TryReleaseFromContactingWalls(PlacedFurniture furniture, out string reason)
+    {
+        reason = string.Empty;
+
+        if (furniture.isWallMounted)
+        {
+            reason = "Wall-mounted furniture is not released from walls.";
+            return false;
+        }
+
+        const int maxReleaseIterations = 4;
+        for (int i = 0; i < maxReleaseIterations; i++)
+        {
+            Vector3 move = ComputeWallReleaseMove(furniture);
+            if (move.sqrMagnitude <= 0.000001f) break;
+
+            float maxStep = Mathf.Max(0.01f, maxCollisionResolutionStepMeters);
+            if (move.magnitude > maxStep) move = move.normalized * maxStep;
+
+            furniture.transform.position += move;
+            if (keepFurnitureUpright) ForceUpright(furniture.transform);
+            if (snapFurnitureToFloor) SnapFurnitureToFloor(furniture);
+        }
+
+        return IsFurniturePoseValidAfterWallRelease(furniture, out reason);
+    }
+
+    private Vector3 ComputeWallReleaseMove(PlacedFurniture furniture)
+    {
+        Vector3 totalMove = Vector3.zero;
+        Collider[] colliders = furniture.GetActivePlacementColliders();
+        if (colliders == null) return totalMove;
+
+        foreach (BoxCollider wallCollider in wallColliders)
+        {
+            if (wallCollider == null || !wallCollider.enabled) continue;
+
+            foreach (Collider collider in colliders)
+            {
+                if (collider == null || !collider.enabled) continue;
+                if (!collider.bounds.Intersects(wallCollider.bounds)) continue;
+
+                if (Physics.ComputePenetration(collider, collider.transform.position, collider.transform.rotation,
+                        wallCollider, wallCollider.transform.position, wallCollider.transform.rotation,
+                        out Vector3 direction, out float distance))
+                {
+                    totalMove += direction * (distance + wallContactReleaseMargin);
+                }
+            }
+        }
+
+        return Vector3.ProjectOnPlane(totalMove, Vector3.up);
+    }
+
+    // release 직후 수락 판정: 불안정한 AABB 모서리+레이 검사 대신 침투 없음 + 중심 inside 기반.
+    private bool IsFurniturePoseValidAfterWallRelease(PlacedFurniture furniture, out string reason)
+    {
+        reason = string.Empty;
+
+        if (!TryGetFurnitureBounds(furniture, out Bounds furnitureBounds))
+        {
+            reason = "Furniture has no valid collider or renderer bounds.";
+            return false;
+        }
+
+        foreach (BoxCollider wallCollider in wallColliders)
+        {
+            if (wallCollider == null || !wallCollider.enabled) continue;
+            if (ComputeAnyPenetration(furniture, wallCollider))
+            {
+                reason = $"Furniture still penetrates wall after release: {wallCollider.name}.";
+                return false;
+            }
+        }
+
+        if (validateCeilingHeight && ceilingCollider != null && furnitureBounds.max.y > ceilingCollider.bounds.min.y)
+        {
+            reason = "Furniture is higher than the ceiling.";
+            return false;
+        }
+
+        if (IntersectsAnyOtherFurniture(furniture, out PlacedFurniture other))
+        {
+            reason = $"Furniture intersects other furniture: {other.DisplayName}.";
+            return false;
+        }
+
+        if (!IsInsideRoom(furnitureBounds.center))
+        {
+            reason = "Furniture center is outside the confirmed room boundary.";
+            return false;
+        }
+
+        return true;
     }
 
     // 가장 가까운 벽면을 찾아 스냅 위치와 법선을 반환합니다.

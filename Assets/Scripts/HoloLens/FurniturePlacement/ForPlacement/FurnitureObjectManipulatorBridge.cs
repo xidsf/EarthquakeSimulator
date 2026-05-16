@@ -82,7 +82,18 @@ public class FurnitureObjectManipulatorBridge : MonoBehaviour
 
         objectManipulator.selectEntered.AddListener(OnSelectEntered);
         objectManipulator.selectExited.AddListener(OnSelectExited);
+        objectManipulator.hoverEntered.AddListener(OnHoverEntered);
+        objectManipulator.hoverExited.AddListener(OnHoverExited);
         listenersRegistered = true;
+
+        int colliderCount = objectManipulator.colliders != null ? objectManipulator.colliders.Count : 0;
+        Debug.Log(
+            $"[FurnitureObjectManipulatorBridge] Listeners registered on '{name}'. " +
+            $"layer:{LayerMask.LayerToName(gameObject.layer)}({gameObject.layer}), " +
+            $"interactionLayers:{objectManipulator.interactionLayers.value}, " +
+            $"manipulatorEnabled:{objectManipulator.enabled}, " +
+            $"xriColliders:{colliderCount}",
+            this);
     }
 
     public void UnregisterListeners()
@@ -95,7 +106,19 @@ public class FurnitureObjectManipulatorBridge : MonoBehaviour
 
         objectManipulator.selectEntered.RemoveListener(OnSelectEntered);
         objectManipulator.selectExited.RemoveListener(OnSelectExited);
+        objectManipulator.hoverEntered.RemoveListener(OnHoverEntered);
+        objectManipulator.hoverExited.RemoveListener(OnHoverExited);
         listenersRegistered = false;
+    }
+
+    private void OnHoverEntered(HoverEnterEventArgs args)
+    {
+        Debug.Log($"[FurnitureObjectManipulatorBridge] HoverEntered '{name}' by {args.interactorObject}", this);
+    }
+
+    private void OnHoverExited(HoverExitEventArgs args)
+    {
+        Debug.Log($"[FurnitureObjectManipulatorBridge] HoverExited '{name}' by {args.interactorObject}", this);
     }
 
     private void OnSelectEntered(SelectEnterEventArgs args)

@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using MixedReality.Toolkit.UX;
 using TMPro;
 using UnityEngine;
@@ -14,6 +15,8 @@ using UnityEngine.Events;
 /// </summary>
 public class FurniturePlacementPanelController : WorkflowPanelControllerBase
 {
+    private const string ToggleButtonBackplateOuterGeometryName = "UX.Button.BackplateOuterGeometry";
+
     [Header("Furniture Placement References")]
     public FurniturePlacementManager furniturePlacementManager;
     public FurnitureMoveModeController moveModeController;
@@ -57,6 +60,10 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     [SerializeField] private string moveModeStatusText = "이동 모드 활성화. 가구를 잡아 위치를 조정하세요.";
     [SerializeField] private string rotateModeStatusText = "회전 모드 활성화. 가구를 Y축 기준으로 회전시키세요.";
 
+    [Header("Toggle Button Visuals")]
+    [Tooltip("Move/Rotate 토글 버튼이 On일 때 적용할 머티리얼입니다. 비워두면 시각 변경 없이 동작합니다.")]
+    public Material toggleOnMaterial;
+
     [Header("Debug Buttons - Optional")]
     public PressableButton debugBindRoomGeometryButton;
     public PressableButton debugClearPlacedFurnitureButton;
@@ -82,6 +89,8 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     private int selectedServerFurniturePreviewRequestId;
     private bool serverFurnitureRequestLocked;
     private float serverFurnitureRequestStartedRealtime = -1.0f;
+    private readonly Dictionary<Renderer, Material[]> originalToggleButtonMaterials = new Dictionary<Renderer, Material[]>();
+    private readonly Dictionary<PressableButton, bool> toggleButtonVisualStates = new Dictionary<PressableButton, bool>();
 
     protected override void Awake()
     {
@@ -107,6 +116,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         UnsubscribeServerPlacementPipelineEvents();
         UnsubscribeMoveModeControllerEvents();
         UnregisterButtons();
+        RestoreToggleButtonMaterials();
         ClearSelectedServerFurniturePreview();
     }
 
@@ -350,9 +360,85 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         FurnitureManipulationMode mode = moveModeController != null ? moveModeController.CurrentMode : FurnitureManipulationMode.None;
         if (text_MoveMode != null) text_MoveMode.text = BuildModeText(moveModeLabel, mode == FurnitureManipulationMode.Move);
         if (text_RotateMode != null) text_RotateMode.text = BuildModeText(rotateModeLabel, mode == FurnitureManipulationMode.Rotate);
+        UpdateToggleButtonVisuals(mode);
     }
 
     private string BuildModeText(string label, bool isOn) => label + "\n" + (isOn ? modeOnText : modeOffText);
+
+    private void UpdateToggleButtonVisuals(FurnitureManipulationMode mode)
+    {
+        SetToggleButtonOn(userToggleMoveModeButton, mode == FurnitureManipulationMode.Move);
+        SetToggleButtonOn(userToggleRotateModeButton, mode == FurnitureManipulationMode.Rotate);
+    }
+
+    private void SetToggleButtonOn(PressableButton button, bool isOn)
+    {
+        if (button == null)
+        {
+            return;
+        }
+
+        Renderer renderer = FindToggleButtonBackplateOuterGeometry(button);
+        if (renderer == null)
+        {
+            return;
+        }
+
+        if (toggleButtonVisualStates.TryGetValue(button, out bool currentState) && currentState == isOn)
+        {
+            return;
+        }
+
+        toggleButtonVisualStates[button] = isOn;
+
+        if (!originalToggleButtonMaterials.ContainsKey(renderer))
+        {
+            originalToggleButtonMaterials.Add(renderer, renderer.sharedMaterials);
+        }
+
+        if (isOn && toggleOnMaterial != null)
+        {
+            Material[] originalMaterials = originalToggleButtonMaterials[renderer];
+            Material[] activeMaterials = new Material[originalMaterials.Length];
+            for (int i = 0; i < activeMaterials.Length; i++)
+            {
+                activeMaterials[i] = toggleOnMaterial;
+            }
+
+            renderer.sharedMaterials = activeMaterials;
+        }
+        else if (originalToggleButtonMaterials.TryGetValue(renderer, out Material[] originalMaterials))
+        {
+            renderer.sharedMaterials = originalMaterials;
+        }
+    }
+
+    private static Renderer FindToggleButtonBackplateOuterGeometry(PressableButton button)
+    {
+        Renderer[] renderers = button.GetComponentsInChildren<Renderer>(true);
+        foreach (Renderer renderer in renderers)
+        {
+            if (renderer != null && renderer.gameObject.name == ToggleButtonBackplateOuterGeometryName)
+            {
+                return renderer;
+            }
+        }
+
+        return null;
+    }
+
+    private void RestoreToggleButtonMaterials()
+    {
+        foreach (KeyValuePair<Renderer, Material[]> entry in originalToggleButtonMaterials)
+        {
+            if (entry.Key != null)
+            {
+                entry.Key.sharedMaterials = entry.Value;
+            }
+        }
+
+        toggleButtonVisualStates.Clear();
+    }
 
     private string BuildCurrentPlacementStatus(int placed, int count)
     {

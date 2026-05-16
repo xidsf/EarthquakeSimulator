@@ -2336,7 +2336,7 @@ MonoBehaviour:
   csvAxisConvention: 1
   simulationMode: 0
   autoStartOnPlay: 0
-  playbackSpeed: 2
+  playbackSpeed: 1
   inertialAccelerationMultiplier: 1
   includeVerticalInertialAcceleration: 0
   shakeTableDisplacementMultiplier: 1

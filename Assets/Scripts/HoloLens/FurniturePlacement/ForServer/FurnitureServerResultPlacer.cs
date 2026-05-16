@@ -78,6 +78,13 @@ public class FurnitureServerResultPlacer : MonoBehaviour
     [Tooltip("normalizeModelToGround 적용 시 렌더러 중심을 root의 X/Z 원점으로 맞춥니다.")]
     public bool centerModelXZ = true;
 
+    [Header("Scale Guard")]
+    [Tooltip("스케일 적용 결과 가구가 방(바닥/천장 큐브)보다 크거나 절대 한계를 넘으면 localScale을 (1,1,1)로 되돌립니다. 비율은 GLB 원본이 유지됩니다.")]
+    public bool resetScaleWhenLargerThanRoom = true;
+
+    [Tooltip("방 정보가 없을 때 사용할 가구 한 변의 절대 최대 크기(미터).")]
+    [Min(0.5f)] public float maxFurnitureSizeMeters = 5.0f;
+
     [Header("Placement")]
     [Tooltip("기존 서버 결과 가구를 지우고 새 result를 배치합니다.")]
     public bool clearPreviousServerResultFurniture = true;
@@ -502,6 +509,7 @@ public class FurnitureServerResultPlacer : MonoBehaviour
             if (HasAllPositiveComponents(serverScale))
             {
                 instance.transform.localScale = serverScale;
+                ClampExtremeScale(instance);
                 return;
             }
         }
@@ -518,6 +526,7 @@ public class FurnitureServerResultPlacer : MonoBehaviour
                 target.x > 0f ? target.x : instance.transform.localScale.x,
                 target.y > 0f ? target.y : instance.transform.localScale.y,
                 target.z > 0f ? target.z : instance.transform.localScale.z);
+            ClampExtremeScale(instance);
             return;
         }
 
@@ -545,6 +554,55 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         }
 
         instance.transform.localScale = scale;
+        ClampExtremeScale(instance);
+    }
+
+    // 스케일 결과 가구가 방(바닥/천장 큐브)보다 크거나 절대 한계를 넘으면 비정상으로 보고 (1,1,1)로 되돌린다.
+    // 서버가 보내는 비율 자체는 GLB 원본이 유지되므로 너무 큰 경우만 fallback하면 된다.
+    private void ClampExtremeScale(GameObject instance)
+    {
+        if (!resetScaleWhenLargerThanRoom || instance == null)
+        {
+            return;
+        }
+
+        if (!TryGetRendererBounds(instance, out Bounds bounds))
+        {
+            return;
+        }
+
+        Vector3 size = bounds.size;
+        float limit = Mathf.Max(0.5f, maxFurnitureSizeMeters);
+        Vector3 maxSize = new Vector3(limit, limit, limit);
+
+        ConfirmedRoomGeometryProvider geometry = furniturePlacementManager != null
+            ? furniturePlacementManager.roomGeometryProvider
+            : null;
+        if (geometry != null && geometry.IsInitialized)
+        {
+            Vector3 roomSize = geometry.RoomBounds.size;
+
+            // Y 한계는 벽 AABB가 아니라 바닥/천장 collider 기반 실제 방 높이를 사용한다.
+            // 천장 collider가 없으면 CeilingBottomY가 +Infinity이므로 벽 AABB Y로 fallback.
+            float roomHeight = geometry.CeilingBottomY - geometry.FloorTopY;
+            float yLimit = (roomHeight > 0.01f && !float.IsInfinity(roomHeight))
+                ? roomHeight
+                : roomSize.y;
+
+            maxSize = new Vector3(
+                Mathf.Min(limit, roomSize.x),
+                Mathf.Min(limit, yLimit),
+                Mathf.Min(limit, roomSize.z));
+        }
+
+        if (size.x > maxSize.x || size.y > maxSize.y || size.z > maxSize.z)
+        {
+            Debug.LogWarning(
+                $"[FurnitureServerResultPlacer] Furniture too large (world size:{FormatVector(size)}, limit:{FormatVector(maxSize)}). " +
+                "localScale reset to (1,1,1).",
+                instance);
+            instance.transform.localScale = Vector3.one;
+        }
     }
 
     private IEnumerator ApplyServerColliderRoutine(GameObject instance, FurnitureServerResultObject serverObject, Vector3 visualNormalizationOffset)
@@ -900,10 +958,9 @@ public class FurnitureServerResultPlacer : MonoBehaviour
             return;
         }
 
-        if (restrictManualPlacementManipulationToLoadedObject)
-        {
-            furniturePlacementManager.moveModeController.allowAllFurnitureMovableInMoveMode = false;
-        }
+        // 새 가구를 배치해도 이전에 배치한 가구를 계속 조작할 수 있도록 모든 가구를 이동 가능 상태로 유지한다.
+        // (선택은 UI 포커스 용도로만 사용하고, 다른 가구의 manipulator를 비활성화하지 않는다.)
+        furniturePlacementManager.moveModeController.allowAllFurnitureMovableInMoveMode = true;
 
         furniturePlacementManager.moveModeController.SetMoveMode(true);
         furniturePlacementManager.moveModeController.SelectFurniture(placedFurniture);

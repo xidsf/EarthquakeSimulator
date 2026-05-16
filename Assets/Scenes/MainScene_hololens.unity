@@ -2203,12 +2203,14 @@ MonoBehaviour:
   userPlaceSelectedServerFurnitureButton: {fileID: 1651060313}
   userToggleMoveModeButton: {fileID: 1598366659}
   userToggleRotateModeButton: {fileID: 157016826}
+  userToggleScaleModeButton: {fileID: 0}
   userCompleteFurniturePlacementButton: {fileID: 8537063}
   userSelectedServerFurnitureText: {fileID: 0}
   userServerFurnitureListText: {fileID: 0}
   userServerFurnitureStatusText: {fileID: 0}
   text_MoveMode: {fileID: 0}
   text_RotateMode: {fileID: 0}
+  text_ScaleMode: {fileID: 0}
   userSelectedServerFurniturePreviewAnchor: {fileID: 2132128683}
   loadSelectedServerFurniturePreview: 1
   suppressSelectedServerFurniturePreviewOnDevice: 0
@@ -2217,12 +2219,15 @@ MonoBehaviour:
   serverFurnitureRequestTimeoutSeconds: 600
   moveModeLabel: "\uC774\uB3D9 \uBAA8\uB4DC"
   rotateModeLabel: "\uD68C\uC804 \uBAA8\uB4DC"
+  scaleModeLabel: Scale
   modeOnText: On
   modeOffText: Off
   moveModeStatusText: Move mode is on. Drag the selected furniture to adjust its
     position.
   rotateModeStatusText: Rotate mode is on. Rotate the selected furniture around the
     Y axis.
+  scaleModeStatusText: "\uD06C\uAE30 \uC870\uC808 \uBAA8\uB4DC \uD65C\uC131\uD654.
+    \uAC00\uAD6C\uB97C \uC704/\uC544\uB798\uB85C \uD06C\uAE30 \uC870\uC808\uD558\uC138\uC694."
   toggleOnMaterial: {fileID: 2100000, guid: 0d7126a4f1515764bad49745568e190f, type: 2}
   debugBindRoomGeometryButton: {fileID: 0}
   debugClearPlacedFurnitureButton: {fileID: 0}
@@ -7351,6 +7356,7 @@ MonoBehaviour:
   addObjectManipulatorToRoot: 1
   addObjectManipulatorBridgeToRoot: 1
   addYawOnlyRotationConstraintToRoot: 1
+  rotationSensitivityMultiplier: 4
   disableManipulatorInitially: 1
   useGravity: 0
   isKinematic: 1
@@ -7413,6 +7419,8 @@ MonoBehaviour:
   removeVisualCollidersWhenServerColliderExists: 1
   normalizeModelToGround: 1
   centerModelXZ: 1
+  resetScaleWhenLargerThanRoom: 1
+  maxFurnitureSizeMeters: 10
   clearPreviousServerResultFurniture: 1
   ignoreServerTransformForManualPlacement: 1
   preferCameraForwardForManualPlacement: 1

@@ -33,6 +33,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     public PressableButton userPlaceSelectedServerFurnitureButton;
     public PressableButton userToggleMoveModeButton;
     public PressableButton userToggleRotateModeButton;
+    public PressableButton userToggleScaleModeButton;
     public PressableButton userCompleteFurniturePlacementButton;
 
     [Header("Server Furniture List UI")]
@@ -41,6 +42,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     public TMP_Text userServerFurnitureStatusText;
     public TMP_Text text_MoveMode;
     public TMP_Text text_RotateMode;
+    public TMP_Text text_ScaleMode;
     public Transform userSelectedServerFurniturePreviewAnchor;
     public bool loadSelectedServerFurniturePreview = true;
     public bool suppressSelectedServerFurniturePreviewOnDevice = false;
@@ -55,10 +57,12 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     [Header("Mode Text")]
     [SerializeField] private string moveModeLabel = "Move";
     [SerializeField] private string rotateModeLabel = "Rotate";
+    [SerializeField] private string scaleModeLabel = "Scale";
     [SerializeField] private string modeOnText = "On";
     [SerializeField] private string modeOffText = "Off";
     [SerializeField] private string moveModeStatusText = "이동 모드 활성화. 가구를 잡아 위치를 조정하세요.";
     [SerializeField] private string rotateModeStatusText = "회전 모드 활성화. 가구를 Y축 기준으로 회전시키세요.";
+    [SerializeField] private string scaleModeStatusText = "크기 조절 모드 활성화. 가구를 위/아래로 크기 조절하세요.";
 
     [Header("Toggle Button Visuals")]
     [Tooltip("Move/Rotate 토글 버튼이 On일 때 적용할 머티리얼입니다. 비워두면 시각 변경 없이 동작합니다.")]
@@ -76,6 +80,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     private UnityAction userPlaceSelectedServerFurnitureAction;
     private UnityAction userToggleMoveModeAction;
     private UnityAction userToggleRotateModeAction;
+    private UnityAction userToggleScaleModeAction;
     private UnityAction userCompleteFurniturePlacementAction;
 
     private UnityAction debugBindRoomGeometryAction;
@@ -202,6 +207,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         userPlaceSelectedServerFurnitureAction ??= OnClickPlaceSelectedServerFurniture;
         userToggleMoveModeAction ??= OnClickToggleMoveMode;
         userToggleRotateModeAction ??= OnClickToggleRotateMode;
+        userToggleScaleModeAction ??= OnClickToggleScaleMode;
         userCompleteFurniturePlacementAction ??= OnClickCompleteFurniturePlacement;
 
         debugBindRoomGeometryAction ??= OnClickDebugBindRoomGeometry;
@@ -218,6 +224,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         AddClick(userPlaceSelectedServerFurnitureButton, userPlaceSelectedServerFurnitureAction);
         AddClick(userToggleMoveModeButton, userToggleMoveModeAction);
         AddClick(userToggleRotateModeButton, userToggleRotateModeAction);
+        AddClick(userToggleScaleModeButton, userToggleScaleModeAction);
         AddClick(userCompleteFurniturePlacementButton, userCompleteFurniturePlacementAction);
 
         AddClick(debugBindRoomGeometryButton, debugBindRoomGeometryAction);
@@ -234,6 +241,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         RemoveClick(userPlaceSelectedServerFurnitureButton, userPlaceSelectedServerFurnitureAction);
         RemoveClick(userToggleMoveModeButton, userToggleMoveModeAction);
         RemoveClick(userToggleRotateModeButton, userToggleRotateModeAction);
+        RemoveClick(userToggleScaleModeButton, userToggleScaleModeAction);
         RemoveClick(userCompleteFurniturePlacementButton, userCompleteFurniturePlacementAction);
 
         RemoveClick(debugBindRoomGeometryButton, debugBindRoomGeometryAction);
@@ -344,6 +352,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
 
         SetButtonVisible(userToggleMoveModeButton, hasPlacedSelection && !isRunning);
         SetButtonVisible(userToggleRotateModeButton, hasPlacedSelection && !isRunning);
+        SetButtonVisible(userToggleScaleModeButton, hasPlacedSelection && !isRunning);
 
         // 💡 [수정] 모든 가구 배치 강제 조건을 풀었습니다. 가구 리스트만 있으면 완료 가능합니다.
         bool canComplete = hasServerFurniture && !isRunning;
@@ -360,6 +369,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         FurnitureManipulationMode mode = moveModeController != null ? moveModeController.CurrentMode : FurnitureManipulationMode.None;
         if (text_MoveMode != null) text_MoveMode.text = BuildModeText(moveModeLabel, mode == FurnitureManipulationMode.Move);
         if (text_RotateMode != null) text_RotateMode.text = BuildModeText(rotateModeLabel, mode == FurnitureManipulationMode.Rotate);
+        if (text_ScaleMode != null) text_ScaleMode.text = BuildModeText(scaleModeLabel, mode == FurnitureManipulationMode.Scale);
         UpdateToggleButtonVisuals(mode);
     }
 
@@ -369,6 +379,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     {
         SetToggleButtonOn(userToggleMoveModeButton, mode == FurnitureManipulationMode.Move);
         SetToggleButtonOn(userToggleRotateModeButton, mode == FurnitureManipulationMode.Rotate);
+        SetToggleButtonOn(userToggleScaleModeButton, mode == FurnitureManipulationMode.Scale);
     }
 
     private void SetToggleButtonOn(PressableButton button, bool isOn)
@@ -446,6 +457,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         {
             if (moveModeController.CurrentMode == FurnitureManipulationMode.Move) return moveModeStatusText;
             if (moveModeController.CurrentMode == FurnitureManipulationMode.Rotate) return rotateModeStatusText;
+            if (moveModeController.CurrentMode == FurnitureManipulationMode.Scale) return scaleModeStatusText;
         }
 
         if (serverPlacementPipeline != null && serverPlacementPipeline.AreAllPendingObjectsPlaced())
@@ -533,6 +545,14 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     {
         if (moveModeController == null) return;
         moveModeController.ToggleRotateMode();
+        UpdateManipulationModeTexts();
+        RefreshServerFurnitureListView();
+    }
+
+    public void OnClickToggleScaleMode()
+    {
+        if (moveModeController == null) return;
+        moveModeController.ToggleScaleMode();
         UpdateManipulationModeTexts();
         RefreshServerFurnitureListView();
     }

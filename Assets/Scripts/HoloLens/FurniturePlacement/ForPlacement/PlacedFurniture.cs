@@ -31,6 +31,10 @@ public class PlacedFurniture : MonoBehaviour
     public Behaviour[] moveBehaviours;
     public Collider[] heavyCollidersToDisableWhileMoving;
     public bool ensureKinematicRigidbody = true;
+
+    [Tooltip("이동 중 비-벽걸이 가구의 바닥을 매 프레임 방 바닥에 고정해, 벽 쪽으로 끌 때 아래로 가라앉는 현상을 방지합니다.")]
+    public bool lockToFloorWhileMoving = true;
+
     public bool autoCollectPlacementColliders = true;
     public Collider[] placementColliders;
 
@@ -113,6 +117,20 @@ public class PlacedFurniture : MonoBehaviour
             }
         }
 
+        // 이동 중 비-벽걸이 가구는 바닥에 고정해 아래로 가라앉거나 떠오르는 것을 방지한다.
+        if (isMoving && lockToFloorWhileMoving && !isWallMounted && ownerManager?.roomGeometryProvider != null)
+        {
+            ConfirmedRoomGeometryProvider geometry = ownerManager.roomGeometryProvider;
+            if (geometry.IsInitialized && geometry.TryGetFurnitureBounds(this, out Bounds floorBounds))
+            {
+                float deltaY = geometry.FloorTopY - floorBounds.min.y;
+                if (Mathf.Abs(deltaY) > 0.0005f)
+                {
+                    transform.position += Vector3.up * deltaY;
+                }
+            }
+        }
+
         bool changed = HasTransformChangedSinceLastObservation();
         if (changed)
         {
@@ -188,6 +206,7 @@ public class PlacedFurniture : MonoBehaviour
         {
             FurnitureManipulationMode.Move => TransformFlags.Move,
             FurnitureManipulationMode.Rotate => TransformFlags.Rotate,
+            FurnitureManipulationMode.Scale => TransformFlags.Scale,
             _ => TransformFlags.None,
         };
     }

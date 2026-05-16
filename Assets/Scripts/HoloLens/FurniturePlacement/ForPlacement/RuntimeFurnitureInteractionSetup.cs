@@ -2,6 +2,8 @@ using System.Collections.Generic;
 using MixedReality.Toolkit;
 using MixedReality.Toolkit.SpatialManipulation;
 using UnityEngine;
+using UnityEngine.XR.Interaction.Toolkit.Interactables;
+using UnityEngine.XR.Interaction.Toolkit.Interactors;
 
 /// <summary>
 /// 서버/디버그 파이프라인에서 생성된 단순 가구 오브젝트를 런타임에 HoloLens2 조작 가능한 형태로 보강합니다.
@@ -51,6 +53,10 @@ public class RuntimeFurnitureInteractionSetup : MonoBehaviour
     public bool addObjectManipulatorToRoot = true;
     public bool addObjectManipulatorBridgeToRoot = true;
     public bool addYawOnlyRotationConstraintToRoot = true;
+
+    [Min(0.0f)]
+    [Tooltip("Rotate Mode에서 손 회전 입력 각도를 몇 배로 적용할지 설정합니다. 1이면 MRTK 기본 회전 속도입니다.")]
+    public float rotationSensitivityMultiplier = 2.5f;
 
     [Tooltip("자동 추가된 ObjectManipulator는 PlacedFurniture.moveBehaviours에 등록되고 Move Mode가 켜질 때만 enabled 됩니다.")]
     public bool disableManipulatorInitially = true;
@@ -111,6 +117,7 @@ public class RuntimeFurnitureInteractionSetup : MonoBehaviour
             manipulator = EnsureObjectManipulator(root);
             if (manipulator != null)
             {
+                ConfigureRotationSensitivity(manipulator);
                 manipulator.AllowedManipulations = TransformFlags.Move;
 
                 // 런타임 AddComponent 시 XRI 자동 collider 수집이 깊은 자식(server convex hull)을
@@ -268,6 +275,25 @@ public class RuntimeFurnitureInteractionSetup : MonoBehaviour
         return root.AddComponent<ObjectManipulator>();
     }
 
+    private void ConfigureRotationSensitivity(ObjectManipulator manipulator)
+    {
+        if (manipulator == null)
+        {
+            return;
+        }
+
+        FurnitureRotationSensitivityLogic.SensitivityMultiplier = rotationSensitivityMultiplier;
+
+        ObjectManipulator.LogicType logicTypes = manipulator.ManipulationLogicTypes;
+        if (logicTypes.rotateLogicType != null && logicTypes.rotateLogicType.Type == typeof(FurnitureRotationSensitivityLogic))
+        {
+            return;
+        }
+
+        logicTypes.rotateLogicType = typeof(FurnitureRotationSensitivityLogic);
+        manipulator.ManipulationLogicTypes = logicTypes;
+    }
+
     private static void RefreshInteractableColliders(GameObject root, ObjectManipulator manipulator)
     {
         Collider[] childColliders = root.GetComponentsInChildren<Collider>(true);
@@ -357,4 +383,72 @@ public class RuntimeFurnitureSetupMarker : MonoBehaviour
     public bool scaleCorrectionApplied;
     public bool meshColliderConfigured;
     public bool interactionConfigured;
+}
+
+/// <summary>
+/// MRTK ObjectManipulator rotation logic with an adjustable angle multiplier.
+/// </summary>
+public class FurnitureRotationSensitivityLogic : ManipulationLogic<Quaternion>
+{
+    public static float SensitivityMultiplier { get; set; } = 2.5f;
+
+    private Vector3 startHandlebar;
+    private Quaternion startInputRotation;
+    private Quaternion startRotation;
+
+    public override void Setup(List<IXRSelectInteractor> interactors, IXRSelectInteractable interactable, MixedRealityTransform currentTarget)
+    {
+        base.Setup(interactors, interactable, currentTarget);
+
+        if (NumInteractors >= 2)
+        {
+            startHandlebar = GetHandlebarDirection(interactors, interactable);
+        }
+
+        startInputRotation = interactors[0].GetAttachTransform(interactable).rotation;
+        startRotation = currentTarget.Rotation;
+    }
+
+    public override Quaternion Update(List<IXRSelectInteractor> interactors, IXRSelectInteractable interactable, MixedRealityTransform currentTarget, bool centeredAnchor)
+    {
+        base.Update(interactors, interactable, currentTarget, centeredAnchor);
+
+        if (SelectedBySocket)
+        {
+            return interactors[0].GetAttachTransform(interactable).rotation;
+        }
+
+        Quaternion inputDelta = NumInteractors == 1
+            ? interactors[0].GetAttachTransform(interactable).rotation * Quaternion.Inverse(startInputRotation)
+            : Quaternion.FromToRotation(startHandlebar, GetHandlebarDirection(interactors, interactable));
+
+        return ScaleRotationDelta(inputDelta, Mathf.Max(0.0f, SensitivityMultiplier)) * startRotation;
+    }
+
+    private static Quaternion ScaleRotationDelta(Quaternion delta, float multiplier)
+    {
+        if (Mathf.Approximately(multiplier, 1.0f))
+        {
+            return delta;
+        }
+
+        delta.ToAngleAxis(out float angle, out Vector3 axis);
+        if (axis.sqrMagnitude < Mathf.Epsilon)
+        {
+            return delta;
+        }
+
+        if (angle > 180.0f)
+        {
+            angle -= 360.0f;
+        }
+
+        return Quaternion.AngleAxis(angle * multiplier, axis.normalized);
+    }
+
+    private static Vector3 GetHandlebarDirection(List<IXRSelectInteractor> interactors, IXRSelectInteractable interactable)
+    {
+        Debug.Assert(interactors.Count >= 2, $"GetHandlebarDirection called with less than 2 interactors ({interactors.Count}).");
+        return interactors[1].GetAttachTransform(interactable).position - interactors[0].GetAttachTransform(interactable).position;
+    }
 }

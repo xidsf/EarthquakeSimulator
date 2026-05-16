@@ -6,7 +6,8 @@ public enum FurnitureManipulationMode
 {
     None,
     Move,
-    Rotate
+    Rotate,
+    Scale
 }
 
 /// <summary>
@@ -36,6 +37,7 @@ public class FurnitureMoveModeController : MonoBehaviour
 
     public bool IsMoveModeEnabled => isMoveModeEnabled;
     public bool IsRotateModeEnabled => currentMode == FurnitureManipulationMode.Rotate;
+    public bool IsScaleModeEnabled => currentMode == FurnitureManipulationMode.Scale;
     public FurnitureManipulationMode CurrentMode => currentMode;
     public PlacedFurniture SelectedFurniture => IsValidIndex(selectedIndex) ? furnitures[selectedIndex] : null;
     public IReadOnlyList<PlacedFurniture> RegisteredFurnitures => furnitures;
@@ -106,6 +108,16 @@ public class FurnitureMoveModeController : MonoBehaviour
     public void SetRotateMode(bool enabled)
     {
         SetManipulationMode(enabled ? FurnitureManipulationMode.Rotate : FurnitureManipulationMode.None);
+    }
+
+    public void ToggleScaleMode()
+    {
+        SetScaleMode(currentMode != FurnitureManipulationMode.Scale);
+    }
+
+    public void SetScaleMode(bool enabled)
+    {
+        SetManipulationMode(enabled ? FurnitureManipulationMode.Scale : FurnitureManipulationMode.None);
     }
 
     public void SetManipulationMode(FurnitureManipulationMode mode)

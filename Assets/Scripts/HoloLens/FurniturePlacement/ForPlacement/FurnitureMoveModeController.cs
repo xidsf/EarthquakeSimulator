@@ -29,8 +29,18 @@ public class FurnitureMoveModeController : MonoBehaviour
     [Tooltip("allowAllFurnitureMovableInMoveMode가 false일 때, Move Mode가 켜질 때 선택된 가구가 없으면 첫 가구를 자동 선택합니다.")]
     public bool autoSelectFirstFurnitureWhenMoveModeEnabled = true;
 
+    [Header("Selection Visual")]
+    [Tooltip("선택된 가구의 BoxCollider 영역을 반투명하게 표시할 머티리얼입니다. 비워두면 표시하지 않습니다(투명 머티리얼 권장).")]
+    public Material selectionBoxMaterial;
+
+    [Tooltip("배치 완료 검증에서 조건 미충족으로 판정된 가구의 BoxCollider 영역에 표시할 머티리얼입니다. 선택/고정 머티리얼과 다른 색을 권장합니다(예: 반투명 빨강). 비워두면 표시하지 않습니다.")]
+    public Material invalidPlacementBoxMaterial;
+
     private readonly List<PlacedFurniture> furnitures = new List<PlacedFurniture>();
     private int selectedIndex = -1;
+    // 직전에 선택(=마지막으로 누른)했던 가구. 현재 선택이 고정되어 조작 불가가 될 때
+    // 이 가구로 선택을 옮겨 패널 버튼이 계속 동작하도록 한다.
+    private PlacedFurniture previousSelectedFurniture;
 
     public event Action<bool> MoveModeChanged;
     public event Action<PlacedFurniture> SelectionChanged;
@@ -153,6 +163,7 @@ public class FurnitureMoveModeController : MonoBehaviour
         }
 
         selectedIndex = selectedIndex < 0 ? 0 : (selectedIndex + 1) % furnitures.Count;
+        ClearValidationIndicatorOnSelect(SelectedFurniture);
         ApplyMovableState();
         SelectionChanged?.Invoke(SelectedFurniture);
         SelectedFurniture?.NotifySelectedByController("SelectNext");
@@ -170,6 +181,7 @@ public class FurnitureMoveModeController : MonoBehaviour
         }
 
         selectedIndex = selectedIndex < 0 ? 0 : (selectedIndex - 1 + furnitures.Count) % furnitures.Count;
+        ClearValidationIndicatorOnSelect(SelectedFurniture);
         ApplyMovableState();
         SelectionChanged?.Invoke(SelectedFurniture);
         SelectedFurniture?.NotifySelectedByController("SelectPrevious");
@@ -185,11 +197,47 @@ public class FurnitureMoveModeController : MonoBehaviour
             return;
         }
 
+        PlacedFurniture previous = SelectedFurniture;
+        if (previous != null && previous != furniture)
+        {
+            previousSelectedFurniture = previous;
+        }
+
         selectedIndex = index;
+        ClearValidationIndicatorOnSelect(furniture);
         ApplyMovableState();
         SelectionChanged?.Invoke(SelectedFurniture);
         SelectedFurniture?.NotifySelectedByController("SelectFurniture");
         Debug.Log($"[FurnitureMoveModeController] Selected: {SelectedFurniture.DisplayName}", SelectedFurniture);
+    }
+
+    // 현재 선택이 고정되어 조작할 수 없을 때, 마지막으로 누른(없으면 등록된) 비고정 가구로
+    // 선택을 옮긴다. 옮길 대상이 없으면 false를 반환하고 현재 선택을 유지한다.
+    public bool SelectLastPressedNonFixedFurniture()
+    {
+        PlacedFurniture current = SelectedFurniture;
+
+        if (CanFallbackTo(previousSelectedFurniture, current))
+        {
+            SelectFurniture(previousSelectedFurniture);
+            return true;
+        }
+
+        foreach (PlacedFurniture candidate in furnitures)
+        {
+            if (CanFallbackTo(candidate, current))
+            {
+                SelectFurniture(candidate);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool CanFallbackTo(PlacedFurniture furniture, PlacedFurniture exclude)
+    {
+        return furniture != null && furniture != exclude && furnitures.Contains(furniture) && !furniture.IsFixed;
     }
 
     public void ClearSelection()
@@ -217,6 +265,45 @@ public class FurnitureMoveModeController : MonoBehaviour
             }
 
             furniture.SetManipulationMode(mode);
+            UpdateBoxVisual(i);
+        }
+    }
+
+    // BoxCollider 영역 표시 우선순위: 미충족 > 선택됨 > 표시 안 함.
+    // 미충족 플래그는 가구를 실제로 선택/이동(= 다른 작업)할 때만 해제되며, 그 전까지는
+    // 선택 인덱스라도 미충족 material을 우선 표시한다. 한 번 해제되면 배치 완료 재검증
+    // 전까지 미충족 material로 돌아가지 않는다.
+    private void UpdateBoxVisual(int i)
+    {
+        PlacedFurniture furniture = furnitures[i];
+        if (furniture == null) return;
+
+        if (furniture.PlacementValidationFailed && invalidPlacementBoxMaterial != null)
+        {
+            furniture.SetSelectionBoxVisible(true, invalidPlacementBoxMaterial);
+        }
+        else if (i == selectedIndex)
+        {
+            furniture.SetSelectionBoxVisible(true, selectionBoxMaterial);
+        }
+        else
+        {
+            furniture.SetSelectionBoxVisible(false, null);
+        }
+    }
+
+    // 사용자가 가구를 실제로 선택하는 것은 "다른 작업"이므로 미충족 표시를 해제한다.
+    private static void ClearValidationIndicatorOnSelect(PlacedFurniture furniture)
+    {
+        if (furniture != null) furniture.SetPlacementValidationFailed(false);
+    }
+
+    // 배치 완료 검증 직후 패널에서 호출한다. 미충족 플래그에 따라 BoxCollider 표시를 갱신한다.
+    public void RefreshPlacementValidityVisuals()
+    {
+        for (int i = 0; i < furnitures.Count; i++)
+        {
+            UpdateBoxVisual(i);
         }
     }
 

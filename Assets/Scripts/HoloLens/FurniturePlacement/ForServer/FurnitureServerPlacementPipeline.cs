@@ -330,6 +330,20 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         return true;
     }
 
+    public bool RemovePlacedObject(PlacedFurniture furniture)
+    {
+        int index = FindPlacedFurnitureIndex(furniture);
+        if (index < 0) return false;
+
+        EnsurePendingTrackingArrays();
+        if (placedPendingInstances != null && index < placedPendingInstances.Length) placedPendingInstances[index] = null;
+        if (confirmedPendingObjects != null && index < confirmedPendingObjects.Length) confirmedPendingObjects[index] = false;
+
+        LastStatus = "manual_object_removed";
+        ResultListChanged?.Invoke(this);
+        return true;
+    }
+
     public int GetConfirmedPendingObjectCount()
     {
         if (confirmedPendingObjects == null) return 0;

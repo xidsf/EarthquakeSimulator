@@ -79,11 +79,11 @@ public class FurnitureServerResultPlacer : MonoBehaviour
     public bool centerModelXZ = true;
 
     [Header("Scale Guard")]
-    [Tooltip("스케일 적용 결과 가구가 방(바닥/천장 큐브)보다 크거나 절대 한계를 넘으면 localScale을 (1,1,1)로 되돌립니다. 비율은 GLB 원본이 유지됩니다.")]
-    public bool resetScaleWhenLargerThanRoom = true;
+    [Tooltip("Unity localScale이 비정상적으로 크면(SAM3D가 크기를 보정하므로 정상적으로는 클 일이 없음) (1,1,1)로 되돌립니다. 실제 미터 크기는 보지 않습니다.")]
+    public bool resetExtremeLocalScale = true;
 
-    [Tooltip("방 정보가 없을 때 사용할 가구 한 변의 절대 최대 크기(미터).")]
-    [Min(0.5f)] public float maxFurnitureSizeMeters = 5.0f;
+    [Tooltip("localScale 한 축이라도 이 값을 넘으면 비정상으로 보고 (1,1,1)로 리셋합니다.")]
+    [Min(1.0f)] public float maxLocalScaleBeforeReset = 5.0f;
 
     [Header("Placement")]
     [Tooltip("기존 서버 결과 가구를 지우고 새 result를 배치합니다.")]
@@ -106,6 +106,11 @@ public class FurnitureServerResultPlacer : MonoBehaviour
     public bool IsPlacing { get; private set; }
     public int LastPlacedCount { get; private set; }
     public int LastFailedCount { get; private set; }
+
+    // 현재 처리 중인 객체에서 ClampExtremeScale이 (1,1,1) 리셋을 적용했는지 여부.
+    // 리셋되면 서버 미터 메타데이터가 실제 메쉬 크기와 무관해지므로
+    // interaction BoxCollider는 실제 렌더러 bounds로 산출해야 한다.
+    private bool extremeScaleResetApplied;
 
     private void Awake()
     {
@@ -222,6 +227,8 @@ public class FurnitureServerResultPlacer : MonoBehaviour
 
     private IEnumerator PlaceServerObjectRoutine(FurnitureServerResultObject serverObject, Action<bool, GameObject, string> onComplete)
     {
+        extremeScaleResetApplied = false;
+
         bool loaded = false;
         GameObject instance = null;
         string loadError = string.Empty;
@@ -453,6 +460,18 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         // 이 오프셋이 있어야 ConfirmedRoomGeometryProvider의 ComputePenetration이 방향을 계산해 가구들을 밀어냅니다.
         position += new Vector3(UnityEngine.Random.Range(-0.02f, 0.02f), 0, UnityEngine.Random.Range(-0.02f, 0.02f));
 
+        // 카메라 전방 스폰이 방 밖(또는 벽 너머)이면 방 중앙으로 보정한다.
+        // 밖에서 스폰되면 lastValidPose가 방 밖이 되어 이후 모든 이동/회전이 "outside boundary"로 거부된다.
+        if (geometryProvider != null && geometryProvider.IsInitialized && !geometryProvider.IsInsideRoom(position))
+        {
+            Bounds roomBounds = geometryProvider.RoomBounds;
+            position = new Vector3(roomBounds.center.x, geometryProvider.FloorTopY, roomBounds.center.z);
+            if (logPlacement)
+            {
+                Debug.Log("[FurnitureServerResultPlacer] Manual spawn was outside room. Relocated to room center.", instance);
+            }
+        }
+
         instance.transform.SetPositionAndRotation(position, rotation);
     }
 
@@ -557,52 +576,54 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         ClampExtremeScale(instance);
     }
 
-    // 스케일 결과 가구가 방(바닥/천장 큐브)보다 크거나 절대 한계를 넘으면 비정상으로 보고 (1,1,1)로 되돌린다.
-    // 서버가 보내는 비율 자체는 GLB 원본이 유지되므로 너무 큰 경우만 fallback하면 된다.
+    // SAM3D가 크기를 보정해 보내므로 실제 미터 크기는 검사하지 않는다.
+    // Unity localScale 값만 보고, 비정상적으로 큰 경우(예: 5,5,5)에만 (1,1,1)로 되돌린다.
     private void ClampExtremeScale(GameObject instance)
     {
-        if (!resetScaleWhenLargerThanRoom || instance == null)
+        if (!resetExtremeLocalScale || instance == null)
         {
             return;
         }
 
-        if (!TryGetRendererBounds(instance, out Bounds bounds))
-        {
-            return;
-        }
+        Vector3 localScale = instance.transform.localScale;
+        float limit = Mathf.Max(1.0f, maxLocalScaleBeforeReset);
 
-        Vector3 size = bounds.size;
-        float limit = Mathf.Max(0.5f, maxFurnitureSizeMeters);
-        Vector3 maxSize = new Vector3(limit, limit, limit);
-
-        ConfirmedRoomGeometryProvider geometry = furniturePlacementManager != null
-            ? furniturePlacementManager.roomGeometryProvider
-            : null;
-        if (geometry != null && geometry.IsInitialized)
-        {
-            Vector3 roomSize = geometry.RoomBounds.size;
-
-            // Y 한계는 벽 AABB가 아니라 바닥/천장 collider 기반 실제 방 높이를 사용한다.
-            // 천장 collider가 없으면 CeilingBottomY가 +Infinity이므로 벽 AABB Y로 fallback.
-            float roomHeight = geometry.CeilingBottomY - geometry.FloorTopY;
-            float yLimit = (roomHeight > 0.01f && !float.IsInfinity(roomHeight))
-                ? roomHeight
-                : roomSize.y;
-
-            maxSize = new Vector3(
-                Mathf.Min(limit, roomSize.x),
-                Mathf.Min(limit, yLimit),
-                Mathf.Min(limit, roomSize.z));
-        }
-
-        if (size.x > maxSize.x || size.y > maxSize.y || size.z > maxSize.z)
+        if (Mathf.Abs(localScale.x) > limit ||
+            Mathf.Abs(localScale.y) > limit ||
+            Mathf.Abs(localScale.z) > limit)
         {
             Debug.LogWarning(
-                $"[FurnitureServerResultPlacer] Furniture too large (world size:{FormatVector(size)}, limit:{FormatVector(maxSize)}). " +
-                "localScale reset to (1,1,1).",
+                $"[FurnitureServerResultPlacer] Extreme localScale {FormatVector(localScale)} exceeds limit {limit:F2}. " +
+                "Reset to (1,1,1).",
                 instance);
             instance.transform.localScale = Vector3.one;
+            extremeScaleResetApplied = true;
         }
+    }
+
+    // extreme-scale 리셋이 적용된 경우, 서버 world 크기 메타데이터는 실제 메쉬와
+    // 무관하므로 보이는 렌더러의 local bounds로 BoxCollider를 맞춰 메쉬와 일치시킨다.
+    private bool TrySetInteractionBoxFromVisibleMesh(BoxCollider boxCollider, GameObject instance)
+    {
+        if (!extremeScaleResetApplied || boxCollider == null || instance == null)
+        {
+            return false;
+        }
+
+        if (!TryGetLocalVisibleRendererBounds(instance, out Bounds localBounds))
+        {
+            return false;
+        }
+
+        if (localBounds.size.x <= 0.0001f || localBounds.size.y <= 0.0001f || localBounds.size.z <= 0.0001f)
+        {
+            return false;
+        }
+
+        boxCollider.center = localBounds.center;
+        boxCollider.size = localBounds.size;
+        boxCollider.enabled = true;
+        return true;
     }
 
     private IEnumerator ApplyServerColliderRoutine(GameObject instance, FurnitureServerResultObject serverObject, Vector3 visualNormalizationOffset)
@@ -668,6 +689,17 @@ public class FurnitureServerResultPlacer : MonoBehaviour
             yield break;
         }
 
+        BoxCollider boxCollider = instance.GetComponent<BoxCollider>();
+        if (boxCollider == null)
+        {
+            boxCollider = instance.AddComponent<BoxCollider>();
+        }
+
+        if (TrySetInteractionBoxFromVisibleMesh(boxCollider, instance))
+        {
+            yield break;
+        }
+
         Vector3 colliderSizeWorld = GetFallbackColliderWorldSize(serverObject);
         if (!HasAllPositiveComponents(colliderSizeWorld))
         {
@@ -678,12 +710,6 @@ public class FurnitureServerResultPlacer : MonoBehaviour
             serverObject.collider_center,
             new Vector3(0f, colliderSizeWorld.y * 0.5f, 0f));
 
-        BoxCollider boxCollider = instance.GetComponent<BoxCollider>();
-        if (boxCollider == null)
-        {
-            boxCollider = instance.AddComponent<BoxCollider>();
-        }
-
         boxCollider.center = WorldSizeToLocalSize(colliderCenterWorld, instance.transform);
         boxCollider.size = WorldSizeToLocalSize(colliderSizeWorld, instance.transform);
         boxCollider.enabled = true;
@@ -691,6 +717,17 @@ public class FurnitureServerResultPlacer : MonoBehaviour
 
     private void AddBroadInteractionBoxCollider(GameObject instance, FurnitureServerResultObject serverObject)
     {
+        BoxCollider boxCollider = instance.GetComponent<BoxCollider>();
+        if (boxCollider == null)
+        {
+            boxCollider = instance.AddComponent<BoxCollider>();
+        }
+
+        if (TrySetInteractionBoxFromVisibleMesh(boxCollider, instance))
+        {
+            return;
+        }
+
         Vector3 colliderSizeWorld = GetFallbackColliderWorldSize(serverObject);
         if (!HasAllPositiveComponents(colliderSizeWorld))
         {
@@ -700,12 +737,6 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         Vector3 colliderCenterWorld = ToVector3(
             serverObject.collider_center,
             new Vector3(0f, colliderSizeWorld.y * 0.5f, 0f));
-
-        BoxCollider boxCollider = instance.GetComponent<BoxCollider>();
-        if (boxCollider == null)
-        {
-            boxCollider = instance.AddComponent<BoxCollider>();
-        }
 
         boxCollider.center = WorldSizeToLocalSize(colliderCenterWorld, instance.transform);
         boxCollider.size = WorldSizeToLocalSize(colliderSizeWorld, instance.transform);
@@ -1123,6 +1154,57 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         foreach (Renderer renderer in renderers)
         {
             if (renderer == null)
+            {
+                continue;
+            }
+
+            Bounds rendererLocalBounds = renderer.localBounds;
+            Vector3 min = rendererLocalBounds.min;
+            Vector3 max = rendererLocalBounds.max;
+
+            Vector3[] localCorners =
+            {
+                new Vector3(min.x, min.y, min.z),
+                new Vector3(min.x, min.y, max.z),
+                new Vector3(min.x, max.y, min.z),
+                new Vector3(min.x, max.y, max.z),
+                new Vector3(max.x, min.y, min.z),
+                new Vector3(max.x, min.y, max.z),
+                new Vector3(max.x, max.y, min.z),
+                new Vector3(max.x, max.y, max.z)
+            };
+
+            foreach (Vector3 rendererLocalCorner in localCorners)
+            {
+                Vector3 worldCorner = renderer.transform.TransformPoint(rendererLocalCorner);
+                Vector3 rootLocalCorner = root.transform.InverseTransformPoint(worldCorner);
+
+                if (!hasBounds)
+                {
+                    localBounds = new Bounds(rootLocalCorner, Vector3.zero);
+                    hasBounds = true;
+                }
+                else
+                {
+                    localBounds.Encapsulate(rootLocalCorner);
+                }
+            }
+        }
+
+        return hasBounds;
+    }
+
+    // 보이는(enabled) 렌더러만으로 root local 공간 bounds를 구한다.
+    // collider GLB 렌더러는 DisableRenderers로 꺼져 있어 자연히 제외된다.
+    private static bool TryGetLocalVisibleRendererBounds(GameObject root, out Bounds localBounds)
+    {
+        localBounds = default;
+        Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+        bool hasBounds = false;
+
+        foreach (Renderer renderer in renderers)
+        {
+            if (renderer == null || !renderer.enabled)
             {
                 continue;
             }

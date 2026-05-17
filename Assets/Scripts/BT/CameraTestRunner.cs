@@ -24,15 +24,7 @@ public class CameraTestRunner : MonoBehaviour
         {
             captureManager.SetupCameras();
         }
-    }
 
-    void Update()
-    {
-        // 스페이스바를 누르면 테스트 촬영 시작!
-        if (Input.GetKeyDown(KeyCode.Space))
-        {
-            Debug.Log("[CameraTest] 스페이스바 입력 감지: 테스트 촬영을 시작합니다.");
-            StartCoroutine(captureManager.CaptureSequence("TestCapture", testSavePath));
-        }
+        StartCoroutine(captureManager.CaptureSequence("TestCapture", testSavePath));
     }
 }

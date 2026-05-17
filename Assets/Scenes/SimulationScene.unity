@@ -295,7 +295,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &321225772
 Transform:
   m_ObjectHideFlags: 0
@@ -505,7 +505,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &565466163
 Transform:
   m_ObjectHideFlags: 0
@@ -613,7 +613,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &736945013
 Transform:
   m_ObjectHideFlags: 0
@@ -793,7 +793,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &769708121
 Transform:
   m_ObjectHideFlags: 0
@@ -1170,7 +1170,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &1494907138
 Transform:
   m_ObjectHideFlags: 0
@@ -1278,7 +1278,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &1524683324
 Transform:
   m_ObjectHideFlags: 0
@@ -1386,7 +1386,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &1552474505
 Transform:
   m_ObjectHideFlags: 0
@@ -1573,7 +1573,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &1604205552
 Transform:
   m_ObjectHideFlags: 0
@@ -2223,7 +2223,11 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1999106359}
-  - component: {fileID: 1999106358}
+  - component: {fileID: 1999106365}
+  - component: {fileID: 1999106363}
+  - component: {fileID: 1999106362}
+  - component: {fileID: 1999106361}
+  - component: {fileID: 1999106360}
   m_Layer: 0
   m_Name: earthquakemanager
   m_TagString: Untagged
@@ -2231,50 +2235,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1999106358
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1999106357}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8b42b60072e62f2409db46735227e3c2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  runtimeMode: 0
-  autoStartOnPlay: 1
-  returnRoomToOriginAfterSimulation: 0
-  quitApplicationOnServerComplete: 0
-  readCommandLineArguments: 0
-  localThaJsonAsset: {fileID: 0}
-  localThaJsonFilePath: 
-  displacementScale: 0.01
-  accelerationScale: 0.01
-  localThaDatabasePath: THA_Process_Data
-  earthquakeDataPreset: 1
-  localThaDt: 0.01
-  localThaMaxDurationSeconds: 20
-  floor: 1
-  buildingType: 0
-  targetMMI: 9
-  isLongPeriod: 0
-  useUIInLocalDevelopment: 1
-  uiManager: {fileID: 0}
-  mmiSlider: {fileID: 0}
-  mmiText: {fileID: 0}
-  roomRigidbody: {fileID: 768876945}
-  simulationMode: 0
-  useAccelerationBasedInertialSimulation: 0
-  furnitureRoot: {fileID: 224906948}
-  roomStructureRoot: {fileID: 768876943}
-  inertialAccelerationMultiplier: 1
-  includeVerticalInertialAcceleration: 0
-  driveRoomStructureRootInShakeTable: 1
-  shakeTableDisplacementMultiplier: 1
-  includeVerticalShakeTableDisplacement: 0
-  highestVelocity: 0
 --- !u!4 &1999106359
 Transform:
   m_ObjectHideFlags: 0
@@ -2290,6 +2250,127 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1999106360
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1999106357}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a05c738d27e1f15409587df116da626c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  captureManager: {fileID: 1999106362}
+  dataRecorder: {fileID: 1999106361}
+  earthquakeSimulator: {fileID: 1999106365}
+  earthquakeCsvFile: {fileID: 4900000, guid: cc8fa5fb9e8ca40408688b5dd07c134d, type: 3}
+  roomRigidbody: {fileID: 768876945}
+  roomStructureRoot: {fileID: 768876943}
+  furnitureRoot: {fileID: 224906949}
+  labelPrefab: {fileID: 5516786331101652362, guid: d3c25ea823d6af44da4fc654ce822974, type: 3}
+  sessionId: AutoTestSession_001
+  baseSavePath: C:\Users\user\Desktop\CameraTest
+  simulationAngles: 000000005a000000b40000000e010000
+--- !u!114 &1999106361
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1999106357}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 724ba9ffb7bbfbf4592203c2b37d44e3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &1999106362
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1999106357}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: edaeeb880898db84d914b2fa40483e93, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  floorTransform: {fileID: 1944705806}
+  wallHeight: 3
+  cameraDistanceMargin: 3
+  topCameraHeight: 10
+  cameraFieldOfView: 60
+  resolution: {x: 1920, y: 1080}
+--- !u!114 &1999106363
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1999106357}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2c09af559ca883b4a9cfa367baf35ed1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  captureManager: {fileID: 1999106362}
+  testSavePath: C:\Users\user\Desktop\CameraTest
+--- !u!114 &1999106365
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1999106357}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4d304410393bfa84c997b767123e500e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  localCsvAsset: {fileID: 4900000, guid: cc8fa5fb9e8ca40408688b5dd07c134d, type: 3}
+  localCsvFilePath: THA_Process_Data/el_centro/el_centro_for_unity.csv
+  runtimeCsvText: 
+  inputAccelerationUnit: 0
+  csvAxisConvention: 1
+  simulationMode: 0
+  autoStartOnPlay: 0
+  playbackSpeed: 1
+  inertialAccelerationMultiplier: 1
+  includeVerticalInertialAcceleration: 0
+  shakeTableDisplacementMultiplier: 1
+  includeVerticalShakeTableDisplacement: 0
+  returnToOriginAfterSimulation: 1
+  roomRigidbody: {fileID: 768876945}
+  furnitureRoot: {fileID: 224906948}
+  roomStructureRoot: {fileID: 768876943}
+  autoFindFurnitureRigidbodiesIfRootMissing: 0
+  setRoomStructureKinematicForInertialMode: 1
+  setRoomStructureKinematicForShakeTableMode: 1
+  setFurnitureContinuousDynamic: 1
+  enableFurnitureInterpolation: 1
+  buildingType: 0
+  currentFloor: 1
+  explicitTotalFloors: 0
+  pilotiCondition: 0
+  enableStrongMotionTrimming: 1
+  strongMotionPreSeconds: 5
+  strongMotionTotalSeconds: 25
+  isLoaded: 0
+  isSimulating: 0
+  loadedFrameCount: 0
+  detectedDt: 0
+  computedBuildingPeriod: 0
+  computedFloorRatio: 0
+  computedScaleFactor: 1
+  inputPgaGal: 0
+  floorPgaGal: 0
+  effectiveTotalFloors: 0
+  estimatedStoryHeightMeters: 0
+  estimatedBuildingHeightMeters: 0
+  pilotiResponseMultiplier: 0
+  elapsedSimulationTime: 0
 --- !u!1 &2009177400
 GameObject:
   m_ObjectHideFlags: 0
@@ -2308,7 +2389,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &2009177401
 Transform:
   m_ObjectHideFlags: 0
@@ -2689,7 +2770,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!33 &3008781384329609893
 MeshFilter:
   m_ObjectHideFlags: 0
@@ -2763,7 +2844,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!33 &3360348256219790249
 MeshFilter:
   m_ObjectHideFlags: 0
@@ -2809,7 +2890,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!23 &4422721641501776513
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -2882,7 +2963,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!1 &4905546063475691107
 GameObject:
   m_ObjectHideFlags: 0
@@ -3181,7 +3262,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!54 &6466442713458567969
 Rigidbody:
   m_ObjectHideFlags: 0

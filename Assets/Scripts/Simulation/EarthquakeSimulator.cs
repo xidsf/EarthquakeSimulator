@@ -243,6 +243,11 @@ public class EarthquakeSimulator : MonoBehaviour
     private float totalDuration;
     private bool completedEventRaised;
 
+    // =========================================================
+    // ★ 추가됨: 외부 매니저에서 현재 시뮬레이션 각도를 전달받는 변수
+    // =========================================================
+    private int currentSimulationAngle = 0;
+
     private void Awake()
     {
         CacheRigidbodies();
@@ -260,10 +265,14 @@ public class EarthquakeSimulator : MonoBehaviour
     // 외부 입력 API
     // ---------------------------------------------------------------------
 
-    /// <summary>
-    /// 사용자 입력 기반 건물 정보를 설정한다.
-    /// totalFloors가 0 이하이면 건물 종류별 대표 전체층수를 내부 추정한다.
-    /// </summary>
+    // =========================================================
+    // ★ 추가됨: 매니저에서 지진파의 각도를 설정하기 위해 호출하는 함수
+    // =========================================================
+    public void SetSimulationAngle(int angle)
+    {
+        currentSimulationAngle = angle;
+    }
+
     public void SetBuildingInfo(
         ResidentialBuildingType type,
         int livingFloor,
@@ -288,9 +297,6 @@ public class EarthquakeSimulator : MonoBehaviour
             explicitTotalFloors = Mathf.Max(explicitTotalFloors, currentFloor);
     }
 
-    /// <summary>
-    /// 전체 층수는 선택 입력이다. 모르면 0을 넣는다.
-    /// </summary>
     public void SetTotalFloors(int totalFloors)
     {
         explicitTotalFloors = Mathf.Max(0, totalFloors);
@@ -304,29 +310,17 @@ public class EarthquakeSimulator : MonoBehaviour
         pilotiCondition = piloti;
     }
 
-    /// <summary>
-    /// HoloLens2 방 인식으로 얻은 실내 바닥-천장 높이.
-    /// 이 값은 층고 추정의 핵심 실측값으로 사용된다.
-    /// </summary>
     public void SetMeasuredRoomClearHeight(float heightMeters)
     {
         measuredRoomClearHeightMeters = Mathf.Clamp(heightMeters, 1.8f, 4.5f);
         hasMeasuredRoomClearHeight = true;
     }
 
-    /// <summary>
-    /// 층간 구조/슬래브/천장 속 공간 보정값.
-    /// 사용자가 직접 입력하는 값이 아니라, 앱 내부 정책이나 추후 공공 설계기준 기반 값으로 주입한다.
-    /// </summary>
     public void SetFloorAssemblyAllowance(float allowanceMeters)
     {
         floorAssemblyAllowanceMeters = Mathf.Clamp(allowanceMeters, 0.0f, 1.2f);
     }
 
-    /// <summary>
-    /// 전체 층수를 모를 때 사용할 대표 전체층수 추정값.
-    /// 앱 설정/지역별 통계/공공 데이터 근거가 생기면 이 값만 교체하면 된다.
-    /// </summary>
     public void SetDefaultTotalFloorsByBuildingType(
         int apartmentFloors,
         int villaFloors,
@@ -337,10 +331,6 @@ public class EarthquakeSimulator : MonoBehaviour
         defaultDetachedHouseTotalFloors = Mathf.Max(1, detachedHouseFloors);
     }
 
-    /// <summary>
-    /// 강진 위험 분석용 내부 시나리오 강도.
-    /// 일반 사용자 UI에는 노출하지 않고, 개발/설정값으로만 사용한다.
-    /// </summary>
     public void SetStrongScenarioMmi(int mmi)
     {
         strongScenarioMmi = Mathf.Clamp(mmi, 5, 9);
@@ -357,10 +347,6 @@ public class EarthquakeSimulator : MonoBehaviour
         maxScaleFactor = Mathf.Max(minScaleFactor, maxValue);
     }
 
-    /// <summary>
-    /// 필로티 구조일 때의 보수적 층응답 증폭값.
-    /// KDS 공식값이 아니라 실거주 위험 분석용 내부 보정값이다.
-    /// </summary>
     public void SetPilotiResponseMultipliers(float yesMultiplier, float unknownMultiplier = 1.0f)
     {
         pilotiYesResponseMultiplier = Mathf.Clamp(yesMultiplier, 1.0f, 2.0f);
@@ -494,7 +480,7 @@ public class EarthquakeSimulator : MonoBehaviour
             SimulationStarted?.Invoke();
 
             Debug.Log(
-                $"[EarthquakeSimulator] Simulation started. " +
+                $"[EarthquakeSimulator] Simulation started. (Angle: {currentSimulationAngle}도) " +
                 $"building={buildingType}, floor={currentFloor}/{effectiveTotalFloors}, piloti={pilotiCondition}, " +
                 $"frames={frames.Count}, dt={detectedDt:F4}, period={computedBuildingPeriod:F3}s, " +
                 $"floorRatio={computedFloorRatio:F3}, scale={computedScaleFactor:F3}, " +
@@ -559,12 +545,18 @@ public class EarthquakeSimulator : MonoBehaviour
 
         frames.Clear();
 
+        // =========================================================
+        // ★ 추가됨: 여기서 지진파 벡터(가속도, 변위)에 회전을 적용합니다.
+        // =========================================================
+        Quaternion rotationOffset = Quaternion.Euler(0, currentSimulationAngle, 0);
+
         for (int i = 0; i < floorMotion.count; i++)
         {
             frames.Add(new SeismicFrame
             {
-                displacement = floorMotion.displacementMeters[i],
-                acceleration = floorMotion.accelerationMetersPerSecondSquared[i]
+                // Y축을 기준으로 currentSimulationAngle 만큼 회전
+                displacement = rotationOffset * floorMotion.displacementMeters[i],
+                acceleration = rotationOffset * floorMotion.accelerationMetersPerSecondSquared[i]
             });
         }
 
@@ -747,9 +739,6 @@ public class EarthquakeSimulator : MonoBehaviour
             ScaleInPlace(groundZ, scale);
         }
 
-        // 3-mode modal superposition (전단보 가정: T_n = T_1/(2n-1), Γ_n = 4/((2n-1)π)).
-        // ü_floor(z,t) = Σ_n Γ_n φ_n(z) ü_abs_n(t) + (1 − Σ_n Γ_n φ_n(z)) ü_g(t)
-        // 마지막 항은 3-mode truncation에 대한 static correction (잔여 ground motion 기여분).
         int clampedFloor = Mathf.Clamp(currentFloor, 1, Math.Max(1, totalFloorsForComputation));
         double normalizedHeight = (double)clampedFloor / Math.Max(1, totalFloorsForComputation);
 
@@ -817,12 +806,10 @@ public class EarthquakeSimulator : MonoBehaviour
         if (applyVerticalFloorResponse)
             ApplyMultiplierInPlace(floorY, pilotiMultiplier);
 
-        // 변위는 필터 settling을 위해 full-length 시간이력에서 적분 후 trim.
         double[] dispXcm = CalculateDisplacementCm(floorX, ground.dt);
         double[] dispYcm = CalculateDisplacementCm(floorY, ground.dt);
         double[] dispZcm = CalculateDisplacementCm(floorZ, ground.dt);
 
-        // Strong-motion phase trimming.
         int sliceStart = 0;
         int sliceEnd = ground.count;
         if (enableStrongMotionTrimming && ground.count > 0)
@@ -841,7 +828,6 @@ public class EarthquakeSimulator : MonoBehaviour
 
         int count = sliceEnd - sliceStart;
 
-        // 슬라이스 시작 시점의 변위를 원점으로 재설정 (ShakeTable이 초기위치에서 출발하도록).
         double dxOrigin = dispXcm[sliceStart];
         double dyOrigin = dispYcm[sliceStart];
         double dzOrigin = dispZcm[sliceStart];
@@ -1069,21 +1055,17 @@ public class EarthquakeSimulator : MonoBehaviour
         switch (type)
         {
             case ResidentialBuildingType.Apartment:
-                // 아파트는 실무상 RC 전단벽/벽식 구조가 많으므로 KDS의 철근콘크리트전단벽구조/기타골조 계수 사용.
                 ct = 0.0488;
                 exponent = 0.75;
                 break;
 
             case ResidentialBuildingType.Villa:
-                // 빌라는 저층 RC/조적/혼합 구조가 많아 정확한 구조시스템을 알기 어렵다.
-                // 일반 사용자 입력만 받는 조건에서는 RC 모멘트골조 약산식을 대표값으로 사용한다.
                 ct = 0.0466;
                 exponent = 0.90;
                 break;
 
             case ResidentialBuildingType.DetachedHouse:
             default:
-                // 단독주택은 구조형식 편차가 크다. KDS 표의 기타골조 계수를 보수적 대표값으로 사용한다.
                 ct = 0.0488;
                 exponent = 0.75;
                 break;
@@ -1135,10 +1117,8 @@ public class EarthquakeSimulator : MonoBehaviour
             case 6: return 1000;
             case 7: return 2400;
             case 8:
-            case 9:
-                return 4800;
-            default:
-                return 1000;
+            case 9: return 4800;
+            default: return 1000;
         }
     }
 
@@ -1159,8 +1139,6 @@ public class EarthquakeSimulator : MonoBehaviour
 
     private double ComputeKdsLikeDesignSpectrumG(double period, int returnPeriod)
     {
-        // 강진 시나리오 스케일링용 간략 설계스펙트럼.
-        // 지역/지반조건을 사용자에게 묻지 않는 전도 위험 분석용 기본값이다.
         double z = 0.11;
         double s = z * GetKdsRiskFactor(returnPeriod);
         double fa;
@@ -1239,11 +1217,6 @@ public class EarthquakeSimulator : MonoBehaviour
 
         for (int i = 0; i < groundAccelerationGal.Length; i++)
         {
-            // 상대운동 방정식:
-            // u'' + c u' + k u = -ag
-            //
-            // 절대가속도:
-            // a_abs = u'' + ag = -c u' - k u
             absoluteAcceleration[i] = -dampingCoefficient * relativeVelocity - stiffness * relativeDisplacement;
 
             StepSdofRungeKutta(
@@ -1299,9 +1272,6 @@ public class EarthquakeSimulator : MonoBehaviour
 
     private double[] CalculateDisplacementCm(double[] accelerationGal, double dt)
     {
-        // gal = cm/s^2 이므로 적분 결과는 cm/s, cm가 된다.
-        // cutoff 0.05Hz는 표준 strong-motion processing 관행 범위(0.05~0.1Hz)의 하한으로,
-        // 장주기 변위 성분을 가능한 보존하면서 baseline drift는 차단한다.
         const double cutoffHz = 0.05;
         double[] accelerationFiltered = HighPassFilter(accelerationGal, dt, cutoffHz);
         double[] velocity = CumulativeTrapezoid(accelerationFiltered, dt);
@@ -1325,8 +1295,6 @@ public class EarthquakeSimulator : MonoBehaviour
         if (values == null || values.Length == 0)
             return new double[0];
 
-        // Zero-phase: forward + reversed forward (총 2회). 이전 구현은 2-pass × forward/backward = 4회로
-        // 저주파 변위 성분을 과도하게 깎았음.
         double[] filtered = OnePoleHighPass(values, dt, cutoffHz);
         Array.Reverse(filtered);
         filtered = OnePoleHighPass(filtered, dt, cutoffHz);

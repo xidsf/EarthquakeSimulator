@@ -487,11 +487,11 @@ public class BuildingInfoController : WorkflowPanelControllerBase
 
         // 입력한 건물 정보를 클라이언트 전역 상태에 저장. 이후 가구 배치 완료 시
         // SimulationInputBuilder가 읽어 서버로 전송한다.
-        ClientBuildingInfo.Set(
-            MapBuildingTypeToContract(text_BuildingType != null ? text_BuildingType.text : null),
-            floorNumber,
-            totalFloors,
-            PilotiToContractString());
+        //ClientBuildingInfo.Set(
+        //    MapBuildingTypeToContract(text_BuildingType != null ? text_BuildingType.text : null),
+        //    floorNumber,
+        //    totalFloors,
+        //    PilotiToContractString());
 
         // 모든 검사를 통과하면 다음 워크플로우 단계로 진행
         RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteRoomInfoInput);

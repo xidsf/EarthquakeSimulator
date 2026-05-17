@@ -15,6 +15,12 @@ EditorBuildSettings:
     path: Assets/Scenes/SceneUnderstandingTest.unity
     guid: 8ee7a21ad413b314ea4d23edb16aa645
   - enabled: 1
+    path: Assets/Scenes/BootstrapScene.unity
+    guid: 014d0c1ca0dd93f42a68c46bb5c843aa
+  - enabled: 1
+    path: Assets/Scripts/BT/ForTest/MainSimulationScene.unity
+    guid: 526671473272a344bbb8f95a7ca38f26
+  - enabled: 1
     path: Assets/Scenes/MainScene_hololens.unity
     guid: 5ba8c6f4cd8f0e748b2922c652bf8460
   m_configObjects:

@@ -976,7 +976,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         if (saveSimulationInputLocallyInsteadOfSend)
         {
             string localSessionId = string.IsNullOrWhiteSpace(sessionId) ? "local_test" : sessionId;
-            string json = SimulationInputBuilder.BuildJson(localSessionId, furniturePlacementManager.PlacedFurnitures, roomManager);
+            //string json = SimulationInputBuilder.BuildJson(localSessionId, furniturePlacementManager.PlacedFurnitures, roomManager);
 
             string fileName = string.IsNullOrWhiteSpace(simulationInputLocalFileName)
                 ? "simulation_input.json"
@@ -985,7 +985,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
 
             try
             {
-                File.WriteAllText(fullPath, json);
+                //File.WriteAllText(fullPath, json);
                 Debug.Log($"[FurniturePlacementPanelController] Simulation input saved locally: {fullPath}");
                 uiManager?.ShowNotification($"?쒕??덉씠???낅젰??濡쒖뺄????ν뻽?듬땲?? {fullPath}");
             }
@@ -1008,8 +1008,8 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
             return;
         }
 
-        string body = SimulationInputBuilder.BuildJson(sessionId, furniturePlacementManager.PlacedFurnitures, roomManager);
-        StartCoroutine(PostSimulationInputRoutine(apiClient, sessionId, body));
+        //string body = SimulationInputBuilder.BuildJson(sessionId, furniturePlacementManager.PlacedFurnitures, roomManager);
+        //StartCoroutine(PostSimulationInputRoutine(apiClient, sessionId, body));
     }
 
     private IEnumerator PostSimulationInputRoutine(FurnitureServerApiClient apiClient, string sessionId, string json)

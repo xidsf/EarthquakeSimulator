@@ -105,7 +105,7 @@ public class SimulationBootstrap : MonoBehaviour
         // HeadlessSimulationRunner를 생성하도록 예약한다(.unity 씬 수정 불필요).
         if (SimulationRunConfig.HasHeadlessSimulationPaths())
         {
-            HeadlessSimulationRunner.ScheduleAutoSpawn();
+            //HeadlessSimulationRunner.ScheduleAutoSpawn();
         }
 
         SceneManager.LoadScene(sceneToLoad);

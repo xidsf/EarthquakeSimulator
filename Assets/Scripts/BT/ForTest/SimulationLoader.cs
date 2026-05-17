@@ -1,103 +1,204 @@
-using System;
-using System.IO;
+Ôªøusing System;
 using System.Collections.Generic;
-using UnityEngine;
+using System.IO;
+using System.Threading.Tasks;
 using GLTFast;
+using UnityEngine;
 
 public class SimulationLoader : MonoBehaviour
 {
+#if UNITY_EDITOR
+    private const string EditorTestGlbAssetFolder = "Assets/TestGLB";
+#endif
+
     [Header("Room Layout Root")]
     [SerializeField] private Transform roomParent;
 
     [Header("Prefabs (Optional)")]
     [SerializeField] private GameObject wallPrefab;
+    [SerializeField] private Material wallMaterial;
+
+    [Header("Editor Test Input")]
+    [Tooltip("Editor ÌÖåÏä§Ìä∏Ïö© JSON ÌååÏùº Í≤ΩÎ°úÏûÖÎãàÎã§. Ìè¥ÎçîÎ•º ÎÑ£ÏúºÎ©¥ simulation_input.jsonÏùÑ Ï∞æÏäµÎãàÎã§.")]
+    public string testJsonAssetPath = "Assets/Scripts/BT/ForTest/simulation_input.json";
+
+    [Header("Model Alignment")]
+    [SerializeField] private bool normalizeModelToGround = true;
+    [SerializeField] private bool centerModelXZ = true;
+
+    private Transform generatedFloorTransform;
 
     private async void Start()
     {
         string inputDir = SimulationRunConfig.InputDir;
         string sessionId = SimulationRunConfig.SessionId;
+        string jsonPath;
+        string glbDir;
 
 #if UNITY_EDITOR
         if (string.IsNullOrEmpty(inputDir))
         {
-            inputDir = @"C:\Users\user\Desktop\JsonTest";
             sessionId = "room_scan_70630b05-6ef2-4b5a-8741-54d20a5d9365";
+            SimulationRunConfig.SessionId = sessionId;
+            jsonPath = ResolveEditorTestJsonPath();
+            glbDir = ResolveProjectPath(EditorTestGlbAssetFolder);
         }
-#endif
-
+        else
+        {
+            jsonPath = ResolveInputJsonPath(inputDir);
+            glbDir = inputDir;
+        }
+#else
         if (string.IsNullOrEmpty(inputDir)) return;
 
-        string jsonFileName = SimulationRunConfig.IsDebugSession ? SimulationRunConfig.DebugInputFileName : "simulation_input.json";
-        string jsonPath = Path.Combine(inputDir, jsonFileName);
+        jsonPath = ResolveInputJsonPath(inputDir);
+        glbDir = inputDir;
+#endif
 
-        if (!File.Exists(jsonPath))
+        if (roomParent == null) roomParent = transform;
+
+        if (string.IsNullOrEmpty(jsonPath) || !File.Exists(jsonPath))
         {
-            Debug.LogError($"[SimulationLoader] JSON ∆ƒ¿œ¿ª √£¿ª ºˆ æ¯Ω¿¥œ¥Ÿ: {jsonPath}");
+            Debug.LogError($"[SimulationLoader] JSON file not found: {jsonPath}");
             return;
         }
 
         string jsonContent = File.ReadAllText(jsonPath);
         SimulationInput inputData = JsonUtility.FromJson<SimulationInput>(jsonContent);
+        if (inputData == null)
+        {
+            Debug.LogError($"[SimulationLoader] Failed to parse JSON: {jsonPath}");
+            return;
+        }
 
-        // 1. ∫Æ π◊ πŸ¥⁄ ª˝º∫
-        GenerateWalls(inputData.room);
+        if (string.IsNullOrWhiteSpace(sessionId) && !string.IsNullOrWhiteSpace(inputData.session_id))
+            SimulationRunConfig.SessionId = inputData.session_id;
 
-        // 2. ∞°±∏ ∫Òµø±‚ ∑Œµ˘
-        List<GameObject> loadedFurnitures = await GenerateFurnitureAsync(inputData.furnitures, inputDir);
+        GenerateRoom(inputData.room);
+        List<GameObject> loadedFurnitures = await GenerateFurnitureAsync(inputData.furnitures, glbDir);
 
-        // 3. ∑Œµ˘ øœ∑· »ƒ ∏≈¥œ¿˙∑Œ ≥—±‚±‚
         ServerSimulationManager serverManager = FindFirstObjectByType<ServerSimulationManager>();
         if (serverManager != null)
         {
-            serverManager.InitializeAndStartPipeline(roomParent.gameObject, loadedFurnitures);
+            serverManager.InitializeAndStartPipeline(roomParent.gameObject, loadedFurnitures, inputData, generatedFloorTransform);
         }
     }
 
-    private void GenerateWalls(RoomData roomData)
+    private string ResolveInputJsonPath(string inputDirOrJsonPath)
+    {
+        if (string.IsNullOrWhiteSpace(inputDirOrJsonPath)) return null;
+        if (File.Exists(inputDirOrJsonPath)) return inputDirOrJsonPath;
+
+        string jsonFileName = SimulationRunConfig.IsDebugSession
+            ? SimulationRunConfig.DebugInputFileName
+            : "simulation_input.json";
+
+        return Path.Combine(inputDirOrJsonPath, jsonFileName);
+    }
+
+#if UNITY_EDITOR
+    private string ResolveEditorTestJsonPath()
+    {
+        string resolved = ResolveProjectPath(testJsonAssetPath);
+        if (File.Exists(resolved)) return resolved;
+
+        string jsonFileName = SimulationRunConfig.IsDebugSession
+            ? SimulationRunConfig.DebugInputFileName
+            : "simulation_input.json";
+
+        return Path.Combine(resolved, jsonFileName);
+    }
+
+    private string ResolveProjectPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        if (Path.IsPathRooted(path)) return path;
+
+        string projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+        return Path.GetFullPath(Path.Combine(projectRoot, path));
+    }
+#endif
+
+    private void GenerateRoom(RoomData roomData)
     {
         if (roomData == null) return;
 
         if (roomData.walls != null)
         {
-            foreach (var wallData in roomData.walls)
+            for (int i = 0; i < roomData.walls.Count; i++)
             {
-                GameObject wallObj = wallPrefab != null ? Instantiate(wallPrefab, roomParent) : GameObject.CreatePrimitive(PrimitiveType.Cube);
-                wallObj.name = "Generated_Wall";
-                wallObj.transform.SetParent(roomParent);
-                wallObj.transform.localPosition = wallData.GetCenter();
-                wallObj.transform.localScale = wallData.GetSize();
-                wallObj.transform.localRotation = Quaternion.Euler(wallData.GetEuler());
+                GameObject wallObj = CreateRoomBox(roomData.walls[i], $"Generated_Wall_{i}");
+                ApplyMaterial(wallObj, wallMaterial);
             }
         }
 
-        if (roomData.floor != null && roomData.floor.center != null && roomData.floor.center.Length >= 3)
+        if (roomData.floor != null)
         {
-            GameObject floorObj = wallPrefab != null ? Instantiate(wallPrefab, roomParent) : GameObject.CreatePrimitive(PrimitiveType.Cube);
-            floorObj.name = "Generated_Floor";
-            floorObj.transform.SetParent(roomParent);
-            floorObj.transform.localPosition = roomData.floor.GetCenter();
-            floorObj.transform.localScale = roomData.floor.GetSize();
-            floorObj.transform.localRotation = Quaternion.Euler(roomData.floor.GetEuler());
+            GameObject floorObj = CreateRoomBox(roomData.floor, "Generated_Floor");
+            generatedFloorTransform = floorObj != null ? floorObj.transform : null;
+        }
+
+        if (roomData.ceiling != null)
+        {
+            GameObject ceilingObj = CreateRoomBox(roomData.ceiling, "Generated_Ceiling");
+            DisableRenderersOnly(ceilingObj);
         }
     }
 
-    private async System.Threading.Tasks.Task<List<GameObject>> GenerateFurnitureAsync(List<FurnitureData> furnitureList, string inputDir)
+    private GameObject CreateRoomBox(WallData boxData, string objectName)
+    {
+        if (boxData == null) return null;
+
+        GameObject obj = wallPrefab != null ? Instantiate(wallPrefab, roomParent) : GameObject.CreatePrimitive(PrimitiveType.Cube);
+        obj.name = objectName;
+        obj.transform.SetParent(roomParent, false);
+        obj.transform.localPosition = boxData.GetCenter();
+        obj.transform.localScale = boxData.GetSize();
+        obj.transform.localRotation = Quaternion.Euler(boxData.GetEuler());
+
+        if (obj.GetComponentInChildren<Collider>() == null)
+            obj.AddComponent<BoxCollider>();
+
+        return obj;
+    }
+
+    private void DisableRenderersOnly(GameObject obj)
+    {
+        if (obj == null) return;
+
+        foreach (Renderer renderer in obj.GetComponentsInChildren<Renderer>(true))
+        {
+            renderer.enabled = false;
+        }
+    }
+
+    private void ApplyMaterial(GameObject obj, Material material)
+    {
+        if (obj == null || material == null) return;
+
+        foreach (Renderer renderer in obj.GetComponentsInChildren<Renderer>(true))
+        {
+            renderer.sharedMaterial = material;
+        }
+    }
+
+    private async Task<List<GameObject>> GenerateFurnitureAsync(List<FurnitureData> furnitureList, string inputDir)
     {
         List<GameObject> spawned = new List<GameObject>();
         if (furnitureList == null) return spawned;
 
-        foreach (var furData in furnitureList)
+        foreach (FurnitureData furData in furnitureList)
         {
-            string searchPattern = $"*{furData.furniture_id}*.glb";
-            string[] matchingFiles = Directory.GetFiles(inputDir, searchPattern);
+            string glbPath = ResolveGlbPath(inputDir, furData.mesh_file, furData.furniture_id, preferCollider: false);
+            if (string.IsNullOrEmpty(glbPath))
+            {
+                Debug.LogWarning($"[SimulationLoader] Visual GLB not found for furniture_id={furData.furniture_id}");
+                continue;
+            }
 
-            if (matchingFiles.Length == 0) continue;
-            string glbPath = matchingFiles[0];
-
-            GameObject furnitureObj = new GameObject($"{furData.label}_{furData.instance_index}");
-            furnitureObj.transform.SetParent(roomParent);
-
-            // JSON ±‚π› ∆Æ∑£Ω∫∆˚ º≥¡§ (1¬˜)
+            string labelName = BuildFurnitureTagName(furData);
+            GameObject furnitureObj = new GameObject(labelName);
+            furnitureObj.transform.SetParent(roomParent, false);
             furnitureObj.transform.localPosition = furData.GetPosition();
             furnitureObj.transform.localRotation = furData.GetRotation();
             furnitureObj.transform.localScale = furData.GetScale();
@@ -105,91 +206,223 @@ public class SimulationLoader : MonoBehaviour
             var gltf = new GltfImport();
             bool success = await gltf.Load(glbPath);
 
-            if (success)
+            if (!success)
             {
-                await gltf.InstantiateMainSceneAsync(furnitureObj.transform);
-
-                // [Ω≈±‘] πŸ¥⁄ø° ∆ƒπØ»˘ ««π˛¿ª √¯¡§«œø© ∞¯¡ﬂ¿∏∑Œ ≤Ù¡˝æÓ ø√∏≥¥œ¥Ÿ.
-                AdjustPivotToBottom(furnitureObj, furData);
-
-                // √Êµπ√º ¡§π– ª˝º∫ (∞¢ ∏ﬁΩ¨ø° µ¸ ∏¬∞‘)
-                EnsureColliders(furnitureObj);
-
-                // π∞∏Æ ø£¡¯ ∞°µø
-                ConfigurePhysics(furnitureObj, furData.is_fixed);
-
-                spawned.Add(furnitureObj);
-            }
-            else
-            {
+                Debug.LogWarning($"[SimulationLoader] glTF load failed: {glbPath}");
                 Destroy(furnitureObj);
+                continue;
             }
+
+            await gltf.InstantiateMainSceneAsync(furnitureObj.transform);
+            Vector3 normalizationOffset = NormalizeModelIfNeeded(furnitureObj);
+
+            bool hasCollider = await TryLoadColliderGlbAsync(furnitureObj, furData, inputDir, normalizationOffset);
+            if (!hasCollider) EnsureFallbackColliders(furnitureObj);
+
+            ConfigurePhysics(furnitureObj, furData);
+            spawned.Add(furnitureObj);
         }
+
         return spawned;
     }
 
-    // °⁄ «ŸΩ… ºˆ¡§ ±‚¥…: ««π˛ ø¿¬˜∏¶ ∞ËªÍ«œø© ∞°±∏∏¶ πŸ¥⁄ ¿ß∑Œ ¡§»Æ»˜ ø√∏Æ¥¬ «‘ºˆ
-    private void AdjustPivotToBottom(GameObject obj, FurnitureData data)
+    private string ResolveGlbPath(string inputDir, string configuredPath, string furnitureId, bool preferCollider)
     {
-        Bounds bounds = new Bounds(obj.transform.position, Vector3.zero);
-        bool hasBounds = false;
-
-        foreach (Renderer render in obj.GetComponentsInChildren<Renderer>())
+        if (!string.IsNullOrWhiteSpace(configuredPath))
         {
-            if (render is MeshRenderer || render is SkinnedMeshRenderer)
-            {
-                if (!hasBounds) { bounds = render.bounds; hasBounds = true; }
-                else { bounds.Encapsulate(render.bounds); }
-            }
+            string path = Path.IsPathRooted(configuredPath) ? configuredPath : Path.Combine(inputDir, configuredPath);
+            if (File.Exists(path)) return path;
         }
 
-        if (hasBounds)
+        if (string.IsNullOrWhiteSpace(furnitureId) || !Directory.Exists(inputDir)) return null;
+
+        string[] matches = Directory.GetFiles(inputDir, $"*{furnitureId}*.glb", SearchOption.TopDirectoryOnly);
+        if (matches.Length == 0) return null;
+
+        Array.Sort(matches, StringComparer.OrdinalIgnoreCase);
+        foreach (string match in matches)
         {
-            // «ˆ¿Á º≥¡§µ» Y¡¬«•(πŸ¥⁄∏È)øÕ Ω«¡¶ ∏µ®¿« ∞°¿Â æ∆∑ß∫Œ∫–(bounds.min.y)¿« ¬˜¿Ã∏¶ ±∏«‘
-            float buriedDepth = obj.transform.position.y - bounds.min.y;
-
-            // ∆ƒπØ»˘ ±Ì¿Ã∏∏≈≠ ø¿∫Í¡ß∆Æ∏¶ ≈Î¬∞∑Œ ¿ß∑Œ ≤¯æÓø√∏≤
-            Vector3 correctedPos = obj.transform.position;
-            correctedPos.y += buriedDepth;
-
-            // π∞∏Æ Ω√πƒ∑π¿Ãº«¿ª «œ¥¬ ∞°±∏(is_fixed: false)¥¬ √Êµπ πˆ±◊∏¶ ∏∑±‚ ¿ß«ÿ πŸ¥⁄ø°º≠ 2cm(0.02f) ªÏ¬¶ ∂Áøˆº≠ ≈ı«œ«’¥œ¥Ÿ.
-            if (!data.is_fixed)
-            {
-                correctedPos.y += 0.02f;
-            }
-
-            obj.transform.position = correctedPos;
+            string lower = Path.GetFileName(match).ToLowerInvariant();
+            bool looksCollider = lower.Contains("collider") || lower.Contains("convex") || lower.Contains("hull");
+            if (preferCollider == looksCollider) return match;
         }
+
+        return preferCollider ? null : matches[0];
     }
 
-    private void EnsureColliders(GameObject obj)
+    private static string BuildFurnitureTagName(FurnitureData furData)
+    {
+        if (furData == null) return "furniture_001";
+
+        string id = furData.furniture_id;
+        if (!string.IsNullOrWhiteSpace(id))
+        {
+            string normalizedId = id.Trim();
+            if (normalizedId.StartsWith("scene_", StringComparison.OrdinalIgnoreCase))
+                normalizedId = normalizedId.Substring("scene_".Length);
+
+            int separatorIndex = normalizedId.LastIndexOf('_');
+            if (separatorIndex >= 0 && separatorIndex < normalizedId.Length - 1)
+            {
+                string prefix = normalizedId.Substring(0, separatorIndex);
+                string suffix = normalizedId.Substring(separatorIndex + 1);
+                if (int.TryParse(suffix, out int parsedIndex))
+                    return $"{prefix}_{parsedIndex:000}";
+            }
+
+            return normalizedId;
+        }
+
+        string label = string.IsNullOrWhiteSpace(furData.label) ? "furniture" : furData.label.Trim();
+        return $"{label}_{Mathf.Max(0, furData.instance_index) + 1:000}";
+    }
+
+    private async Task<bool> TryLoadColliderGlbAsync(GameObject furnitureObj, FurnitureData furData, string inputDir, Vector3 visualNormalizationOffset)
+    {
+        string colliderPath = ResolveGlbPath(inputDir, furData.collider_file, furData.furniture_id, preferCollider: true);
+        if (string.IsNullOrEmpty(colliderPath)) return false;
+
+        GameObject colliderRoot = new GameObject("ColliderHull");
+        colliderRoot.transform.SetParent(furnitureObj.transform, false);
+        colliderRoot.transform.localPosition = visualNormalizationOffset;
+
+        var gltf = new GltfImport();
+        bool loaded = await gltf.Load(colliderPath);
+        if (!loaded)
+        {
+            Destroy(colliderRoot);
+            return false;
+        }
+
+        await gltf.InstantiateMainSceneAsync(colliderRoot.transform);
+
+        bool hasCollider = false;
+        foreach (Renderer renderer in colliderRoot.GetComponentsInChildren<Renderer>(true))
+            renderer.enabled = false;
+
+        foreach (MeshFilter meshFilter in colliderRoot.GetComponentsInChildren<MeshFilter>(true))
+        {
+            if (meshFilter == null || meshFilter.sharedMesh == null) continue;
+            MeshCollider meshCollider = meshFilter.gameObject.AddComponent<MeshCollider>();
+            meshCollider.sharedMesh = meshFilter.sharedMesh;
+            meshCollider.convex = true;
+            hasCollider = true;
+        }
+
+        if (!hasCollider) Destroy(colliderRoot);
+        return hasCollider;
+    }
+
+    private Vector3 NormalizeModelIfNeeded(GameObject root)
+    {
+        if (!normalizeModelToGround || root == null)
+        {
+            return Vector3.zero;
+        }
+
+        if (!TryGetLocalRendererBounds(root, out Bounds localBounds))
+        {
+            return Vector3.zero;
+        }
+
+        Vector3 offset = Vector3.zero;
+        if (centerModelXZ)
+        {
+            offset.x = -localBounds.center.x;
+            offset.z = -localBounds.center.z;
+        }
+
+        offset.y = -localBounds.min.y;
+
+        for (int i = 0; i < root.transform.childCount; i++)
+        {
+            Transform child = root.transform.GetChild(i);
+            child.localPosition += offset;
+        }
+
+        return offset;
+    }
+
+    private static bool TryGetLocalRendererBounds(GameObject root, out Bounds localBounds)
+    {
+        localBounds = default;
+        if (root == null) return false;
+
+        Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+        bool hasBounds = false;
+
+        foreach (Renderer renderer in renderers)
+        {
+            if (renderer == null)
+            {
+                continue;
+            }
+
+            Bounds rendererLocalBounds = renderer.localBounds;
+            Vector3 min = rendererLocalBounds.min;
+            Vector3 max = rendererLocalBounds.max;
+
+            Vector3[] localCorners =
+            {
+                new Vector3(min.x, min.y, min.z),
+                new Vector3(min.x, min.y, max.z),
+                new Vector3(min.x, max.y, min.z),
+                new Vector3(min.x, max.y, max.z),
+                new Vector3(max.x, min.y, min.z),
+                new Vector3(max.x, min.y, max.z),
+                new Vector3(max.x, max.y, min.z),
+                new Vector3(max.x, max.y, max.z)
+            };
+
+            foreach (Vector3 rendererLocalCorner in localCorners)
+            {
+                Vector3 worldCorner = renderer.transform.TransformPoint(rendererLocalCorner);
+                Vector3 rootLocalCorner = root.transform.InverseTransformPoint(worldCorner);
+
+                if (!hasBounds)
+                {
+                    localBounds = new Bounds(rootLocalCorner, Vector3.zero);
+                    hasBounds = true;
+                }
+                else
+                {
+                    localBounds.Encapsulate(rootLocalCorner);
+                }
+            }
+        }
+
+        return hasBounds;
+    }
+
+    private void EnsureFallbackColliders(GameObject obj)
     {
         if (obj.GetComponentInChildren<Collider>() != null) return;
 
         foreach (Renderer render in obj.GetComponentsInChildren<Renderer>())
         {
             if (render is MeshRenderer || render is SkinnedMeshRenderer)
-            {
-                // ∞¢ ∏ﬁΩ¨ ƒƒ∆˜≥Õ∆Æø° BoxCollider∏¶ ∫Ÿø© ¿Ø¥œ∆º∞° ≈©±‚∏¶ øœ∫Æ«œ∞‘ ¿Á¥‹«œµµ∑œ «‘
                 render.gameObject.AddComponent<BoxCollider>();
-            }
         }
     }
 
-    private void ConfigurePhysics(GameObject targetObj, bool isFixed)
+    private void ConfigurePhysics(GameObject targetObj, FurnitureData data)
     {
         Rigidbody rb = targetObj.GetComponent<Rigidbody>();
         if (rb == null) rb = targetObj.AddComponent<Rigidbody>();
 
-        if (isFixed)
+        if (data.mass_kg > 0f) rb.mass = data.mass_kg;
+
+        bool anchored = data.is_fixed;
+        if (anchored)
         {
             rb.isKinematic = true;
+            rb.useGravity = false;
+            rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
         }
         else
         {
             rb.isKinematic = false;
             rb.useGravity = true;
-            // π∞∏Æ ∂’∏≤/∆®∞‹≥™∞® πÊ¡ˆ∏¶ ¿ß«— ø¨º” √Êµπ ∞®¡ˆ ø…º« ƒ—±‚
             rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         }
     }

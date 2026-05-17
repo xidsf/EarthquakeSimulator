@@ -236,6 +236,8 @@ public class EarthquakeSimulator : MonoBehaviour
     private readonly List<Rigidbody> roomStructureRigidbodies = new List<Rigidbody>();
     private readonly Dictionary<Rigidbody, Vector3> roomInitialPositions = new Dictionary<Rigidbody, Vector3>();
     private readonly Dictionary<Rigidbody, Quaternion> roomInitialRotations = new Dictionary<Rigidbody, Quaternion>();
+    private readonly Dictionary<Rigidbody, Vector3> kinematicFurnitureInitialPositions = new Dictionary<Rigidbody, Vector3>();
+    private readonly Dictionary<Rigidbody, Quaternion> kinematicFurnitureInitialRotations = new Dictionary<Rigidbody, Quaternion>();
 
     private Vector3 roomInitialPosition;
     private Quaternion roomInitialRotation;
@@ -414,6 +416,11 @@ public class EarthquakeSimulator : MonoBehaviour
     {
         shakeTableDisplacementMultiplier = displacementMultiplier;
         includeVerticalShakeTableDisplacement = includeVertical;
+    }
+
+    public void SetReturnToOriginAfterSimulation(bool enabled)
+    {
+        returnToOriginAfterSimulation = enabled;
     }
 
     public void SetSceneReferences(
@@ -966,11 +973,29 @@ public class EarthquakeSimulator : MonoBehaviour
                 rb.MovePosition(initialPosition + displacement);
             }
 
+            MoveKinematicFurnitureWithShakeTable(displacement);
             return;
         }
 
         if (roomRigidbody != null)
             roomRigidbody.MovePosition(roomInitialPosition + displacement);
+
+        MoveKinematicFurnitureWithShakeTable(displacement);
+    }
+
+    private void MoveKinematicFurnitureWithShakeTable(Vector3 displacement)
+    {
+        for (int i = 0; i < furnitureRigidbodies.Count; i++)
+        {
+            Rigidbody rb = furnitureRigidbodies[i];
+            if (rb == null || !rb.isKinematic)
+                continue;
+
+            if (!kinematicFurnitureInitialPositions.TryGetValue(rb, out Vector3 initialPosition))
+                initialPosition = rb.position;
+
+            rb.MovePosition(initialPosition + displacement);
+        }
     }
 
     private void ApplyLegacyDisplacement(Vector3 floorDisplacement)
@@ -1359,6 +1384,8 @@ public class EarthquakeSimulator : MonoBehaviour
 
         roomInitialPositions.Clear();
         roomInitialRotations.Clear();
+        kinematicFurnitureInitialPositions.Clear();
+        kinematicFurnitureInitialRotations.Clear();
 
         for (int i = 0; i < roomStructureRigidbodies.Count; i++)
         {
@@ -1368,6 +1395,16 @@ public class EarthquakeSimulator : MonoBehaviour
 
             roomInitialPositions[rb] = rb.position;
             roomInitialRotations[rb] = rb.rotation;
+        }
+
+        for (int i = 0; i < furnitureRigidbodies.Count; i++)
+        {
+            Rigidbody rb = furnitureRigidbodies[i];
+            if (rb == null || !rb.isKinematic)
+                continue;
+
+            kinematicFurnitureInitialPositions[rb] = rb.position;
+            kinematicFurnitureInitialRotations[rb] = rb.rotation;
         }
     }
 
@@ -1404,6 +1441,15 @@ public class EarthquakeSimulator : MonoBehaviour
             Rigidbody rb = furnitureRigidbodies[i];
             if (rb == null)
                 continue;
+
+            if (rb.isKinematic)
+            {
+                rb.useGravity = false;
+                rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+                rb.interpolation = RigidbodyInterpolation.Interpolate;
+                ClearVelocity(rb);
+                continue;
+            }
 
             rb.useGravity = true;
 
@@ -1449,6 +1495,21 @@ public class EarthquakeSimulator : MonoBehaviour
                 rb.position = position;
 
             if (roomInitialRotations.TryGetValue(rb, out Quaternion rotation))
+                rb.rotation = rotation;
+
+            ClearVelocity(rb);
+        }
+
+        for (int i = 0; i < furnitureRigidbodies.Count; i++)
+        {
+            Rigidbody rb = furnitureRigidbodies[i];
+            if (rb == null || !rb.isKinematic)
+                continue;
+
+            if (kinematicFurnitureInitialPositions.TryGetValue(rb, out Vector3 position))
+                rb.position = position;
+
+            if (kinematicFurnitureInitialRotations.TryGetValue(rb, out Quaternion rotation))
                 rb.rotation = rotation;
 
             ClearVelocity(rb);

@@ -1,86 +1,87 @@
-using System.Collections.Generic;
+癤퓎sing System.Collections.Generic;
 using System.IO;
 using System.Text;
 using UnityEngine;
 
 public class SimulationDataRecorder : MonoBehaviour
 {
-    private bool isRecording = false;
+    private bool isRecording;
     private float recordStartTime;
-
     private string currentSessionFolderPath;
     private string currentSessionId;
-
-    private List<Transform> targetTransforms = new List<Transform>();
+    private readonly List<Transform> targetTransforms = new List<Transform>();
     private StringBuilder csvBuilder;
 
-    /// <summary>
-    /// 시뮬레이션 시작 직전에 호출하여 CSV 기록을 준비합니다.
-    /// </summary>
-    /// <param name="sessionFolderPath">사진이 저장되는 동일한 폴더 경로</param>
-    /// <param name="sessionId">세션 ID</param>
-    /// <param name="targetFurnitures">기록할 가구 오브젝트 리스트</param>
-    public void StartRecording(string sessionFolderPath, string sessionId, List<GameObject> targetFurnitures)
+    public void StartRecording(string sessionFolderPath, string sessionId, List<GameObject> targetObjects)
     {
-        this.currentSessionFolderPath = sessionFolderPath;
-        this.currentSessionId = sessionId;
-        this.targetTransforms.Clear();
+        currentSessionFolderPath = sessionFolderPath;
+        currentSessionId = sessionId;
+        targetTransforms.Clear();
 
-        // CSV 데이터 축적을 위한 StringBuilder 초기화 및 헤더 작성
         csvBuilder = new StringBuilder();
-        csvBuilder.AppendLine("Time(s),FurnitureName,PosX,PosY,PosZ,RotEulerX,RotEulerY,RotEulerZ");
+        csvBuilder.AppendLine("Time(s),ObjectName,PosX,PosY,PosZ,RotEulerX,RotEulerY,RotEulerZ");
 
-        foreach (GameObject furniture in targetFurnitures)
+        if (targetObjects != null)
         {
-            targetTransforms.Add(furniture.transform);
+            foreach (GameObject target in targetObjects)
+            {
+                AddRecordingTarget(target);
+            }
         }
 
         recordStartTime = Time.time;
         isRecording = true;
+        RecordCurrentFrame();
 
-        Debug.Log($"[{sessionId}] 시뮬레이션 CSV 데이터 기록 시작...");
+        Debug.Log($"[{sessionId}] Transform CSV recording started.");
     }
 
-    /// <summary>
-    /// 물리 프레임(보통 0.02초)마다 가구의 위치와 회전값을 CSV 포맷으로 한 줄씩 추가합니다.
-    /// </summary>
+    public void AddRecordingTarget(GameObject target)
+    {
+        if (target == null) return;
+        AddRecordingTarget(target.transform);
+    }
+
+    public void AddRecordingTarget(Transform target)
+    {
+        if (target == null || targetTransforms.Contains(target)) return;
+        targetTransforms.Add(target);
+    }
+
     private void FixedUpdate()
     {
-        if (!isRecording) return;
+        RecordCurrentFrame();
+    }
+
+    public void RecordCurrentFrame()
+    {
+        if (!isRecording || csvBuilder == null) return;
 
         float currentTime = Time.time - recordStartTime;
-
-        foreach (Transform t in targetTransforms)
+        foreach (Transform target in targetTransforms)
         {
-            if (t != null)
-            {
-                Vector3 pos = t.position;
-                Vector3 rot = t.eulerAngles; // 읽기 편하게 오일러 각도 사용
+            if (target == null) continue;
 
-                // 엑셀 등에서 열기 편하게 소수점 4자리까지만 기록
-                csvBuilder.AppendLine($"{currentTime:F4},{t.name},{pos.x:F4},{pos.y:F4},{pos.z:F4},{rot.x:F4},{rot.y:F4},{rot.z:F4}");
-            }
+            Vector3 pos = target.position;
+            Vector3 rot = target.eulerAngles;
+            csvBuilder.AppendLine($"{currentTime:F4},{target.name},{pos.x:F4},{pos.y:F4},{pos.z:F4},{rot.x:F4},{rot.y:F4},{rot.z:F4}");
         }
     }
 
-    /// <summary>
-    /// 시뮬레이션 종료 시 CSV 파일을 사진과 동일한 폴더에 저장합니다.
-    /// </summary>
     public void StopAndSaveRecording()
     {
         if (!isRecording) return;
+
+        RecordCurrentFrame();
         isRecording = false;
 
         if (!Directory.Exists(currentSessionFolderPath))
-        {
             Directory.CreateDirectory(currentSessionFolderPath);
-        }
 
         string fileName = $"{currentSessionId}_TransformData.csv";
         string filePath = Path.Combine(currentSessionFolderPath, fileName);
+        File.WriteAllText(filePath, csvBuilder.ToString(), Encoding.UTF8);
 
-        File.WriteAllText(filePath, csvBuilder.ToString());
-
-        Debug.Log($"[{currentSessionId}] CSV 위치 데이터 파일 저장 완료! 경로: {filePath}");
+        Debug.Log($"[{currentSessionId}] Transform CSV saved: {filePath}");
     }
 }

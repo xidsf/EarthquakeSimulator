@@ -1,4 +1,4 @@
-using System;
+癤퓎sing System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -7,15 +7,42 @@ public class SimulationInput
 {
     public string session_id;
     public RoomData room;
-    public List<FurnitureData> furnitures; // [수정됨] json 키와 맞추기 위해 's' 추가!
+    public List<FurnitureData> furnitures;
+    public BuildingData building;
+}
+
+[Serializable]
+public class BuildingData
+{
+    public string building_type = "Apartment";
+    public int floor = 1;
+    public int total_floors = 0;
+    public string piloti = "Unknown";
 }
 
 [Serializable]
 public class RoomData
 {
     public List<WallData> walls;
-    public WallData floor;   // [추가됨] JSON의 바닥 데이터
-    public WallData ceiling; // [추가됨] JSON의 천장 데이터
+    public WallData floor;
+    public WallData ceiling;
+    public EntranceData entrance;
+}
+
+[Serializable]
+public class EntranceData
+{
+    public float[] position;
+    public float radius = 1.5f;
+
+    public Vector3 GetPosition() => ToVector3(position, Vector3.zero);
+
+    private static Vector3 ToVector3(float[] values, Vector3 fallback)
+    {
+        return values != null && values.Length >= 3
+            ? new Vector3(values[0], values[1], values[2])
+            : fallback;
+    }
 }
 
 [Serializable]
@@ -25,9 +52,16 @@ public class WallData
     public float[] size;
     public float[] euler;
 
-    public Vector3 GetCenter() => new Vector3(center[0], center[1], center[2]);
-    public Vector3 GetSize() => new Vector3(size[0], size[1], size[2]);
-    public Vector3 GetEuler() => new Vector3(euler[0], euler[1], euler[2]);
+    public Vector3 GetCenter() => ToVector3(center, Vector3.zero);
+    public Vector3 GetSize() => ToVector3(size, Vector3.one);
+    public Vector3 GetEuler() => ToVector3(euler, Vector3.zero);
+
+    private static Vector3 ToVector3(float[] values, Vector3 fallback)
+    {
+        return values != null && values.Length >= 3
+            ? new Vector3(values[0], values[1], values[2])
+            : fallback;
+    }
 }
 
 [Serializable]
@@ -40,14 +74,25 @@ public class FurnitureData
     public float[] scale;
     public bool is_fixed;
     public bool is_floor_contactless;
+    public float mass_kg;
     public string label;
+    public string mesh_file;
+    public string collider_file;
 
-    public Vector3 GetPosition() => new Vector3(position[0], position[1], position[2]);
-    public Vector3 GetScale() => new Vector3(scale[0], scale[1], scale[2]);
+    public Vector3 GetPosition() => ToVector3(position, Vector3.zero);
+    public Vector3 GetScale() => ToVector3(scale, Vector3.one);
+
     public Quaternion GetRotation()
     {
-        if (rotation != null && rotation.Length == 4)
-            return new Quaternion(rotation[0], rotation[1], rotation[2], rotation[3]);
-        return Quaternion.identity;
+        return rotation != null && rotation.Length >= 4
+            ? new Quaternion(rotation[0], rotation[1], rotation[2], rotation[3])
+            : Quaternion.identity;
+    }
+
+    private static Vector3 ToVector3(float[] values, Vector3 fallback)
+    {
+        return values != null && values.Length >= 3
+            ? new Vector3(values[0], values[1], values[2])
+            : fallback;
     }
 }

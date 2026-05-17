@@ -365,7 +365,7 @@ public class HeadlessSimulationRunner : MonoBehaviour
 
                 // 고정/벽걸??가구는 �?바닥�??�일?�게 isKinematic?�로 고정?�다.
                 // (조인??미사???�순 모델: 벽에 ?�린 가구�? 중력?�로 ?�어지지 ?�도�?
-                bool anchored = inst.is_fixed || inst.is_floor_contactless;
+                bool anchored = inst.is_fixed;
                 if (anchored)
                 {
                     ApplyAnchoredKinematic(rb);

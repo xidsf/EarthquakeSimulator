@@ -1,13 +1,13 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 실사용 가구 배치 관리자입니다.
-/// 이 클래스는 label로 prefab을 찾거나 랜덤 배치를 하지 않습니다.
-/// 서버/인식/디버그 파이프라인이 이미 생성한 GameObject를 RegisterRecognizedFurniture()로 등록합니다.
+/// ?�사??가�?배치 관리자?�니??
+/// ???�래?�는 label�?prefab??찾거???�덤 배치�??��? ?�습?�다.
+/// ?�버/?�식/?�버�??�이?�라?�이 ?��? ?�성??GameObject�?RegisterRecognizedFurniture()�??�록?�니??
 ///
-/// 등록 시 RuntimeFurnitureInteractionSetup을 통해 MeshCollider, Convex, Rigidbody, ObjectManipulator 등을 보강할 수 있습니다.
+/// ?�록 ??RuntimeFurnitureInteractionSetup???�해 MeshCollider, Convex, Rigidbody, ObjectManipulator ?�을 보강?????�습?�다.
 /// </summary>
 public class FurniturePlacementManager : MonoBehaviour
 {
@@ -17,21 +17,21 @@ public class FurniturePlacementManager : MonoBehaviour
     public FurnitureServerPlacementPipeline serverPlacementPipeline;
     public RuntimeFurnitureInteractionSetup runtimeInteractionSetup;
 
-    [Tooltip("등록된 가구들을 이 Transform 하위로 정리합니다. 비워두면 현재 parent를 유지합니다.")]
+    [Tooltip("?�록??가구들????Transform ?�위�??�리?�니?? 비워?�면 ?�재 parent�??��??�니??")]
     public Transform placedFurnitureRoot;
 
     [Header("Runtime Setup")]
-    [Tooltip("등록 직전에 MeshCollider/Convex/Rigidbody/ObjectManipulator/PlacedFurniture를 자동 보강합니다.")]
+    [Tooltip("?�록 직전??MeshCollider/Convex/Rigidbody/ObjectManipulator/PlacedFurniture�??�동 보강?�니??")]
     public bool configureRuntimeInteractionOnRegister = true;
 
     [Header("Registration")]
-    [Tooltip("등록 직후 방 내부/벽 충돌 검증 및 바닥 스냅을 수행합니다.")]
+    [Tooltip("?�록 직후 �??��?/�?충돌 검�?�?바닥 ?�냅???�행?�니??")]
     public bool validateOnRegister = true;
 
-    [Tooltip("등록 검증에 실패한 서버/디버그 가구 오브젝트를 즉시 제거합니다.")]
+    [Tooltip("?�록 검증에 ?�패???�버/?�버�?가�??�브?�트�?즉시 ?�거?�니??")]
     public bool destroyObjectWhenRegisterValidationFails = true;
 
-    [Tooltip("참조가 비어 있으면 Scene에서 자동 탐색합니다.")]
+    [Tooltip("참조가 비어 ?�으�?Scene?�서 ?�동 ?�색?�니??")]
     public bool autoFindReferences = true;
 
     private readonly List<PlacedFurniture> placedFurnitures = new List<PlacedFurniture>();
@@ -110,8 +110,8 @@ public class FurniturePlacementManager : MonoBehaviour
         roomGeometryProvider?.RegisterPlacedFurniture(placedFurniture);
         moveModeController?.RegisterFurniture(placedFurniture);
 
-        // 스폰 위치가 다른 가구와 겹치면 ① 그 가구 위에 쌓기 → ② 사용자 바로 아래 →
-        // ③ 방 내부 빈 공간 순으로 재배치한다.
+        // ?�폰 ?�치가 ?�른 가구�? 겹치�???�?가�??�에 ?�기 ?????�용??바로 ?�래 ??
+        // ??�??��? �?공간 ?�으�??�배치한??
         SpawnOverlapResolution spawnResolution = SpawnOverlapResolution.NoOverlap;
         if (roomGeometryProvider != null && roomGeometryProvider.IsInitialized)
         {
@@ -134,10 +134,10 @@ public class FurniturePlacementManager : MonoBehaviour
             }
         }
 
-        // 등록 검증을 건너뛰는 경로(수동 배치 등)에서도 최초 유효 포즈의 Y가
-        // 바닥 기준으로 보정되도록 한다. 그렇지 않으면 raw 스폰 Y가 저장되어
-        // 이후 거부될 때마다 RestoreLastValidPose가 바닥 아래로 되돌린다.
-        // 가구 위에 쌓은 경우는 의도적으로 바닥에서 떨어져 있으므로 바닥 스냅을 건너뛴다.
+        // ?�록 검증을 건너?�는 경로(?�동 배치 ???�서??최초 ?�효 ?�즈??Y가
+        // 바닥 기�??�로 보정?�도�??�다. 그렇지 ?�으�?raw ?�폰 Y가 ?�?�되??
+        // ?�후 거�????�마??RestoreLastValidPose가 바닥 ?�래�??�돌린다.
+        // 가�??�에 ?��? 경우???�도?�으�?바닥?�서 ?�어???�으므�?바닥 ?�냅??건너?�다.
         if (!stackedOnFurniture && roomGeometryProvider != null && roomGeometryProvider.IsInitialized)
         {
             roomGeometryProvider.CorrectFurnitureToFloor(placedFurniture);
@@ -145,7 +145,7 @@ public class FurniturePlacementManager : MonoBehaviour
 
         placedFurniture.SaveCurrentPoseAsValid();
 
-        // 💡 상태를 즉시 확정 처리합니다.
+        // ?�� ?�태�?즉시 ?�정 처리?�니??
         placedFurniture.SetState(FurniturePlacementState.Confirmed);
 
         Debug.Log($"[FurniturePlacementManager] Furniture registered and auto-confirmed. id:{placedFurniture.FurnitureId}, label:{placedFurniture.Label}, name:{placedFurniture.DisplayName}", furnitureObject);
@@ -176,7 +176,7 @@ public class FurniturePlacementManager : MonoBehaviour
             return;
         }
 
-        // 💡 터치 시 NotConfirmed 상태 전환 없이 바로 선택만 진행합니다.
+        // ?�� ?�치 ??NotConfirmed ?�태 ?�환 ?�이 바로 ?�택�?진행?�니??
         moveModeController.SelectFurniture(furniture);
         Debug.Log($"[FurniturePlacementManager] Furniture selected by touch/move. source:{inputSource}, furniture:{furniture.DisplayName}", furniture);
     }
@@ -186,7 +186,7 @@ public class FurniturePlacementManager : MonoBehaviour
         Debug.Log($"[FurniturePlacementManager] Furniture Selected. {furniture?.DisplayName}");
     }
 
-    // 💡 손에서 놓았을 때(Move Ended) 자동 확정 또는 원상 복구를 처리하는 핵심 로직입니다.
+    // ?�� ?�에???�았????Move Ended) ?�동 ?�정 ?�는 ?�상 복구�?처리?�는 ?�심 로직?�니??
     public void HandleFurnitureMoveEnded(PlacedFurniture furniture)
     {
         if (furniture == null) return;
@@ -205,7 +205,7 @@ public class FurniturePlacementManager : MonoBehaviour
         bool valid = roomGeometryProvider.ValidateAndCorrectFurniturePose(furniture, out string reason);
         if (valid)
         {
-            // 방 기하학적으로 유효하면 현재 위치를 저장하고 확정 상태로 만듭니다.
+            // �?기하?�적?�로 ?�효?�면 ?�재 ?�치�??�?�하�??�정 ?�태�?만듭?�다.
             furniture.SaveCurrentPoseAsValid();
             furniture.SetState(FurniturePlacementState.Confirmed);
             serverPlacementPipeline?.ConfirmPlacedObject(furniture);
@@ -214,7 +214,7 @@ public class FurniturePlacementManager : MonoBehaviour
         }
         else
         {
-            // 유효하지 않으면 마지막으로 유효했던 위치로 되돌립니다.
+            // ?�효?��? ?�으�?마�?막으�??�효?�던 ?�치�??�돌립니??
             furniture.RestoreLastValidPose();
             Debug.LogWarning($"[FurniturePlacementManager] Furniture move rejected. Restored to last valid pose. {furniture.DisplayName} / {reason}", furniture);
         }
@@ -222,11 +222,11 @@ public class FurniturePlacementManager : MonoBehaviour
         PlacementChanged?.Invoke();
     }
 
-    // 버튼식 스케일 조정 전용 처리. 이동 종료와 달리, 검증 실패해도 포즈/스케일을
-    // 되돌리지 않는다. 방보다 큰 가구를 줄여 맞추려면 줄이는 스텝이 누적되어
-    // 점진적으로 방 안에 들어와야 하기 때문이다.
-    // 반환값: 검증/보정 후 유효한 위치에 안착했는지 여부. 호출자(스케일 스텝)는
-    // 키우는 도중 무효면 스텝을 취소하고, 줄이는 도중 무효면 그대로 유지한다.
+    // 버튼???��???조정 ?�용 처리. ?�동 종료?� ?�리, 검�??�패?�도 ?�즈/?��??�을
+    // ?�돌리�? ?�는?? 방보????가구�? 줄여 맞추?�면 줄이???�텝???�적?�어
+    // ?�진?�으�?�??�에 ?�어?�???�기 ?�문?�다.
+    // 반환�? 검�?보정 ???�효???�치???�착?�는지 ?��?. ?�출???��????�텝)??
+    // ?�우???�중 무효�??�텝??취소?�고, 줄이???�중 무효�?그�?�??��??�다.
     public bool HandleFurnitureScaleChanged(PlacedFurniture furniture)
     {
         if (furniture == null) return false;
@@ -240,7 +240,7 @@ public class FurniturePlacementManager : MonoBehaviour
             return true;
         }
 
-        // ValidateAndCorrectFurniturePose가 벽/모서리/다른 가구를 피해 위치를 이동시킨다.
+        // ValidateAndCorrectFurniturePose가 �?모서�??�른 가구�? ?�해 ?�치�??�동?�킨??
         bool valid = roomGeometryProvider.ValidateAndCorrectFurniturePose(furniture, out string reason);
         if (valid)
         {
@@ -344,11 +344,11 @@ public class FurniturePlacementManager : MonoBehaviour
     }
 
     // --- Placement Condition Validation ---
-    // 배치 완료 시 모든 가구가 다음 조건을 만족하는지 검사한다.
-    //  1) 고정이 아니면: 바닥 또는 다른 가구가 바로 아래에 있어야 한다.
-    //  2) 벽걸이가 아니면: 지지 체인을 따라 결국 바닥과 연결되어 있어야 한다.
-    //  3) 고정이면: 벽 또는 천장에 붙어 있거나, 고정 가구 체인을 통해 벽/천장에 연결되어야 한다.
-    // 위반 가구 목록을 반환한다. 방 기하 정보가 없으면 검증을 건너뛴다(빈 목록).
+    // 배치 ?�료 ??모든 가구�? ?�음 조건??만족?�는지 검?�한??
+    //  1) 고정???�니�? 바닥 ?�는 ?�른 가구�? 바로 ?�래???�어???�다.
+    //  2) 벽걸?��? ?�니�? 지지 체인???�라 결국 바닥�??�결?�어 ?�어???�다.
+    //  3) 고정?�면: �??�는 천장??붙어 ?�거?? 고정 가�?체인???�해 �?천장???�결?�어???�다.
+    // ?�반 가�?목록??반환?�다. �?기하 ?�보가 ?�으�?검증을 건너?�다(�?목록).
     public List<PlacedFurniture> EvaluatePlacementConditions()
     {
         var invalid = new List<PlacedFurniture>();
@@ -378,34 +378,34 @@ public class FurniturePlacementManager : MonoBehaviour
         reason = string.Empty;
         ConfirmedRoomGeometryProvider geometry = roomGeometryProvider;
 
-        // 1) 고정이 아니면 바닥 또는 다른 가구가 바로 아래에 있어야 한다(벽걸이라도 동일 적용).
+        // 1) 고정???�니�?바닥 ?�는 ?�른 가구�? 바로 ?�래???�어???�다(벽걸?�라???�일 ?�용).
         if (!furniture.IsFixed)
         {
             bool onFloor = geometry.IsFurnitureOnFloor(furniture);
             bool onFurniture = geometry.HasFurnitureSupportBelow(furniture, placedFurnitures);
             if (!onFloor && !onFurniture)
             {
-                reason = "비고정 가구 아래에 바닥/다른 가구 지지가 없습니다.";
+                reason = "비고??가�??�래??바닥/?�른 가�?지지가 ?�습?�다.";
                 return false;
             }
         }
 
-        // 2) 벽걸이가 아니면 지지 체인을 따라 바닥과 연결되어 있어야 한다.
-        if (!furniture.IsWallMounted)
+        // 2) 벽걸?��? ?�니�?지지 체인???�라 바닥�??�결?�어 ?�어???�다.
+        if (!furniture.IsFloorContactless)
         {
             if (!IsGroundedToFloor(furniture, new HashSet<PlacedFurniture>()))
             {
-                reason = "비벽걸이 가구가 바닥과 연결되어 있지 않습니다.";
+                reason = "Floor-contact furniture is not connected to the floor.";
                 return false;
             }
         }
 
-        // 3) 고정이면 벽/천장(또는 고정 가구 체인)에 anchor 되어야 한다(공중부양 방지).
+        // 3) 고정?�면 �?천장(?�는 고정 가�?체인)??anchor ?�어???�다(공중부??방�?).
         if (furniture.IsFixed)
         {
             if (!IsFixedAnchored(furniture, new HashSet<PlacedFurniture>()))
             {
-                reason = "고정 가구가 벽/천장(또는 고정 가구 체인)에 붙어 있지 않습니다.";
+                reason = "고정 가구�? �?천장(?�는 고정 가�?체인)??붙어 ?��? ?�습?�다.";
                 return false;
             }
         }
@@ -413,7 +413,7 @@ public class FurniturePlacementManager : MonoBehaviour
         return true;
     }
 
-    // 가구가 바닥에 직접 닿아 있거나, 자신을 떠받치는 가구를 따라 내려가 결국 바닥에 닿는지.
+    // 가구�? 바닥??직접 ?�아 ?�거?? ?�신???�받치는 가구�? ?�라 ?�려가 결국 바닥???�는지.
     private bool IsGroundedToFloor(PlacedFurniture furniture, HashSet<PlacedFurniture> visited)
     {
         if (furniture == null || !visited.Add(furniture)) return false;
@@ -432,7 +432,7 @@ public class FurniturePlacementManager : MonoBehaviour
         return false;
     }
 
-    // 고정 가구가 벽/천장에 닿아 있거나, 인접한 고정 가구 체인을 통해 벽/천장에 연결되는지.
+    // 고정 가구�? �?천장???�아 ?�거?? ?�접??고정 가�?체인???�해 �?천장???�결?�는지.
     private bool IsFixedAnchored(PlacedFurniture furniture, HashSet<PlacedFurniture> visited)
     {
         if (furniture == null || !visited.Add(furniture)) return false;

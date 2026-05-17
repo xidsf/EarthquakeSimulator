@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using MixedReality.Toolkit;
 using MixedReality.Toolkit.SpatialManipulation;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 public enum FurnitureScaleStepResult
 {
@@ -14,8 +15,8 @@ public enum FurnitureScaleStepResult
 }
 
 /// <summary>
-/// 서버/인식/디버그 파이프라인이 생성한 개별 가구 오브젝트에 붙는 런타임 관리 컴포넌트입니다.
-/// 수정 내역: 벽걸이(Wall Mounted) 가구 식별 및 실시간 벽면 스냅 로직 추가
+/// ?쒕쾭/?몄떇/?붾쾭洹??뚯씠?꾨씪?몄씠 ?앹꽦??媛쒕퀎 媛援??ㅻ툕?앺듃??遺숇뒗 ?고???愿由?而댄룷?뚰듃?낅땲??
+/// ?섏젙 ?댁뿭: 踰쎄구??Floor Contactless) 媛援??앸퀎 諛??ㅼ떆媛?踰쎈㈃ ?ㅻ깄 濡쒖쭅 異붽?
 /// </summary>
 public class PlacedFurniture : MonoBehaviour
 {
@@ -30,15 +31,16 @@ public class PlacedFurniture : MonoBehaviour
     [SerializeField] private string rigidbodyMode;
     [SerializeField] private bool simulationUseGravity;
 
-    [Header("Wall Mount")]
-    [Tooltip("액자, 거울, 칠판 등 벽에 붙어야 하는 가구인지 여부입니다.")]
-    public bool isWallMounted = false;
-    [Tooltip("벽면 스냅을 시도할 최대 거리(미터)입니다.")]
+    [Header("Floor Contact")]
+    [Tooltip("True if this furniture is not supported by the floor. It may touch or attach to a wall, ceiling, or fixed furniture.")]
+    [FormerlySerializedAs("isWallMounted")]
+    public bool isFloorContactless = false;
+    [Tooltip("踰쎈㈃ ?ㅻ깄???쒕룄??理쒕? 嫄곕━(誘명꽣)?낅땲??")]
     public float wallSnapDistance = 0.08f;
     [Min(0.0f)] public float wallSnapOffsetMeters = 0.0f;
 
     [Header("Fixed Placement")]
-    [Tooltip("true이면 선택은 가능하지만 이동/회전/크기 조정을 잠급니다.")]
+    [Tooltip("true?대㈃ ?좏깮? 媛?ν븯吏留??대룞/?뚯쟾/?ш린 議곗젙???좉툒?덈떎.")]
     public bool isFixed = false;
     public bool disableManipulationWhenFixed = true;
 
@@ -47,9 +49,9 @@ public class PlacedFurniture : MonoBehaviour
     public Collider[] heavyCollidersToDisableWhileMoving;
     public bool ensureKinematicRigidbody = true;
 
-    [Tooltip("이동 중 비-벽걸이 가구의 바닥을 매 프레임 방 바닥에 고정해, 벽 쪽으로 끌 때 아래로 가라앉는 현상을 방지합니다.")]
+    [Tooltip("?대룞 以?鍮?踰쎄구??媛援ъ쓽 諛붾떏??留??꾨젅??諛?諛붾떏??怨좎젙?? 踰?履쎌쑝濡??????꾨옒濡?媛?쇱븠???꾩긽??諛⑹??⑸땲??")]
     public bool lockToFloorWhileMoving = true;
-    [Tooltip("이동 중 바닥뿐 아니라 책상/선반 같은 다른 가구 상단도 지지면으로 사용합니다.")]
+    [Tooltip("?대룞 以?諛붾떏肉??꾨땲??梨낆긽/?좊컲 媛숈? ?ㅻⅨ 媛援??곷떒??吏吏硫댁쑝濡??ъ슜?⑸땲??")]
     public bool lockToSupportSurfaceWhileMoving = true;
     [Min(0.0f)] public float supportSurfaceSnapDistance = 0.08f;
 
@@ -70,14 +72,14 @@ public class PlacedFurniture : MonoBehaviour
     public float moveScaleEpsilon = 0.0005f;
 
     [Header("Scale Limit")]
-    [Tooltip("두 손 스케일 조작 시 가구 localScale 한 축의 최대값입니다. 한계 적용 시에도 비율(GLB 원본)은 유지됩니다.")]
+    [Tooltip("?????ㅼ???議곗옉 ??媛援?localScale ??異뺤쓽 理쒕?媛믪엯?덈떎. ?쒓퀎 ?곸슜 ?쒖뿉??鍮꾩쑉(GLB ?먮낯)? ?좎??⑸땲??")]
     [Min(1f)] public float maxScalePerAxis = 10f;
-    [Tooltip("가구 localScale 한 축의 최소값입니다. 너무 작아지는 것을 방지합니다.")]
+    [Tooltip("媛援?localScale ??異뺤쓽 理쒖냼媛믪엯?덈떎. ?덈Т ?묒븘吏??寃껋쓣 諛⑹??⑸땲??")]
     [Min(0.001f)] public float minScalePerAxis = 0.1f;
 
     private readonly List<Collider> runtimePlacementColliders = new List<Collider>();
-    // 바닥 정렬용 시각 렌더러를 1회 캐시한다. 매 프레임 GetComponentsInChildren로
-    // 계층 순회/배열 할당이 일어나지 않도록 placement collider와 동일하게 캐시.
+    // 諛붾떏 ?뺣젹???쒓컖 ?뚮뜑?щ? 1??罹먯떆?쒕떎. 留??꾨젅??GetComponentsInChildren濡?
+    // 怨꾩링 ?쒗쉶/諛곗뿴 ?좊떦???쇱뼱?섏? ?딅룄濡?placement collider? ?숈씪?섍쾶 罹먯떆.
     private Renderer[] cachedVisualRenderers = Array.Empty<Renderer>();
     private FurniturePlacementManager ownerManager;
     private Vector3 lastValidPosition;
@@ -106,11 +108,11 @@ public class PlacedFurniture : MonoBehaviour
     public bool IsMoving => isMoving;
     public FurnitureManipulationMode ManipulationMode => manipulationMode;
     public bool IsFixed => isFixed;
-    public bool IsWallMounted => isWallMounted;
+    public bool IsFloorContactless => isFloorContactless;
 
-    // 배치 완료 검증에서 조건 미충족으로 판정되어 boxcollider에 미충족 material을
-    // 표시 중인지 여부. 가구를 선택/이동하는 등 다른 작업을 하면 해제되며,
-    // 배치 완료 버튼을 다시 눌러 재검증할 때만 다시 설정된다.
+    // 諛곗튂 ?꾨즺 寃利앹뿉??議곌굔 誘몄땐議깆쑝濡??먯젙?섏뼱 boxcollider??誘몄땐議?material??
+    // ?쒖떆 以묒씤吏 ?щ?. 媛援щ? ?좏깮/?대룞?섎뒗 ???ㅻⅨ ?묒뾽???섎㈃ ?댁젣?섎ŉ,
+    // 諛곗튂 ?꾨즺 踰꾪듉???ㅼ떆 ?뚮윭 ?ш?利앺븷 ?뚮쭔 ?ㅼ떆 ?ㅼ젙?쒕떎.
     public bool PlacementValidationFailed => placementValidationFailed;
     public void SetPlacementValidationFailed(bool failed) => placementValidationFailed = failed;
 
@@ -147,15 +149,15 @@ public class PlacedFurniture : MonoBehaviour
         if (!initialized || !autoDetectTransformMoveEnd || !isMovable) return;
 
 
-        // 이동 중이고 벽걸이 가구라면 실시간으로 벽에 스냅시킵니다.
-        // 두 손 스케일 조작 중에는 비율(GLB 원본)을 유지한 채 최소/최대 크기로 제한한다.
+        // ?대룞 以묒씠怨?踰쎄구??媛援щ씪硫??ㅼ떆媛꾩쑝濡?踰쎌뿉 ?ㅻ깄?쒗궢?덈떎.
+        // ?????ㅼ???議곗옉 以묒뿉??鍮꾩쑉(GLB ?먮낯)???좎???梨?理쒖냼/理쒕? ?ш린濡??쒗븳?쒕떎.
         if (isMoving && manipulationMode == FurnitureManipulationMode.Scale)
         {
             ClampScaleToLimits();
         }
 
-        // 이동 중 비-벽걸이 가구는 바닥에 고정해 아래로 가라앉거나 떠오르는 것을 방지한다.
-        if (isMoving && lockToFloorWhileMoving && !isWallMounted && ownerManager?.roomGeometryProvider != null)
+        // ?대룞 以?鍮?踰쎄구??媛援щ뒗 諛붾떏??怨좎젙???꾨옒濡?媛?쇱븠嫄곕굹 ?좎삤瑜대뒗 寃껋쓣 諛⑹??쒕떎.
+        if (isMoving && lockToFloorWhileMoving && !isFloorContactless && ownerManager?.roomGeometryProvider != null)
         {
             ConfirmedRoomGeometryProvider geometry = ownerManager.roomGeometryProvider;
             if (geometry.IsInitialized &&
@@ -278,16 +280,16 @@ public class PlacedFurniture : MonoBehaviour
         SetFixed(!isFixed);
     }
 
-    public void SetWallMounted(bool wallMounted)
+    public void SetFloorContactless(bool floorContactless)
     {
-        if (isWallMounted == wallMounted) return;
-        isWallMounted = wallMounted;
-        Debug.Log($"[PlacedFurniture] Wall mount {(isWallMounted ? "enabled" : "disabled")}: {DisplayName}", this);
+        if (isFloorContactless == floorContactless) return;
+        isFloorContactless = floorContactless;
+        Debug.Log($"[PlacedFurniture] Floor contactless {(isFloorContactless ? "enabled" : "disabled")}: {DisplayName}", this);
     }
 
-    public void ToggleWallMounted()
+    public void ToggleFloorContactless()
     {
-        SetWallMounted(!isWallMounted);
+        SetFloorContactless(!isFloorContactless);
     }
 
     public void SaveCurrentPoseAsValid()
@@ -297,8 +299,8 @@ public class PlacedFurniture : MonoBehaviour
         ResetTransformMonitor();
     }
 
-    // 스케일은 의도적으로 복원하지 않는다. 방보다 큰 가구를 줄여 맞추는 도중 검증 실패로
-    // 스케일이 원래(큰) 값으로 되돌아가면 영영 줄일 수 없는 교착이 발생하기 때문이다.
+    // ?ㅼ??쇱? ?섎룄?곸쑝濡?蹂듭썝?섏? ?딅뒗?? 諛⑸낫????媛援щ? 以꾩뿬 留욎텛???꾩쨷 寃利??ㅽ뙣濡?
+    // ?ㅼ??쇱씠 ?먮옒(?? 媛믪쑝濡??섎룎?꾧?硫??곸쁺 以꾩씪 ???녿뒗 援먯갑??諛쒖깮?섍린 ?뚮Ц?대떎.
     public void RestoreLastValidPose()
     {
         transform.position = lastValidPosition;
@@ -306,7 +308,7 @@ public class PlacedFurniture : MonoBehaviour
         ResetTransformMonitor();
     }
 
-    // 버튼식 균일 스케일: 비율을 유지한 채 factor를 곱하고 한계로 클램프 후 즉시 재검증/보정한다.
+    // 踰꾪듉??洹좎씪 ?ㅼ??? 鍮꾩쑉???좎???梨?factor瑜?怨깊븯怨??쒓퀎濡??대옩????利됱떆 ?ш?利?蹂댁젙?쒕떎.
     public FurnitureScaleStepResult ApplyUniformScaleStep(float factor)
     {
         if (isFixed)
@@ -329,7 +331,7 @@ public class PlacedFurniture : MonoBehaviour
 
         bool growing = factor > 1f;
 
-        // 키우는 스텝에서 가구가 천장~바닥 높이를 넘으면 되돌리고 한계임을 알린다.
+        // ?ㅼ슦???ㅽ뀦?먯꽌 媛援ш? 泥쒖옣~諛붾떏 ?믪씠瑜??섏쑝硫??섎룎由ш퀬 ?쒓퀎?꾩쓣 ?뚮┛??
         if (growing && ExceedsRoomHeight())
         {
             transform.localScale = previousScale;
@@ -337,12 +339,12 @@ public class PlacedFurniture : MonoBehaviour
             return FurnitureScaleStepResult.BlockedByRoomHeight;
         }
 
-        // 벽/모서리/다른 가구와 겹치면 HandleFurnitureScaleChanged 내부의
-        // ValidateAndCorrectFurniturePose가 위치를 이동시켜 수용을 시도한다.
+        // 踰?紐⑥꽌由??ㅻⅨ 媛援ъ? 寃뱀튂硫?HandleFurnitureScaleChanged ?대???
+        // ValidateAndCorrectFurniturePose媛 ?꾩튂瑜??대룞?쒖폒 ?섏슜???쒕룄?쒕떎.
         bool valid = ownerManager == null || ownerManager.HandleFurnitureScaleChanged(this);
 
-        // 키우는데 이동해도 공간이 안 나오면 이번 스텝만 취소한다.
-        // (축소는 항상 허용해 큰 가구가 줄지 못하는 교착을 막는다.)
+        // ?ㅼ슦?붾뜲 ?대룞?대룄 怨듦컙?????섏삤硫??대쾲 ?ㅽ뀦留?痍⑥냼?쒕떎.
+        // (異뺤냼????긽 ?덉슜????媛援ш? 以꾩? 紐삵븯??援먯갑??留됰뒗??)
         if (growing && !valid)
         {
             transform.localScale = previousScale;
@@ -354,7 +356,7 @@ public class PlacedFurniture : MonoBehaviour
         return FurnitureScaleStepResult.Applied;
     }
 
-    // 한 축만 미세 조정한다. 버튼식 축별 조정용이므로 의도적으로 비율을 깨고 해당 축만 [min,max]로 클램프한다.
+    // ??異뺣쭔 誘몄꽭 議곗젙?쒕떎. 踰꾪듉??異뺣퀎 議곗젙?⑹씠誘濡??섎룄?곸쑝濡?鍮꾩쑉??源④퀬 ?대떦 異뺣쭔 [min,max]濡??대옩?꾪븳??
     public FurnitureScaleStepResult ApplyAxisScaleStep(int axis, float factor)
     {
         if (isFixed)
@@ -408,7 +410,11 @@ public class PlacedFurniture : MonoBehaviour
     {
         SetMovable(false);
         SetHeavyCollidersEnabled(true);
-        ApplySimulationRigidbodyMode();
+        // HoloLens2?먯꽌???쒕??덉씠?섏쓣 吏꾪뻾?섏? ?딅뒗?? 臾쇰━ ?곗궛? ?붾컮?댁뒪 遺?섎?
+        // ?좊컻?섍퀬, ?꾨즺 ??Rigidbody媛 dynamic?쇰줈 諛붾뚮㈃ 媛援ш? ?⑥뼱吏꾨떎.
+        // ?곕씪??Rigidbody瑜?kinematic?쇰줈 ?먯? ?딄퀬 ?꾩삁 ?쒓굅?쒕떎.
+        // (?쒕쾭 ?쒕??덉씠?섏? ?꾩넚??JSON?쇰줈 ?먯껜 Rigidbody瑜?援ъ꽦?섎?濡??곹뼢 ?놁쓬)
+        RemoveRigidbodyForClient();
     }
 
     public Collider[] GetActivePlacementColliders()
@@ -417,7 +423,7 @@ public class PlacedFurniture : MonoBehaviour
         return runtimePlacementColliders.ToArray();
     }
 
-    // 선택된 가구의 BoxCollider 영역을 반투명 박스로 표시해 크기/위치 조절 UX를 돕는다.
+    // ?좏깮??媛援ъ쓽 BoxCollider ?곸뿭??諛섑닾紐?諛뺤뒪濡??쒖떆???ш린/?꾩튂 議곗젅 UX瑜??뺣뒗??
     public void SetSelectionBoxVisible(bool show, Material boxMaterial)
     {
         BoxCollider box = GetComponent<BoxCollider>();
@@ -439,7 +445,7 @@ public class PlacedFurniture : MonoBehaviour
             selectionBoxObject = cube;
         }
 
-        // BoxCollider center/size는 root local 값이고 기본 Cube 메쉬는 1유닛이므로 그대로 매핑하면 일치한다.
+        // BoxCollider center/size??root local 媛믪씠怨?湲곕낯 Cube 硫붿돩??1?좊떅?대?濡?洹몃?濡?留ㅽ븨?섎㈃ ?쇱튂?쒕떎.
         selectionBoxObject.transform.localPosition = box.center;
         selectionBoxObject.transform.localRotation = Quaternion.identity;
         selectionBoxObject.transform.localScale = box.size;
@@ -455,7 +461,7 @@ public class PlacedFurniture : MonoBehaviour
         if (isMoving) return;
         if (disableManipulationWhenFixed && isFixed) return;
 
-        // 이동은 "다른 작업"이므로 미충족 표시를 해제한다(배치 완료 재검증 전까지 복귀하지 않음).
+        // ?대룞? "?ㅻⅨ ?묒뾽"?대?濡?誘몄땐議??쒖떆瑜??댁젣?쒕떎(諛곗튂 ?꾨즺 ?ш?利??꾧퉴吏 蹂듦??섏? ?딆쓬).
         placementValidationFailed = false;
 
         if (selectWhenTouchedOrMoved) ownerManager?.HandleFurnitureTouched(this, reason);
@@ -494,7 +500,7 @@ public class PlacedFurniture : MonoBehaviour
         lastTransformChangeTime = Time.time;
     }
 
-    // 비율을 깨지 않도록 한 축 기준으로 다른 축을 정하지 않고, 전체 벡터에 동일 factor를 곱해 제한한다.
+    // 鍮꾩쑉??源⑥? ?딅룄濡???異?湲곗??쇰줈 ?ㅻⅨ 異뺤쓣 ?뺥븯吏 ?딄퀬, ?꾩껜 踰≫꽣???숈씪 factor瑜?怨깊빐 ?쒗븳?쒕떎.
     private void ClampScaleToLimits()
     {
         Vector3 scale = transform.localScale;
@@ -517,9 +523,9 @@ public class PlacedFurniture : MonoBehaviour
         }
     }
 
-    // 시각 렌더러를 1회 수집한다. SelectionBoxVisual은 Initialize 이후 생성되므로
-    // 이 캐시에 포함되지 않는다(자연 제외). collider GLB 렌더러는 비활성 상태라
-    // 사용 시 enabled 필터로 제외된다.
+    // ?쒓컖 ?뚮뜑?щ? 1???섏쭛?쒕떎. SelectionBoxVisual? Initialize ?댄썑 ?앹꽦?섎?濡?
+    // ??罹먯떆???ы븿?섏? ?딅뒗???먯뿰 ?쒖쇅). collider GLB ?뚮뜑?щ뒗 鍮꾪솢???곹깭??
+    // ?ъ슜 ??enabled ?꾪꽣濡??쒖쇅?쒕떎.
     private void CollectVisualRenderers()
     {
         cachedVisualRenderers = GetComponentsInChildren<Renderer>(true);
@@ -540,9 +546,9 @@ public class PlacedFurniture : MonoBehaviour
 
         Collider[] childColliders = GetComponentsInChildren<Collider>(true);
 
-        // 서버 convex hull MeshCollider가 있으면 검증/충돌은 그 정밀 collider만 사용한다.
-        // 넓은 interaction용 BoxCollider(AddBroadInteractionBoxCollider)를 검증에서 제외해
-        // 방 내/외부·침투 판정이 과도하게 보수적으로 되어 정상 배치가 거부되는 것을 막는다.
+        // ?쒕쾭 convex hull MeshCollider媛 ?덉쑝硫?寃利?異⑸룎? 洹??뺣? collider留??ъ슜?쒕떎.
+        // ?볦? interaction??BoxCollider(AddBroadInteractionBoxCollider)瑜?寃利앹뿉???쒖쇅??
+        // 諛????몃?쨌移⑦닾 ?먯젙??怨쇰룄?섍쾶 蹂댁닔?곸쑝濡??섏뼱 ?뺤긽 諛곗튂媛 嫄곕??섎뒗 寃껋쓣 留됰뒗??
         foreach (Collider c in childColliders)
         {
             if (c is MeshCollider meshCollider && meshCollider.convex && !runtimePlacementColliders.Contains(c))
@@ -553,7 +559,7 @@ public class PlacedFurniture : MonoBehaviour
 
         if (runtimePlacementColliders.Count > 0) return;
 
-        // 서버 MeshCollider를 받지 못한 경우에만 BoxCollider 등으로 fallback한다.
+        // ?쒕쾭 MeshCollider瑜?諛쏆? 紐삵븳 寃쎌슦?먮쭔 BoxCollider ?깆쑝濡?fallback?쒕떎.
         foreach (Collider c in childColliders)
         {
             if (c != null && !runtimePlacementColliders.Contains(c)) runtimePlacementColliders.Add(c);
@@ -571,18 +577,14 @@ public class PlacedFurniture : MonoBehaviour
         rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
     }
 
-    private void ApplySimulationRigidbodyMode()
+    // HoloLens2???쒕??덉씠?섏쓣 ?섏? ?딆쑝誘濡??꾨즺 ??Rigidbody瑜??꾩쟾???쒓굅??
+    // 臾쇰━ ?곗궛 遺?섏? 媛援??숉븯 ?꾩긽??紐⑤몢 ?놁븻?? ?쒕쾭 ?꾩넚 JSON?먮뒗 Rigidbody
+    // ?뺣낫媛 ?ы븿?섏? ?딆쑝誘濡?transform/is_fixed/is_floor_contactless留?吏곷젹?? ?쒕쾭
+    // ?쒕??덉씠?섏뿉???곹뼢???녿떎.
+    private void RemoveRigidbodyForClient()
     {
         Rigidbody rb = GetComponent<Rigidbody>();
-        if (rb == null) return;
-
-        string normalizedRigidbodyMode = string.IsNullOrWhiteSpace(rigidbodyMode) ? string.Empty : rigidbodyMode.Trim().ToLowerInvariant();
-        string normalizedPhysicsMode = string.IsNullOrWhiteSpace(physicsMode) ? string.Empty : physicsMode.Trim().ToLowerInvariant();
-
-        bool shouldBeDynamic = simulationEnabled && (normalizedRigidbodyMode == "dynamic" || normalizedPhysicsMode == "dynamic_hazard" || normalizedPhysicsMode == "dynamic");
-
-        rb.isKinematic = !shouldBeDynamic;
-        rb.useGravity = shouldBeDynamic && simulationUseGravity;
+        if (rb != null) Destroy(rb);
     }
 
     private void WarnIfMeshCollidersAreNotConvex()
@@ -590,7 +592,7 @@ public class PlacedFurniture : MonoBehaviour
         foreach (Collider collider in GetActivePlacementColliders())
         {
             if (collider is MeshCollider meshCollider && !meshCollider.convex)
-                Debug.LogWarning($"[PlacedFurniture] MeshCollider is not convex: {meshCollider.name}. HoloLens2 이동/검증에서는 Convex MeshCollider 또는 단순 Proxy Collider를 권장합니다.", meshCollider);
+                Debug.LogWarning($"[PlacedFurniture] MeshCollider is not convex: {meshCollider.name}. HoloLens2 ?대룞/寃利앹뿉?쒕뒗 Convex MeshCollider ?먮뒗 ?⑥닚 Proxy Collider瑜?沅뚯옣?⑸땲??", meshCollider);
         }
     }
 

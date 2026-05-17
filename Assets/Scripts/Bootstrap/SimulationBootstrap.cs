@@ -51,6 +51,21 @@ public class SimulationBootstrap : MonoBehaviour
             SimulationRunConfig.DebugInputFileName = SanitizeFileName(debugFileName);
         }
 
+        if (args.TryGetValue("--input-dir", out string inputDir))
+        {
+            SimulationRunConfig.InputDir = inputDir;
+        }
+
+        if (args.TryGetValue("--output-dir", out string outputDir))
+        {
+            SimulationRunConfig.OutputDir = outputDir;
+        }
+
+        if (args.TryGetValue("--tha-csv", out string thaCsv))
+        {
+            SimulationRunConfig.ThaCsvPath = thaCsv;
+        }
+
 #if UNITY_EDITOR
         if (string.IsNullOrWhiteSpace(SimulationRunConfig.SessionId))
         {
@@ -77,12 +92,49 @@ public class SimulationBootstrap : MonoBehaviour
             );
         }
 
+        string sceneToLoad = ResolveSceneName(nextSceneName);
+
         Debug.Log($"[Bootstrap] Session ID: {SimulationRunConfig.SessionId}");
         Debug.Log($"[Bootstrap] API Base URL: {SimulationRunConfig.ApiBaseUrl}");
         Debug.Log($"[Bootstrap] Is Debug Session: {SimulationRunConfig.IsDebugSession}");
-        Debug.Log($"[Bootstrap] Loading scene: {nextSceneName}");
+        Debug.Log($"[Bootstrap] Input Dir: {SimulationRunConfig.InputDir}");
+        Debug.Log($"[Bootstrap] Output Dir: {SimulationRunConfig.OutputDir}");
+        Debug.Log($"[Bootstrap] Loading scene: {sceneToLoad}");
 
-        SceneManager.LoadScene(nextSceneName);
+        // 헤드리스 시뮬레이션 입출력 경로가 주어지면, 씬 로드 후 자동으로
+        // HeadlessSimulationRunner를 생성하도록 예약한다(.unity 씬 수정 불필요).
+        if (SimulationRunConfig.HasHeadlessSimulationPaths())
+        {
+            HeadlessSimulationRunner.ScheduleAutoSpawn();
+        }
+
+        SceneManager.LoadScene(sceneToLoad);
+    }
+
+    // BootstrapScene 인스펙터에 잘못된 씬명이 저장돼 있어도 빌드에 포함된
+    // 실제 시뮬레이션 씬으로 폴백한다.
+    private string ResolveSceneName(string preferred)
+    {
+        if (!string.IsNullOrWhiteSpace(preferred) && Application.CanStreamedLevelBeLoaded(preferred))
+        {
+            return preferred;
+        }
+
+        string[] fallbacks = { "SimulationScene", "MainSimulationScene" };
+        foreach (string candidate in fallbacks)
+        {
+            if (Application.CanStreamedLevelBeLoaded(candidate))
+            {
+                if (!string.Equals(candidate, preferred))
+                {
+                    Debug.LogWarning($"[Bootstrap] Scene '{preferred}' not loadable. Falling back to '{candidate}'.");
+                }
+                return candidate;
+            }
+        }
+
+        Debug.LogError($"[Bootstrap] No loadable simulation scene found (tried '{preferred}', SimulationScene, MainSimulationScene). Check Build Settings.");
+        return preferred;
     }
 
     private bool IsDebugSessionId(string sessionId)

@@ -1,43 +1,43 @@
 using UnityEngine;
 using TMPro;
 using MixedReality.Toolkit.UX;
+using UnityEngine.Events;
 
 public class NumpadController : MonoBehaviour
 {
-    [Header("Manager Reference")]
-    public UIManager uiManager;
-
     [Header("Numpad Buttons")]
-    [Tooltip("0ºÎÅÍ 9±îÁö ¼ø¼­´ë·Î ¹öÆ°À» ³Ö¾îÁÖ¼¼¿ä")]
-    public PressableButton[] numberButtons = new PressableButton[10]; // 0~9 ¹öÆ° ¹è¿­
-    public PressableButton btn_Backspace; // Áö¿ì±â ¹öÆ°
-    public PressableButton btn_Done;      // ¿Ï·á ¹öÆ°
+    [Tooltip("0ë¶€í„° 9ê¹Œì§€ ìˆœì„œëŒ€ë¡œ ë²„íŠ¼ì„ ë„£ì–´ì£¼ì„¸ìš”")]
+    public PressableButton[] numberButtons = new PressableButton[10]; // 0~9 ë²„íŠ¼ ë°°ì—´
+    public PressableButton btn_Backspace; // ì§€ìš°ê¸° ë²„íŠ¼
+    public PressableButton btn_Done;      // ì™„ë£Œ ë²„íŠ¼
 
-    // ÇöÀç ¼ıÀÚ¸¦ ÀÔ·Â¹ŞÀ» ´ë»ó ÅØ½ºÆ®
+    // í˜„ì¬ ìˆ«ìë¥¼ ì…ë ¥ë°›ì„ ëŒ€ìƒ í…ìŠ¤íŠ¸
     private TMP_Text targetText;
+    private UnityAction closeRequested;
 
-    // Ã¹ ÀÔ·ÂÀÎÁö È®ÀÎÇÏ´Â º¯¼ö
+    // ì²« ì…ë ¥ì¸ì§€ í™•ì¸í•˜ëŠ” ë³€ìˆ˜
     private bool isFirstInput = true;
 
-    // ¼ıÀÚ¸¦ ´Ù Áö¿üÀ» ¶§ ´Ù½Ã ¶ç¿öÁÙ ¾È³» ¹®±¸
-    private string placeholderText = "¹æÀÌ ¸îÃş¿¡ À§Ä¡ÇØ ÀÖ³ª¿ä?";
+    // ìˆ«ìë¥¼ ë‹¤ ì§€ì› ì„ ë•Œ ë‹¤ì‹œ ë„ì›Œì¤„ ì•ˆë‚´ ë¬¸êµ¬
+    private string placeholderText = "ë°©ì´ ëª‡ì¸µì— ìœ„ì¹˜í•´ ìˆë‚˜ìš”?";
+    private string currentPlaceholderText;
 
     private void Start()
     {
-        // 1. ¼ıÀÚ ¹öÆ° 0~9 ÀÚµ¿ ¿¬°á (ÀÎ½ºÆåÅÍ ³ë°¡´Ù ¹æÁö)
+        // 1. ìˆ«ì ë²„íŠ¼ 0~9 ìë™ ì—°ê²° (ì¸ìŠ¤í™í„° ë…¸ê°€ë‹¤ ë°©ì§€)
         for (int i = 0; i < numberButtons.Length; i++)
         {
             if (numberButtons[i] != null)
             {
-                // Å¬·ÎÀú(Closure) ¹®Á¦¸¦ ¹æÁöÇÏ±â À§ÇØ Áö¿ª º¯¼ö¿¡ ÀúÀå
+                // í´ë¡œì €(Closure) ë¬¸ì œë¥¼ ë°©ì§€í•˜ê¸° ìœ„í•´ ì§€ì—­ ë³€ìˆ˜ì— ì €ì¥
                 string numString = i.ToString();
 
-                // ¹öÆ°ÀÌ ´­·ÈÀ» ¶§ ½ÇÇàÇÒ ÇÔ¼ö¸¦ ÄÚµå·Î Á÷Á¢ ¿¬°á
+                // ë²„íŠ¼ì´ ëˆŒë ¸ì„ ë•Œ ì‹¤í–‰í•  í•¨ìˆ˜ë¥¼ ì½”ë“œë¡œ ì§ì ‘ ì—°ê²°
                 PressableButtonClickGuard.AddClick(numberButtons[i], () => OnClick_Number(numString));
             }
         }
 
-        // 2. ±â´É ¹öÆ° ¿¬°á
+        // 2. ê¸°ëŠ¥ ë²„íŠ¼ ì—°ê²°
         if (btn_Backspace != null)
             PressableButtonClickGuard.AddClick(btn_Backspace, OnClick_Backspace);
 
@@ -46,47 +46,57 @@ public class NumpadController : MonoBehaviour
     }
 
     // ==========================================
-    // ¿ÜºÎ(BuildingInfo µî)¿¡¼­ ³Ñ¹öÆĞµå¸¦ ÄÓ ¶§ È£ÃâÇÏ´Â ÇÔ¼ö
+    // ì™¸ë¶€(BuildingInfo ë“±)ì—ì„œ ë„˜ë²„íŒ¨ë“œë¥¼ ì¼¤ ë•Œ í˜¸ì¶œí•˜ëŠ” í•¨ìˆ˜
     // ==========================================
     public void OpenNumpad(TMP_Text textComponentToUpdate)
     {
-        targetText = textComponentToUpdate;
+        OpenNumpad(textComponentToUpdate, null);
+    }
 
-        // 1. ±âÁ¸ UI ÅØ½ºÆ® °¡Á®¿À±â
+    public void OpenNumpad(TMP_Text textComponentToUpdate, UnityAction onCloseRequested)
+    {
+        OpenNumpad(textComponentToUpdate, onCloseRequested, placeholderText);
+    }
+
+    public void OpenNumpad(TMP_Text textComponentToUpdate, UnityAction onCloseRequested, string placeholder)
+    {
+        targetText = textComponentToUpdate;
+        closeRequested = onCloseRequested;
+        currentPlaceholderText = string.IsNullOrEmpty(placeholder) ? placeholderText : placeholder;
+
+        // 1. ê¸°ì¡´ UI í…ìŠ¤íŠ¸ ê°€ì ¸ì˜¤ê¸°
         string existingText = targetText.text;
 
-        // 2. ¾È³» ¹®±¸ÀÌ°Å³ª ºñ¾îÀÖ´Â °æ¿ì Ã¹ ÀÔ·Â »óÅÂ·Î ¼¼ÆÃ
-        if (string.IsNullOrEmpty(existingText) || existingText == placeholderText)
+        // 2. ì•ˆë‚´ ë¬¸êµ¬ì´ê±°ë‚˜ ë¹„ì–´ìˆëŠ” ê²½ìš° ì²« ì…ë ¥ ìƒíƒœë¡œ ì„¸íŒ…
+        if (string.IsNullOrEmpty(existingText) || existingText == currentPlaceholderText)
         {
             isFirstInput = true;
-            targetText.text = placeholderText; // ¸¸¾àÀ» À§ÇØ ¾È³» ¹®±¸·Î È®½ÇÈ÷ ÃÊ±âÈ­
+            targetText.text = currentPlaceholderText; // ë§Œì•½ì„ ìœ„í•´ ì•ˆë‚´ ë¬¸êµ¬ë¡œ í™•ì‹¤íˆ ì´ˆê¸°í™”
         }
         else
         {
-            // 3. ±âÁ¸¿¡ ÀÔ·ÂµÈ Ãş¼ö°¡ ÀÖ´Ù¸é "Ãş" ±ÛÀÚ ¹× °ø¹éÀ» Á¦°ÅÇÏ°í Ã¹ ÀÔ·Â »óÅÂ ÇØÁ¦
+            // 3. ê¸°ì¡´ì— ì…ë ¥ëœ ì¸µìˆ˜ê°€ ìˆë‹¤ë©´ "ì¸µ" ê¸€ì ë° ê³µë°±ì„ ì œê±°í•˜ê³  ì²« ì…ë ¥ ìƒíƒœ í•´ì œ
             isFirstInput = false;
-            targetText.text = existingText.Replace("Ãş", "").Trim();
+            targetText.text = existingText.Replace("ì¸µ", "").Trim();
         }
-
-        uiManager.ToggleNumpad(true);
     }
 
     // ==========================================
-    // ³»ºÎ ¹öÆ° ÀÛµ¿ ·ÎÁ÷
+    // ë‚´ë¶€ ë²„íŠ¼ ì‘ë™ ë¡œì§
     // ==========================================
 
     private void OnClick_Number(string num)
     {
         if (targetText != null)
         {
-            // ¸¸¾à Ã¹ ÀÔ·ÂÀÌ¶ó¸é? -> ¾È³» ¹®±¸¸¦ Áö¿ì°í »óÅÂ¸¦ º¯°æ
+            // ë§Œì•½ ì²« ì…ë ¥ì´ë¼ë©´? -> ì•ˆë‚´ ë¬¸êµ¬ë¥¼ ì§€ìš°ê³  ìƒíƒœë¥¼ ë³€ê²½
             if (isFirstInput)
             {
                 targetText.text = "";
                 isFirstInput = false;
             }
 
-            // ´©¸¥ ¼ıÀÚ¸¦ ÅØ½ºÆ® µÚ¿¡ ÀÌ¾î ºÙÀÓ
+            // ëˆ„ë¥¸ ìˆ«ìë¥¼ í…ìŠ¤íŠ¸ ë’¤ì— ì´ì–´ ë¶™ì„
             targetText.text += num;
         }
     }
@@ -95,28 +105,30 @@ public class NumpadController : MonoBehaviour
     {
         if (targetText != null)
         {
-            // ¾È³» ¹®±¸°¡ ¶°ÀÖ´Â »óÅÂ(Ã¹ ÀÔ·Â ´ë±â »óÅÂ)ÀÏ ¶§ Áö¿ì±â ¹öÆ°À» ´©¸£¸é ¹«½Ã
+            // ì•ˆë‚´ ë¬¸êµ¬ê°€ ë– ìˆëŠ” ìƒíƒœ(ì²« ì…ë ¥ ëŒ€ê¸° ìƒíƒœ)ì¼ ë•Œ ì§€ìš°ê¸° ë²„íŠ¼ì„ ëˆ„ë¥´ë©´ ë¬´ì‹œ
             if (isFirstInput) return;
 
-            // ÅØ½ºÆ®°¡ ³²¾ÆÀÖÀ» °æ¿ì ±ÛÀÚ ÇÏ³ª Áö¿ì±â
+            // í…ìŠ¤íŠ¸ê°€ ë‚¨ì•„ìˆì„ ê²½ìš° ê¸€ì í•˜ë‚˜ ì§€ìš°ê¸°
             if (targetText.text.Length > 0)
             {
                 targetText.text = targetText.text.Substring(0, targetText.text.Length - 1);
             }
 
-            // ÇÏ³ª¸¦ Áö¿ü´Âµ¥ ´Ù Áö¿öÁ®¼­ ºóÄ­ÀÌ µÇ¾ú´Ù¸é, ´Ù½Ã ¾È³» ¹®±¸¸¦ ¶ç¿öÁÖ±â
+            // í•˜ë‚˜ë¥¼ ì§€ì› ëŠ”ë° ë‹¤ ì§€ì›Œì ¸ì„œ ë¹ˆì¹¸ì´ ë˜ì—ˆë‹¤ë©´, ë‹¤ì‹œ ì•ˆë‚´ ë¬¸êµ¬ë¥¼ ë„ì›Œì£¼ê¸°
             if (targetText.text.Length == 0)
             {
-                targetText.text = placeholderText;
-                isFirstInput = true; // ´Ù½Ã Ã¹ ÀÔ·Â »óÅÂ·Î µÇµ¹¸²
+                targetText.text = currentPlaceholderText;
+                isFirstInput = true; // ë‹¤ì‹œ ì²« ì…ë ¥ ìƒíƒœë¡œ ë˜ëŒë¦¼
             }
         }
     }
 
     private void OnClick_Done()
     {
-        // ÅØ½ºÆ® ¿¬°áÀ» ²÷°í ³Ñ¹öÆĞµå¸¦ ²ü´Ï´Ù.
+        // í…ìŠ¤íŠ¸ ì—°ê²°ì„ ëŠê³  ë„˜ë²„íŒ¨ë“œë¥¼ ë•ë‹ˆë‹¤.
         targetText = null;
-        uiManager.ToggleNumpad(false);
+        UnityAction onCloseRequested = closeRequested;
+        closeRequested = null;
+        onCloseRequested?.Invoke();
     }
 }

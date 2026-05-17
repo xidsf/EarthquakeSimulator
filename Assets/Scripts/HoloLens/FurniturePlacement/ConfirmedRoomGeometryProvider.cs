@@ -1,6 +1,7 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 public enum SpawnOverlapResolution
 {
@@ -12,9 +13,9 @@ public enum SpawnOverlapResolution
 }
 
 /// <summary>
-/// ConfirmRoomManager가 완성한 벽/바닥/천장 오브젝트를 보관하고,
-/// 등록된 가구의 이동 결과가 방 내부에 있는지 검증합니다.
-/// 수정 내역: 벽걸이 가구(액자 등) 바닥 스냅 예외 처리 및 벽면 스냅 유틸리티 추가
+/// ConfirmRoomManager媛 ?꾩꽦??踰?諛붾떏/泥쒖옣 ?ㅻ툕?앺듃瑜?蹂닿??섍퀬,
+/// ?깅줉??媛援ъ쓽 ?대룞 寃곌낵媛 諛??대????덈뒗吏 寃利앺빀?덈떎.
+/// ?섏젙 ?댁뿭: 踰쎄구??媛援??≪옄 ?? 諛붾떏 ?ㅻ깄 ?덉쇅 泥섎━ 諛?踰쎈㈃ ?ㅻ깄 ?좏떥由ы떚 異붽?
 /// </summary>
 public class ConfirmedRoomGeometryProvider : MonoBehaviour
 {
@@ -32,8 +33,9 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
     public float wallOverlapSphereRadius = 0.025f;
     public bool allowBoundsCornersNearWalls = true;
     [Min(0.0f)] public float wallBoundaryCornerTolerance = 0.12f;
-    [Tooltip("벽걸이 가구는 벽/모서리에 의도적으로 붙으므로 방 경계 판정에 더 넓은 허용오차를 사용합니다(벽 두께/관통 흡수). 중심점 검사에도 근접-벽 폴백을 적용합니다.")]
-    [Min(0.0f)] public float wallMountedBoundaryTolerance = 0.25f;
+    [Tooltip("踰쎄구??媛援щ뒗 踰?紐⑥꽌由ъ뿉 ?섎룄?곸쑝濡?遺숈쑝誘濡?諛?寃쎄퀎 ?먯젙?????볦? ?덉슜?ㅼ감瑜??ъ슜?⑸땲??踰??먭퍡/愿???≪닔). 以묒떖??寃?ъ뿉??洹쇱젒-踰??대갚???곸슜?⑸땲??")]
+    [FormerlySerializedAs("wallMountedBoundaryTolerance")]
+    [Min(0.0f)] public float floorContactlessBoundaryTolerance = 0.25f;
     public bool checkUpperBoundsCornersForWallBoundary = true;
     public bool allowShallowWallContact = true;
     [Min(0.0f)] public float allowedWallPenetrationDepth = 0.05f;
@@ -46,14 +48,14 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
     [Min(0.05f)] public float nearbyInsideSearchStepMeters = 0.05f;
     [Min(0.05f)] public float nearbyInsideSearchMaxRadiusMeters = 0.8f;
 
-    [Tooltip("벽으로 끝까지 끌어 살짝 침투했을 때, 마지막 유효 위치로 통째 원복하는 대신 접촉한 벽에서 살짝 떨어진 지점으로 보정해 사용자가 끌어둔 위치를 유지합니다.")]
+    [Tooltip("踰쎌쑝濡??앷퉴吏 ?뚯뼱 ?댁쭩 移⑦닾?덉쓣 ?? 留덉?留??좏슚 ?꾩튂濡??듭㎏ ?먮났?섎뒗 ????묒큺??踰쎌뿉???댁쭩 ?⑥뼱吏?吏?먯쑝濡?蹂댁젙???ъ슜?먭? ?뚯뼱???꾩튂瑜??좎??⑸땲??")]
     public bool releaseFromWallInsteadOfRevert = true;
 
-    [Tooltip("releaseFromWallInsteadOfRevert가 켜졌을 때 접촉한 벽 표면에서 가구를 떨어뜨릴 여유(미터)입니다.")]
+    [Tooltip("releaseFromWallInsteadOfRevert媛 耳쒖죱?????묒큺??踰??쒕㈃?먯꽌 媛援щ? ?⑥뼱?⑤┫ ?ъ쑀(誘명꽣)?낅땲??")]
     [Min(0.0f)] public float wallContactReleaseMargin = 0.0f;
 
     [Header("Placement Condition Validation")]
-    [Tooltip("배치 완료 검증에서 바닥/가구/벽/천장에 '붙어 있다'고 판단하는 최대 간격(미터)입니다.")]
+    [Tooltip("諛곗튂 ?꾨즺 寃利앹뿉??諛붾떏/媛援?踰?泥쒖옣??'遺숈뼱 ?덈떎'怨??먮떒?섎뒗 理쒕? 媛꾧꺽(誘명꽣)?낅땲??")]
     [Min(0.0f)] public float placementContactTolerance = 0.05f;
 
     [Header("Runtime State - Read Only")]
@@ -137,15 +139,15 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
         if (furniture == null) { reason = "Furniture is null."; return false; }
         if (!initialized) { reason = "Room geometry is not initialized."; return false; }
 
-        // 벽걸이 가구가 아닐 때만 바닥으로 내리고 똑바로 세움
-        if (!furniture.isWallMounted)
+        // 踰쎄구??媛援ш? ?꾨땺 ?뚮쭔 諛붾떏?쇰줈 ?대━怨??묐컮濡??몄?
+        if (!furniture.isFloorContactless)
         {
             if (keepFurnitureUpright) ForceUpright(furniture.transform);
             if (snapFurnitureToFloor) SnapFurnitureToFloor(furniture);
         }
         else
         {
-            // 액자는 Y 회전만 유지하고 흔들리지 않게 보정
+            // ?≪옄??Y ?뚯쟾留??좎??섍퀬 ?붾뱾由ъ? ?딄쾶 蹂댁젙
             Vector3 euler = furniture.transform.eulerAngles;
             furniture.transform.rotation = Quaternion.Euler(0, euler.y, 0);
         }
@@ -160,11 +162,11 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
     {
         reason = string.Empty;
         if (!TryGetFurnitureBounds(furniture, out Bounds furnitureBounds)) { reason = "Furniture has no valid collider or renderer bounds."; return false; }
-        if (!AreFurnitureBoundsInsideRoom(furnitureBounds, furniture.isWallMounted)) { reason = "Furniture is outside the confirmed room boundary."; return false; }
+        if (!AreFurnitureBoundsInsideRoom(furnitureBounds, furniture.isFloorContactless)) { reason = "Furniture is outside the confirmed room boundary."; return false; }
         if (ExceedsCeiling(furnitureBounds)) { reason = "Furniture is higher than the ceiling."; return false; }
 
-        // 벽걸이 가구는 벽과 교차하는 것을 어느정도 허용해야 붙을 수 있음
-        if (!furniture.isWallMounted && IntersectsAnyWall(furniture, furnitureBounds, out Collider wall)) { reason = $"Furniture intersects wall: {wall.name}."; return false; }
+        // 踰쎄구??媛援щ뒗 踰쎄낵 援먯감?섎뒗 寃껋쓣 ?대뒓?뺣룄 ?덉슜?댁빞 遺숈쓣 ???덉쓬
+        if (!furniture.isFloorContactless && IntersectsAnyWall(furniture, furnitureBounds, out Collider wall)) { reason = $"Furniture intersects wall: {wall.name}."; return false; }
         if (IntersectsAnyOtherFurniture(furniture, out PlacedFurniture other)) { reason = $"Furniture intersects other furniture: {other.DisplayName}."; return false; }
 
         return true;
@@ -178,7 +180,7 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
 
         for (int i = 0; i < collisionResolutionIterations; i++)
         {
-            if (!furniture.isWallMounted)
+            if (!furniture.isFloorContactless)
             {
                 if (keepFurnitureUpright) ForceUpright(furniture.transform);
                 if (snapFurnitureToFloor) SnapFurnitureToFloor(furniture);
@@ -188,8 +190,8 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
 
             bool changed = false;
 
-            // 벽걸이는 억지로 방 중앙으로 밀어넣지 않음 (벽에 붙어있어야 하므로)
-            if (!furniture.isWallMounted && TryGetFurnitureBounds(furniture, out Bounds bounds) && !AreFurnitureBoundsInsideRoom(bounds))
+            // 踰쎄구?대뒗 ?듭?濡?諛?以묒븰?쇰줈 諛?대꽔吏 ?딆쓬 (踰쎌뿉 遺숈뼱?덉뼱???섎?濡?
+            if (!furniture.isFloorContactless && TryGetFurnitureBounds(furniture, out Bounds bounds) && !AreFurnitureBoundsInsideRoom(bounds))
             {
                 changed |= TryMoveFurnitureToNearbyInsideRoom(furniture);
             }
@@ -199,19 +201,19 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
             if (!changed) break;
         }
 
-        if (!furniture.isWallMounted && snapFurnitureToFloor) SnapFurnitureToFloor(furniture);
+        if (!furniture.isFloorContactless && snapFurnitureToFloor) SnapFurnitureToFloor(furniture);
         if (IsFurniturePoseValid(furniture, out reason)) return true;
 
-        // 통째 원복 전에, 접촉한 벽에서만 살짝 떨어뜨려 사용자가 끌어둔 위치를 유지한다.
-        if (releaseFromWallInsteadOfRevert && !furniture.isWallMounted &&
+        // ?듭㎏ ?먮났 ?꾩뿉, ?묒큺??踰쎌뿉?쒕쭔 ?댁쭩 ?⑥뼱?⑤젮 ?ъ슜?먭? ?뚯뼱???꾩튂瑜??좎??쒕떎.
+        if (releaseFromWallInsteadOfRevert && !furniture.isFloorContactless &&
             TryReleaseFromContactingWalls(furniture, out reason))
         {
             return true;
         }
 
-        // 원상 복구
+        // ?먯긽 蹂듦뎄
         furniture.transform.SetPositionAndRotation(originalPosition, originalRotation);
-        if (!furniture.isWallMounted)
+        if (!furniture.isFloorContactless)
         {
             if (keepFurnitureUpright) ForceUpright(furniture.transform);
             if (snapFurnitureToFloor) SnapFurnitureToFloor(furniture);
@@ -221,14 +223,14 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
         return false;
     }
 
-    // 접촉(침투)한 벽에서만 법선 방향으로 margin만큼 떨어뜨려, 통째 원복 없이 사용자가 끌어둔 위치를 유지한다.
+    // ?묒큺(移⑦닾)??踰쎌뿉?쒕쭔 踰뺤꽑 諛⑺뼢?쇰줈 margin留뚰겮 ?⑥뼱?⑤젮, ?듭㎏ ?먮났 ?놁씠 ?ъ슜?먭? ?뚯뼱???꾩튂瑜??좎??쒕떎.
     private bool TryReleaseFromContactingWalls(PlacedFurniture furniture, out string reason)
     {
         reason = string.Empty;
 
-        if (furniture.isWallMounted)
+        if (furniture.isFloorContactless)
         {
-            reason = "Wall-mounted furniture is not released from walls.";
+            reason = "Floor-contactless furniture is not released from walls.";
             return false;
         }
 
@@ -276,7 +278,7 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
         return Vector3.ProjectOnPlane(totalMove, Vector3.up);
     }
 
-    // release 직후 수락 판정: 불안정한 AABB 모서리+레이 검사 대신 침투 없음 + 중심 inside 기반.
+    // release 吏곹썑 ?섎씫 ?먯젙: 遺덉븞?뺥븳 AABB 紐⑥꽌由??덉씠 寃?????移⑦닾 ?놁쓬 + 以묒떖 inside 湲곕컲.
     private bool IsFurniturePoseValidAfterWallRelease(PlacedFurniture furniture, out string reason)
     {
         reason = string.Empty;
@@ -319,7 +321,7 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
         return true;
     }
 
-    // 가장 가까운 벽면을 찾아 스냅 위치와 법선을 반환합니다.
+    // 媛??媛源뚯슫 踰쎈㈃??李얠븘 ?ㅻ깄 ?꾩튂? 踰뺤꽑??諛섑솚?⑸땲??
     public bool TrySnapToNearestWall(Vector3 currentPos, float maxDistance, out Vector3 snapPos, out Vector3 snapNormal)
     {
         snapPos = currentPos;
@@ -661,7 +663,7 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
     private bool TryApplyInsideRoomCandidate(PlacedFurniture furniture, Vector3 candidatePosition, Quaternion rotation)
     {
         furniture.transform.SetPositionAndRotation(candidatePosition, rotation);
-        if (!furniture.isWallMounted)
+        if (!furniture.isFloorContactless)
         {
             if (keepFurnitureUpright) ForceUpright(furniture.transform);
             if (snapFurnitureToFloor) SnapFurnitureToFloor(furniture);
@@ -670,15 +672,15 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
         return TryGetFurnitureBounds(furniture, out Bounds candidateBounds) && AreFurnitureBoundsInsideRoom(candidateBounds);
     }
 
-    // 합산하면 (침투 collider 수 × 대상 수)만큼 과보정되어 gap이 커진다.
-    // 매 반복에서 "가장 깊은 단일 침투"만 해소하고, 남은 접촉은 다음 반복(collisionResolutionIterations)이 처리한다.
+    // ?⑹궛?섎㈃ (移⑦닾 collider ??횞 ?????留뚰겮 怨쇰낫?뺣릺??gap??而ㅼ쭊??
+    // 留?諛섎났?먯꽌 "媛??源딆? ?⑥씪 移⑦닾"留??댁냼?섍퀬, ?⑥? ?묒큺? ?ㅼ쓬 諛섎났(collisionResolutionIterations)??泥섎━?쒕떎.
     private bool TryResolveFurniturePenetrations(PlacedFurniture furniture)
     {
         Vector3 bestMove = Vector3.zero;
         float bestSqr = 0f;
 
-        // 벽면 충돌 밀어내기 (액자는 예외)
-        if (!furniture.isWallMounted)
+        // 踰쎈㈃ 異⑸룎 諛?대궡湲?(?≪옄???덉쇅)
+        if (!furniture.isFloorContactless)
         {
             foreach (BoxCollider wallCollider in wallColliders)
             {
@@ -712,8 +714,8 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
         return true;
     }
 
-    // 한 대상에 대해 가구의 자식 collider를 합산하지 않고, 가장 깊은 침투 하나만 기준으로 밀어낸다.
-    // (다조각 convex-hull이 같은 대상에 닿아도 skin/거리가 collider 수만큼 중복 합산되지 않음)
+    // ????곸뿉 ???媛援ъ쓽 ?먯떇 collider瑜??⑹궛?섏? ?딄퀬, 媛??源딆? 移⑦닾 ?섎굹留?湲곗??쇰줈 諛?대궦??
+    // (?ㅼ“媛?convex-hull??媛숈? ??곸뿉 ?우븘??skin/嫄곕━媛 collider ?섎쭔??以묐났 ?⑹궛?섏? ?딆쓬)
     private Vector3 ComputeSeparationMove(PlacedFurniture furniture, Collider targetCollider)
     {
         Collider[] colliders = furniture.GetActivePlacementColliders();
@@ -788,10 +790,10 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
         return hasBounds;
     }
 
-    // 바닥 정렬은 collider(서버 convex hull)가 아니라 "보이는 메쉬" 기준이어야 한다.
-    // collider는 시각 메쉬와 수직 기준점이 다를 수 있어 collider 기준으로 바닥에 맞추면
-    // 실제 보이는 가구가 바닥 아래로 가라앉는다. 비활성 렌더러(collider GLB 등)와
-    // 선택 표시용 SelectionBoxVisual은 제외한다.
+    // 諛붾떏 ?뺣젹? collider(?쒕쾭 convex hull)媛 ?꾨땲??"蹂댁씠??硫붿돩" 湲곗??댁뼱???쒕떎.
+    // collider???쒓컖 硫붿돩? ?섏쭅 湲곗??먯씠 ?ㅻ? ???덉뼱 collider 湲곗??쇰줈 諛붾떏??留욎텛硫?
+    // ?ㅼ젣 蹂댁씠??媛援ш? 諛붾떏 ?꾨옒濡?媛?쇱븠?붾떎. 鍮꾪솢???뚮뜑??collider GLB ???
+    // ?좏깮 ?쒖떆??SelectionBoxVisual? ?쒖쇅?쒕떎.
     public bool TryGetFurnitureVisualBounds(PlacedFurniture furniture, out Bounds bounds)
     {
         bounds = default;
@@ -819,8 +821,8 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
         target.rotation = Quaternion.Euler(0f, euler.y, 0f);
     }
 
-    // 가구가 천장과 바닥에 동시에 닿을 만큼 커졌는지(=실내 높이 이상) 판정한다.
-    // 천장 정보가 없으면 판단 불가로 보고 false를 반환한다.
+    // 媛援ш? 泥쒖옣怨?諛붾떏???숈떆???우쓣 留뚰겮 而ㅼ죱?붿?(=?ㅻ궡 ?믪씠 ?댁긽) ?먯젙?쒕떎.
+    // 泥쒖옣 ?뺣낫媛 ?놁쑝硫??먮떒 遺덇?濡?蹂닿퀬 false瑜?諛섑솚?쒕떎.
     public bool ExceedsRoomHeight(PlacedFurniture furniture)
     {
         if (!initialized || furniture == null || ceilingCollider == null) return false;
@@ -833,11 +835,11 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
         return bounds.size.y >= interiorHeight - touchTolerance;
     }
 
-    // 스폰 위치가 다른 가구와 겹칠 때 재배치한다.
-    // ① 겹친 가구 위에 쌓기 → ② (천장 초과 시) 사용자 바로 아래 → ③ 방 내부 빈 공간.
+    // ?ㅽ룿 ?꾩튂媛 ?ㅻⅨ 媛援ъ? 寃뱀튌 ???щ같移섑븳??
+    // ??寃뱀튇 媛援??꾩뿉 ?볤린 ????(泥쒖옣 珥덇낵 ?? ?ъ슜??諛붾줈 ?꾨옒 ????諛??대? 鍮?怨듦컙.
     public SpawnOverlapResolution ResolveInitialSpawnOverlap(PlacedFurniture furniture)
     {
-        if (!initialized || furniture == null || furniture.isWallMounted) return SpawnOverlapResolution.NoOverlap;
+        if (!initialized || furniture == null || furniture.isFloorContactless) return SpawnOverlapResolution.NoOverlap;
         if (!IntersectsAnyOtherFurniture(furniture, out PlacedFurniture other)) return SpawnOverlapResolution.NoOverlap;
 
         Vector3 originalPosition = furniture.transform.position;
@@ -915,10 +917,10 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
         return false;
     }
 
-    // 등록 검증을 건너뛰는 경로에서도 외부에서 바닥 정렬만 적용할 수 있게 노출한다.
+    // ?깅줉 寃利앹쓣 嫄대꼫?곕뒗 寃쎈줈?먯꽌???몃??먯꽌 諛붾떏 ?뺣젹留??곸슜?????덇쾶 ?몄텧?쒕떎.
     public bool CorrectFurnitureToFloor(PlacedFurniture furniture)
     {
-        if (!initialized || furniture == null || furniture.isWallMounted) return false;
+        if (!initialized || furniture == null || furniture.isFloorContactless) return false;
         SnapFurnitureToFloor(furniture);
         return true;
     }
@@ -927,7 +929,7 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
     {
         if (floorCollider == null) return;
 
-        // 보이는 메쉬 기준으로 바닥에 맞춘다. 렌더러가 없을 때만 collider로 폴백한다.
+        // 蹂댁씠??硫붿돩 湲곗??쇰줈 諛붾떏??留욎텣?? ?뚮뜑?ш? ?놁쓣 ?뚮쭔 collider濡??대갚?쒕떎.
         if (!TryGetFurnitureVisualBounds(furniture, out Bounds furnitureBounds) &&
             !TryGetFurnitureBounds(furniture, out furnitureBounds))
         {
@@ -938,9 +940,9 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
         if (Mathf.Abs(deltaY) > 0.0001f) furniture.transform.position += Vector3.up * deltaY;
     }
 
-    // tolerateWallContact=true(벽걸이 가구)일 때는 벽/모서리에 의도적으로 붙는 특성상
-    // 더 넓은 경계 허용오차를 쓰고, 엄격한 IsInsideRoom 단독이던 중심점 검사에도
-    // 근접-벽 폴백을 적용한다. 비벽걸이 경로(기본값)는 기존 동작과 동일하다.
+    // tolerateWallContact=true(踰쎄구??媛援????뚮뒗 踰?紐⑥꽌由ъ뿉 ?섎룄?곸쑝濡?遺숇뒗 ?뱀꽦??
+    // ???볦? 寃쎄퀎 ?덉슜?ㅼ감瑜??곌퀬, ?꾧꺽??IsInsideRoom ?⑤룆?대뜕 以묒떖??寃?ъ뿉??
+    // 洹쇱젒-踰??대갚???곸슜?쒕떎. 鍮꾨꼍嫄몄씠 寃쎈줈(湲곕낯媛???湲곗〈 ?숈옉怨??숈씪?섎떎.
     private bool AreFurnitureBoundsInsideRoom(Bounds bounds, bool tolerateWallContact = false)
     {
         Vector3 min = bounds.min;
@@ -948,7 +950,7 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
         float y = floorCollider.bounds.max.y + insideRoomRayHeightFromFloor;
 
         float boundaryTolerance = tolerateWallContact
-            ? Mathf.Max(wallBoundaryCornerTolerance, wallMountedBoundaryTolerance)
+            ? Mathf.Max(wallBoundaryCornerTolerance, floorContactlessBoundaryTolerance)
             : wallBoundaryCornerTolerance;
 
         Vector3 centerPoint = new Vector3(bounds.center.x, y, bounds.center.z);
@@ -1059,20 +1061,20 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
         return IsInsideRoom(checkPoint);
     }
 
-    // 외부(스케일 조정 등)에서 위치/스케일 변경 전후로 다른 가구와의 충돌 여부만 비파괴적으로 검사한다.
+    // ?몃?(?ㅼ???議곗젙 ???먯꽌 ?꾩튂/?ㅼ???蹂寃??꾪썑濡??ㅻⅨ 媛援ъ???異⑸룎 ?щ?留?鍮꾪뙆愿댁쟻?쇰줈 寃?ы븳??
     public bool OverlapsOtherFurniture(PlacedFurniture furniture)
     {
         return IntersectsAnyOtherFurniture(furniture, out _);
     }
 
-    // 스냅 후 가구가 벽을 파고들면 벽의 "방 안쪽 면"을 향해, 가구 AABB 전체가
-    // 그 면을 벗어날 때까지 민다.
-    // ComputePenetration(MTV)을 쓰지 않는 이유:
-    //  - 회전/이동 직후 물리 미동기화로 stale 결과가 나옴
-    //  - 가구가 얇은 벽을 절반 이상 통과하면 MTV가 반대편(관통 방향)으로 밀어 벽을 뚫고 나감
-    //    (특정 축으로 긴 가구가 스냅 시 90도 회전하면 빈발)
-    // collider.bounds(AABB)는 transform 변경 즉시 반영되므로 물리 동기화가 필요 없고,
-    // 항상 방 중심을 향하는 법선으로 밀어 관통 방향 모호성을 제거한다.
+    // ?ㅻ깄 ??媛援ш? 踰쎌쓣 ?뚭퀬?ㅻ㈃ 踰쎌쓽 "諛??덉そ 硫????ν빐, 媛援?AABB ?꾩껜媛
+    // 洹?硫댁쓣 踰쀬뼱???뚭퉴吏 誘쇰떎.
+    // ComputePenetration(MTV)???곗? ?딅뒗 ?댁쑀:
+    //  - ?뚯쟾/?대룞 吏곹썑 臾쇰━ 誘몃룞湲고솕濡?stale 寃곌낵媛 ?섏샂
+    //  - 媛援ш? ?뉗? 踰쎌쓣 ?덈컲 ?댁긽 ?듦낵?섎㈃ MTV媛 諛섎???愿??諛⑺뼢)?쇰줈 諛??踰쎌쓣 ?リ퀬 ?섍컧
+    //    (?뱀젙 異뺤쑝濡?湲?媛援ш? ?ㅻ깄 ??90???뚯쟾?섎㈃ 鍮덈컻)
+    // collider.bounds(AABB)??transform 蹂寃?利됱떆 諛섏쁺?섎?濡?臾쇰━ ?숆린?붽? ?꾩슂 ?녾퀬,
+    // ??긽 諛?以묒떖???ν븯??踰뺤꽑?쇰줈 諛??愿??諛⑺뼢 紐⑦샇?깆쓣 ?쒓굅?쒕떎.
     public bool ResolveWallPenetrationAfterSnap(PlacedFurniture furniture)
     {
         if (!initialized || furniture == null) return false;
@@ -1098,11 +1100,11 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
                     continue;
                 }
 
-                // 항상 방 안쪽으로 밀도록 법선이 방 중심을 향하게 한다(관통 방향 제거).
+                // ??긽 諛??덉そ?쇰줈 諛?꾨줉 踰뺤꽑??諛?以묒떖???ν븯寃??쒕떎(愿??諛⑺뼢 ?쒓굅).
                 if (Vector3.Dot(n, roomBounds.center - planePoint) < 0f) n = -n;
 
-                // n 방향으로 AABB의 최소 투영(=벽을 가장 깊이 파고든 지점)이
-                // 벽면을 wallClearance만큼 벗어나도록 미는 거리.
+                // n 諛⑺뼢?쇰줈 AABB??理쒖냼 ?ъ쁺(=踰쎌쓣 媛??源딆씠 ?뚭퀬??吏????
+                // 踰쎈㈃??wallClearance留뚰겮 踰쀬뼱?섎룄濡?誘몃뒗 嫄곕━.
                 Vector3 e = fb.extents;
                 float support = Mathf.Abs(n.x) * e.x + Mathf.Abs(n.y) * e.y + Mathf.Abs(n.z) * e.z;
                 float minProjection = Vector3.Dot(fb.center - planePoint, n) - support;
@@ -1192,8 +1194,8 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
     }
 
     // --- Placement Condition Validation Helpers ---
-    // 배치 완료 시 가구가 바닥/다른 가구/벽/천장에 "붙어 있는지"를 판정한다.
-    // 시각 메쉬 기준 bounds(없으면 collider)로 placementContactTolerance 이내 근접을 접촉으로 본다.
+    // 諛곗튂 ?꾨즺 ??媛援ш? 諛붾떏/?ㅻⅨ 媛援?踰?泥쒖옣??"遺숈뼱 ?덈뒗吏"瑜??먯젙?쒕떎.
+    // ?쒓컖 硫붿돩 湲곗? bounds(?놁쑝硫?collider)濡?placementContactTolerance ?대궡 洹쇱젒???묒큺?쇰줈 蹂몃떎.
 
     public bool TryGetValidationBounds(PlacedFurniture furniture, out Bounds bounds)
     {
@@ -1202,21 +1204,21 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
         return TryGetFurnitureVisualBounds(furniture, out bounds) || TryGetFurnitureBounds(furniture, out bounds);
     }
 
-    // 가구 바닥이 방 바닥 윗면에 닿아 있는지(약간 파고든 경우도 포함).
+    // 媛援?諛붾떏??諛?諛붾떏 ?쀫㈃???우븘 ?덈뒗吏(?쎄컙 ?뚭퀬??寃쎌슦???ы븿).
     public bool IsFurnitureOnFloor(PlacedFurniture furniture)
     {
         if (!initialized || floorCollider == null || !TryGetValidationBounds(furniture, out Bounds b)) return false;
         return b.min.y <= floorCollider.bounds.max.y + placementContactTolerance;
     }
 
-    // bottom 가구가 top 가구를 바로 아래에서 떠받치고 있는지.
+    // bottom 媛援ш? top 媛援щ? 諛붾줈 ?꾨옒?먯꽌 ?좊컺移섍퀬 ?덈뒗吏.
     public bool IsFurnitureSupportedBy(PlacedFurniture top, PlacedFurniture bottom)
     {
         if (top == null || bottom == null || top == bottom) return false;
         if (!TryGetValidationBounds(top, out Bounds tb) || !TryGetValidationBounds(bottom, out Bounds bb)) return false;
         if (!HorizontalBoundsOverlap(tb, bb, placementContactTolerance)) return false;
 
-        // bottom의 윗면이 top의 아랫면 근처에 있고, bottom이 top보다 아래에 있어야 한다.
+        // bottom???쀫㈃??top???꾨옯硫?洹쇱쿂???덇퀬, bottom??top蹂대떎 ?꾨옒???덉뼱???쒕떎.
         float gap = tb.min.y - bb.max.y;
         return gap <= placementContactTolerance &&
                gap >= -Mathf.Max(placementContactTolerance, tb.size.y) &&
@@ -1253,7 +1255,7 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
         return b.max.y >= ceilingCollider.bounds.min.y - placementContactTolerance;
     }
 
-    // 두 가구가 서로 맞닿아(근접해) 있는지. 면 방향 무관한 인접 판정.
+    // ??媛援ш? ?쒕줈 留욌떯??洹쇱젒?? ?덈뒗吏. 硫?諛⑺뼢 臾닿????몄젒 ?먯젙.
     public bool AreFurnituresConnected(PlacedFurniture a, PlacedFurniture b)
     {
         if (a == null || b == null || a == b) return false;

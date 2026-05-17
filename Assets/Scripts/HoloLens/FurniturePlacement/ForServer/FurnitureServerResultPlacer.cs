@@ -24,8 +24,8 @@ public enum FurnitureServerTargetSizeMode
 }
 
 /// <summary>
-/// /result/{scan_session_id} 응답의 objects 배열을 Unity 오브젝트로 생성하고 FurniturePlacementManager에 등록합니다.
-/// 수정 내역: 완전 겹침 방지를 위한 스폰 오프셋 난수 추가 및 벽걸이 가구(isWallMounted) 식별 추가
+/// /result/{scan_session_id} ?�답??objects 배열??Unity ?�브?�트�??�성?�고 FurniturePlacementManager???�록?�니??
+/// ?�정 ?�역: ?�전 겹침 방�?�??�한 ?�폰 ?�프???�수 추�? �?벽걸??가�?isFloorContactless) ?�별 추�?
 /// </summary>
 public class FurnitureServerResultPlacer : MonoBehaviour
 {
@@ -34,59 +34,59 @@ public class FurnitureServerResultPlacer : MonoBehaviour
     public FurniturePlacementManager furniturePlacementManager;
     public RuntimeFurnitureInteractionSetup runtimeInteractionSetup;
 
-    [Tooltip("서버 결과로 생성한 오브젝트를 임시/최종으로 모을 Root입니다. 비워두면 현재 Scene root에 생성합니다.")]
+    [Tooltip("?�버 결과�??�성???�브?�트�??�시/최종?�로 모을 Root?�니?? 비워?�면 ?�재 Scene root???�성?�니??")]
     public Transform serverSpawnRoot;
 
-    [Tooltip("참조가 비어 있으면 Scene에서 자동 탐색합니다.")]
+    [Tooltip("참조가 비어 ?�으�?Scene?�서 ?�동 ?�색?�니??")]
     public bool autoFindReferences = true;
 
     [Header("Coordinate Mapping - Confirm With Server")]
     public FurnitureServerCoordinateSpace coordinateSpace = FurnitureServerCoordinateSpace.UnityWorld;
     public FurnitureServerRotationMode rotationMode = FurnitureServerRotationMode.QuaternionXyzw;
 
-    [Tooltip("LocalScaleValue: serverObject.scale을 root localScale에 직접 적용 (서버 GLB bbox 기준, 권장).\n" +
-             "WorldBoundsSizeMeters: size_world 기준으로 GLB Renderer bounds를 측정해 스케일 적용.\n" +
-             "Ignore: 스케일 적용 안 함.")]
+    [Tooltip("LocalScaleValue: serverObject.scale??root localScale??직접 ?�용 (?�버 GLB bbox 기�?, 권장).\n" +
+             "WorldBoundsSizeMeters: size_world 기�??�로 GLB Renderer bounds�?측정???��????�용.\n" +
+             "Ignore: ?��????�용 ????")]
     public FurnitureServerTargetSizeMode targetSizeMode = FurnitureServerTargetSizeMode.LocalScaleValue;
 
-    [Tooltip("coordinateSpace가 RoomRootLocal일 때 사용합니다.")]
+    [Tooltip("coordinateSpace가 RoomRootLocal?????�용?�니??")]
     public Transform roomRoot;
 
-    [Tooltip("coordinateSpace가 HoloLensCameraLocal일 때 사용합니다. 보통 촬영 당시 camera_to_world 기준이 확정되기 전에는 사용하지 않는 것을 권장합니다.")]
+    [Tooltip("coordinateSpace가 HoloLensCameraLocal?????�용?�니?? 보통 촬영 ?�시 camera_to_world 기�????�정?�기 ?�에???�용?��? ?�는 것을 권장?�니??")]
     public Transform hololensCameraReference;
 
     [Header("Runtime Setup Order")]
-    [Tooltip("target_size 적용 전에 MeshCollider/ObjectManipulator 보정 및 큰 scale 1/4 축소를 먼저 수행합니다.")]
+    [Tooltip("target_size ?�용 ?�에 MeshCollider/ObjectManipulator 보정 �???scale 1/4 축소�?먼�? ?�행?�니??")]
     public bool configureRuntimeInteractionBeforeTargetSize = false;
 
-    [Tooltip("HoloLens2에서는 최종 scale/정렬 이후 서버 제공 MeshCollider를 보존한 상태로 interaction setup을 적용합니다.")]
+    [Tooltip("HoloLens2?�서??최종 scale/?�렬 ?�후 ?�버 ?�공 MeshCollider�?보존???�태�?interaction setup???�용?�니??")]
     public bool forceRuntimeInteractionAfterTargetSizeOnDevice = true;
 
-    [Tooltip("서버가 Unity Collider(MeshCollider 포함)를 이미 포함해 보낸 경우 collider metadata 기반 BoxCollider 추가를 건너뜁니다.")]
+    [Tooltip("?�버가 Unity Collider(MeshCollider ?�함)�??��? ?�함??보낸 경우 collider metadata 기반 BoxCollider 추�?�?건너?�니??")]
     public bool preferServerProvidedColliders = true;
 
-    [Tooltip("서버 collider_mesh_url이 있으면 visual GLB의 MeshCollider를 만들지 않고 별도 convex hull collider GLB를 로드합니다.")]
+    [Tooltip("?�버 collider_mesh_url???�으�?visual GLB??MeshCollider�?만들지 ?�고 별도 convex hull collider GLB�?로드?�니??")]
     public bool useServerConvexHullCollider = true;
 
-    [Tooltip("서버 convex hull collider를 붙이기 전 visual GLB 쪽 Collider를 제거합니다.")]
+    [Tooltip("?�버 convex hull collider�?붙이�???visual GLB �?Collider�??�거?�니??")]
     public bool removeVisualCollidersWhenServerColliderExists = true;
 
     [Header("Model Alignment")]
-    [Tooltip("서버 position을 가구의 바닥 중심점으로 보고 GLB child들을 root 기준 바닥에 맞춥니다.")]
+    [Tooltip("?�버 position??가구의 바닥 중심?�으�?보고 GLB child?�을 root 기�? 바닥??맞춥?�다.")]
     public bool normalizeModelToGround = true;
 
-    [Tooltip("normalizeModelToGround 적용 시 렌더러 중심을 root의 X/Z 원점으로 맞춥니다.")]
+    [Tooltip("normalizeModelToGround ?�용 ???�더??중심??root??X/Z ?�점?�로 맞춥?�다.")]
     public bool centerModelXZ = true;
 
     [Header("Scale Guard")]
-    [Tooltip("Unity localScale이 비정상적으로 크면(SAM3D가 크기를 보정하므로 정상적으로는 클 일이 없음) (1,1,1)로 되돌립니다. 실제 미터 크기는 보지 않습니다.")]
+    [Tooltip("Unity localScale??비정?�적?�로 ?�면(SAM3D가 ?�기�?보정?��?�??�상?�으로는 ???�이 ?�음) (1,1,1)�??�돌립니?? ?�제 미터 ?�기??보�? ?�습?�다.")]
     public bool resetExtremeLocalScale = true;
 
-    [Tooltip("localScale 한 축이라도 이 값을 넘으면 비정상으로 보고 (1,1,1)로 리셋합니다.")]
+    [Tooltip("localScale ??축이?�도 ??값을 ?�으�?비정?�으�?보고 (1,1,1)�?리셋?�니??")]
     [Min(1.0f)] public float maxLocalScaleBeforeReset = 5.0f;
 
     [Header("Placement")]
-    [Tooltip("기존 서버 결과 가구를 지우고 새 result를 배치합니다.")]
+    [Tooltip("기존 ?�버 결과 가구�? 지?�고 ??result�?배치?�니??")]
     public bool clearPreviousServerResultFurniture = true;
     public bool ignoreServerTransformForManualPlacement = true;
     public bool preferCameraForwardForManualPlacement = true;
@@ -96,7 +96,7 @@ public class FurnitureServerResultPlacer : MonoBehaviour
     public bool restrictManualPlacementManipulationToLoadedObject = true;
     public bool validateManualObjectOnRegister = false;
 
-    [Tooltip("result 객체별 로딩 실패 시 다음 객체를 계속 처리합니다.")]
+    [Tooltip("result 객체�?로딩 ?�패 ???�음 객체�?계속 처리?�니??")]
     public bool continueWhenSingleObjectFails = true;
 
     [Header("Log")]
@@ -107,9 +107,9 @@ public class FurnitureServerResultPlacer : MonoBehaviour
     public int LastPlacedCount { get; private set; }
     public int LastFailedCount { get; private set; }
 
-    // 현재 처리 중인 객체에서 ClampExtremeScale이 (1,1,1) 리셋을 적용했는지 여부.
-    // 리셋되면 서버 미터 메타데이터가 실제 메쉬 크기와 무관해지므로
-    // interaction BoxCollider는 실제 렌더러 bounds로 산출해야 한다.
+    // ?�재 처리 중인 객체?�서 ClampExtremeScale??(1,1,1) 리셋???�용?�는지 ?��?.
+    // 리셋?�면 ?�버 미터 메�??�이?��? ?�제 메쉬 ?�기?� 무�??��?므�?
+    // interaction BoxCollider???�제 ?�더??bounds�??�출?�야 ?�다.
     private bool extremeScaleResetApplied;
 
     private void Awake()
@@ -277,21 +277,21 @@ public class FurnitureServerResultPlacer : MonoBehaviour
             setup.ConfigureFurnitureObject(instance);
         }
 
-        // 💡 [추가] 액자, 거울, 시계, 칠판 등 벽에 붙어야 하는 가구를 식별하여 속성 부여
+        // ?�� [추�?] ?�자, 거울, ?�계, 칠판 ??벽에 붙어???�는 가구�? ?�별?�여 ?�성 부??
         PlacedFurniture pf = instance.GetComponent<PlacedFurniture>();
         if (pf != null && serverObject != null)
         {
             string labelLower = (serverObject.label ?? "").ToLowerInvariant();
             string rawLabelLower = (serverObject.raw_label ?? "").ToLowerInvariant();
 
-            if (labelLower.Contains("frame") || labelLower.Contains("액자") ||
-                labelLower.Contains("clock") || labelLower.Contains("시계") ||
+            if (labelLower.Contains("frame") || labelLower.Contains("?�자") ||
+                labelLower.Contains("clock") || labelLower.Contains("?�계") ||
                 labelLower.Contains("mirror") || labelLower.Contains("거울") ||
                 labelLower.Contains("tv") || labelLower.Contains("board") ||
                 labelLower.Contains("칠판") || labelLower.Contains("whiteboard") ||
                 rawLabelLower.Contains("frame") || rawLabelLower.Contains("mirror"))
             {
-                pf.isWallMounted = true;
+                pf.isFloorContactless = true;
             }
         }
 
@@ -456,12 +456,12 @@ public class FurnitureServerResultPlacer : MonoBehaviour
             }
         }
 
-        // 완전 겹침(Perfect Overlap) 방지를 위한 1~2cm의 미세 랜덤 오프셋 적용
-        // 이 오프셋이 있어야 ConfirmedRoomGeometryProvider의 ComputePenetration이 방향을 계산해 가구들을 밀어냅니다.
+        // ?�전 겹침(Perfect Overlap) 방�?�??�한 1~2cm??미세 ?�덤 ?�프???�용
+        // ???�프?�이 ?�어??ConfirmedRoomGeometryProvider??ComputePenetration??방향??계산??가구들??밀?�냅?�다.
         position += new Vector3(UnityEngine.Random.Range(-0.02f, 0.02f), 0, UnityEngine.Random.Range(-0.02f, 0.02f));
 
-        // 카메라 전방 스폰이 방 밖(또는 벽 너머)이면 방 중앙으로 보정한다.
-        // 밖에서 스폰되면 lastValidPose가 방 밖이 되어 이후 모든 이동/회전이 "outside boundary"로 거부된다.
+        // 카메???�방 ?�폰??�?�??�는 �??�머)?�면 �?중앙?�로 보정?�다.
+        // 밖에???�폰?�면 lastValidPose가 �?밖이 ?�어 ?�후 모든 ?�동/?�전??"outside boundary"�?거�??�다.
         if (geometryProvider != null && geometryProvider.IsInitialized && !geometryProvider.IsInsideRoom(position))
         {
             Bounds roomBounds = geometryProvider.RoomBounds;
@@ -576,8 +576,8 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         ClampExtremeScale(instance);
     }
 
-    // SAM3D가 크기를 보정해 보내므로 실제 미터 크기는 검사하지 않는다.
-    // Unity localScale 값만 보고, 비정상적으로 큰 경우(예: 5,5,5)에만 (1,1,1)로 되돌린다.
+    // SAM3D가 ?�기�?보정??보내므�??�제 미터 ?�기??검?�하지 ?�는??
+    // Unity localScale 값만 보고, 비정?�적?�로 ??경우(?? 5,5,5)?�만 (1,1,1)�??�돌린다.
     private void ClampExtremeScale(GameObject instance)
     {
         if (!resetExtremeLocalScale || instance == null)
@@ -601,8 +601,8 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         }
     }
 
-    // extreme-scale 리셋이 적용된 경우, 서버 world 크기 메타데이터는 실제 메쉬와
-    // 무관하므로 보이는 렌더러의 local bounds로 BoxCollider를 맞춰 메쉬와 일치시킨다.
+    // extreme-scale 리셋???�용??경우, ?�버 world ?�기 메�??�이?�는 ?�제 메쉬?�
+    // 무�??��?�?보이???�더?�의 local bounds�?BoxCollider�?맞춰 메쉬?� ?�치?�킨??
     private bool TrySetInteractionBoxFromVisibleMesh(BoxCollider boxCollider, GameObject instance)
     {
         if (!extremeScaleResetApplied || boxCollider == null || instance == null)
@@ -883,8 +883,8 @@ public class FurnitureServerResultPlacer : MonoBehaviour
     {
         colliderRoot.name = $"{visualRoot.name}_ServerConvexCollider";
         colliderRoot.transform.SetParent(visualRoot.transform, false);
-        // visual GLB 자식은 NormalizeModelIfNeeded에서 바닥 정렬 offset만큼 이동된다.
-        // collider GLB는 그 이후에 붙으므로 동일 offset을 적용해야 visual world 좌표와 일치한다.
+        // visual GLB ?�식?� NormalizeModelIfNeeded?�서 바닥 ?�렬 offset만큼 ?�동?�다.
+        // collider GLB??�??�후??붙으므�??�일 offset???�용?�야 visual world 좌표?� ?�치?�다.
         colliderRoot.transform.localPosition = visualNormalizationOffset;
         colliderRoot.transform.localRotation = Quaternion.identity;
         colliderRoot.transform.localScale = Vector3.one;
@@ -989,8 +989,8 @@ public class FurnitureServerResultPlacer : MonoBehaviour
             return;
         }
 
-        // 새 가구를 배치해도 이전에 배치한 가구를 계속 조작할 수 있도록 모든 가구를 이동 가능 상태로 유지한다.
-        // (선택은 UI 포커스 용도로만 사용하고, 다른 가구의 manipulator를 비활성화하지 않는다.)
+        // ??가구�? 배치?�도 ?�전??배치??가구�? 계속 조작?????�도�?모든 가구�? ?�동 가???�태�??��??�다.
+        // (?�택?� UI ?�커???�도로만 ?�용?�고, ?�른 가구의 manipulator�?비활?�화?��? ?�는??)
         furniturePlacementManager.moveModeController.allowAllFurnitureMovableInMoveMode = true;
 
         furniturePlacementManager.moveModeController.SetMoveMode(true);
@@ -1029,29 +1029,29 @@ public class FurnitureServerResultPlacer : MonoBehaviour
 
     private Vector3 GetTargetSize(FurnitureServerResultObject serverObject)
     {
-        // size_world: 서버가 HoloLens depth 기반으로 추정한 실제 세계 크기 (미터 단위).
+        // size_world: ?�버가 HoloLens depth 기반?�로 추정???�제 ?�계 ?�기 (미터 ?�위).
         Vector3 sizeWorld = ToVector3(serverObject.size_world, Vector3.zero);
         if (HasAllPositiveComponents(sizeWorld))
         {
             return sizeWorld;
         }
 
-        // target_size: taxonomy 기반 기본 크기 (size_world가 없을 때 fallback).
+        // target_size: taxonomy 기반 기본 ?�기 (size_world가 ?�을 ??fallback).
         Vector3 targetSize = ToVector3(serverObject.target_size, Vector3.zero);
         if (HasAllPositiveComponents(targetSize))
         {
             return targetSize;
         }
 
-        // collider_size: collider 기반 크기 참고값.
+        // collider_size: collider 기반 ?�기 참고�?
         Vector3 colliderSize = ToVector3(serverObject.collider_size, Vector3.zero);
         if (HasAllPositiveComponents(colliderSize))
         {
             return colliderSize;
         }
 
-        // scale 필드는 Unity localScale 값이지 미터 단위 세계 크기가 아니므로
-        // WorldBoundsSizeMeters 모드에서 사용하면 안 됨 → Vector3.zero 반환해서 skip.
+        // scale ?�드??Unity localScale 값이지 미터 ?�위 ?�계 ?�기가 ?�니므�?
+        // WorldBoundsSizeMeters 모드?�서 ?�용?�면 ??????Vector3.zero 반환?�서 skip.
         return Vector3.zero;
     }
 
@@ -1194,8 +1194,8 @@ public class FurnitureServerResultPlacer : MonoBehaviour
         return hasBounds;
     }
 
-    // 보이는(enabled) 렌더러만으로 root local 공간 bounds를 구한다.
-    // collider GLB 렌더러는 DisableRenderers로 꺼져 있어 자연히 제외된다.
+    // 보이??enabled) ?�더?�만?�로 root local 공간 bounds�?구한??
+    // collider GLB ?�더?�는 DisableRenderers�?꺼져 ?�어 ?�연???�외?�다.
     private static bool TryGetLocalVisibleRendererBounds(GameObject root, out Bounds localBounds)
     {
         localBounds = default;

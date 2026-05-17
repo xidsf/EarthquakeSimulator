@@ -15,6 +15,12 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
     public GameObject panel_SystemMessage;
     public TMP_Text text_SystemMessage;
 
+    [Header("Owned Sub Panels")]
+    [Tooltip("SimulationSetupPanelController가 직접 여닫는 진도 설정 슬라이더 패널입니다.")]
+    public GameObject panel_IntensitySlider;
+    [Tooltip("패널 참조가 비어 있으면 Scene의 IntensitySliderController 또는 이름으로 자동 탐색합니다.")]
+    public bool autoFindOwnedSubPanels = true;
+
     private Coroutine simulationCoroutine;
     private readonly string simulationBaseText = "시뮬레이션 실행 중";
 
@@ -31,17 +37,20 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
     private void OnEnable()
     {
         EnsureCommonReferences();
+        EnsureOwnedSubPanelReferences();
         CreateActions();
         RegisterButtons();
 
         // 단계 진입 시 버튼들을 다시 보이게 초기화
         SetButtonsActive(true);
+        ToggleIntensitySlider(false);
         if (panel_SystemMessage != null) panel_SystemMessage.SetActive(false);
     }
 
     private void OnDisable()
     {
         UnregisterButtons();
+        ToggleIntensitySlider(false);
         StopSimulationAnimation();
     }
 
@@ -76,13 +85,49 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
 
     public void OnClickSetIntensity()
     {
-        if (uiManager != null && uiManager.sub_IntensitySlider != null)
+        EnsureOwnedSubPanelReferences();
+
+        if (panel_IntensitySlider == null)
         {
-            // [해결] 변수 대신 실제 오브젝트의 현재 활성화 상태를 반전시켜 전달합니다.
-            // 이렇게 하면 슬라이더 안의 [완료] 버튼으로 껐더라도 상태가 꼬이지 않습니다.
-            bool nextState = !uiManager.sub_IntensitySlider.activeSelf;
-            uiManager.ToggleIntensitySlider(nextState);
+            return;
         }
+
+        // 실제 오브젝트의 현재 활성화 상태를 반전시켜 전달합니다.
+        // 이렇게 하면 슬라이더 안의 [완료] 버튼으로 껐더라도 상태가 꼬이지 않습니다.
+        ToggleIntensitySlider(!panel_IntensitySlider.activeSelf);
+    }
+
+    private void EnsureOwnedSubPanelReferences()
+    {
+        if (!autoFindOwnedSubPanels || panel_IntensitySlider != null)
+        {
+            return;
+        }
+
+        IntensitySliderController[] sliders =
+            FindObjectsByType<IntensitySliderController>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+
+        if (sliders != null && sliders.Length > 0)
+        {
+            panel_IntensitySlider = sliders[0].gameObject;
+            return;
+        }
+
+        Transform[] children = GetComponentsInChildren<Transform>(true);
+        foreach (Transform child in children)
+        {
+            if (child != null && child.name == "SettingIntensity")
+            {
+                panel_IntensitySlider = child.gameObject;
+                return;
+            }
+        }
+    }
+
+    private void ToggleIntensitySlider(bool isActive)
+    {
+        EnsureOwnedSubPanelReferences();
+        if (panel_IntensitySlider != null) panel_IntensitySlider.SetActive(isActive);
     }
 
     public void OnClickStartSimulation()

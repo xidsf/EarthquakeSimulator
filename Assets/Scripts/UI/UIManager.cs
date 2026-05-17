@@ -21,7 +21,7 @@ public class UIManager : MonoBehaviour
         [Tooltip("해당 상태에서 추가로 켤 오브젝트입니다.")]
         public GameObject[] visibleObjects;
 
-        [Tooltip("상태 진입 시 Numpad/Slider 같은 서브패널을 닫습니다.")]
+        [Tooltip("상태 진입 시 UIManager가 관리하는 서브패널을 닫습니다.")]
         public bool hideSubPanelsOnEnter = true;
     }
 
@@ -83,11 +83,6 @@ public class UIManager : MonoBehaviour
     [Header("1-2. Workflow 상태별 UI 설정")]
     [Tooltip("상태별로 표시할 메인 패널과 추가 버튼/오브젝트를 지정합니다. 비워두면 위의 패널 필드 fallback을 사용합니다.")]
     public WorkflowStateUiConfig[] workflowStateUiConfigs;
-
-    [Header("2. 서브 패널")]
-    public GameObject sub_BuildingTypeOptions;
-    public GameObject sub_Numpad;
-    public GameObject sub_IntensitySlider;
 
     [Header("3. 시스템 메시지 UI")]
     public GameObject panel_SystemMessage;
@@ -448,24 +443,6 @@ public class UIManager : MonoBehaviour
 
     public void HideAllSubPanels()
     {
-        if (sub_BuildingTypeOptions != null) sub_BuildingTypeOptions.SetActive(false);
-        if (sub_Numpad != null) sub_Numpad.SetActive(false);
-        if (sub_IntensitySlider != null) sub_IntensitySlider.SetActive(false);
-    }
-
-    public void ToggleBuildingTypeOptions(bool isActive)
-    {
-        if (sub_BuildingTypeOptions != null) sub_BuildingTypeOptions.SetActive(isActive);
-    }
-
-    public void ToggleNumpad(bool isActive)
-    {
-        if (sub_Numpad != null) sub_Numpad.SetActive(isActive);
-    }
-
-    public void ToggleIntensitySlider(bool isActive)
-    {
-        if (sub_IntensitySlider != null) sub_IntensitySlider.SetActive(isActive);
     }
 
     public void ShowWarningMessage(string message, float duration = 2.0f)

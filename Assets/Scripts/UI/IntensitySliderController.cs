@@ -6,7 +6,7 @@ public class IntensitySliderController : WorkflowPanelControllerBase
 {
     [Header("UI References")]
     public TMP_Text text_CurrentIntensity;
-    public PressableButton btn_Done; // ¿Ï·á ¹öÆ° ¿¬°á
+    public PressableButton btn_Done;
 
     protected override void Awake()
     {
@@ -16,7 +16,7 @@ public class IntensitySliderController : WorkflowPanelControllerBase
     private void OnEnable()
     {
         EnsureCommonReferences();
-        // ¿Ï·á ¹öÆ° ÀÌº¥Æ® ¿¬°á
+
         if (btn_Done != null)
         {
             btn_Done.OnClicked.RemoveAllListeners();
@@ -31,15 +31,12 @@ public class IntensitySliderController : WorkflowPanelControllerBase
 
         if (text_CurrentIntensity != null)
         {
-            text_CurrentIntensity.text = $"ÇöÀç Áøµµ: {snappedValue:F1}";
+            text_CurrentIntensity.text = $"í˜„ì¬ ì§„ë„: {snappedValue:F1}";
         }
     }
 
     public void OnClick_Done()
     {
-        if (uiManager != null)
-        {
-            uiManager.ToggleIntensitySlider(false);
-        }
+        gameObject.SetActive(false);
     }
 }

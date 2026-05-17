@@ -81,6 +81,20 @@ public class FurnitureServerApiClient : MonoBehaviour
         yield return SendJsonRequest<FurnitureServerStatusResponse>(url, "GET", onComplete);
     }
 
+    /// <summary>
+    /// POST /simulation-input/{session_id}
+    /// 배치 완료 시 클라이언트가 직렬화한 가구 Transform + 방 형상 JSON을 서버로 전송합니다.
+    /// 서버(Python)는 이 입력을 받아 헤드리스 시뮬레이션 Unity 실행에 사용합니다.
+    /// </summary>
+    public IEnumerator PostSimulationInput(
+        string sessionId,
+        string jsonBody,
+        Action<bool, FurnitureServerStatusResponse, string> onComplete)
+    {
+        string url = BuildUrl($"/simulation-input/{UnityWebRequest.EscapeURL(sessionId)}");
+        yield return SendJsonRequest<FurnitureServerStatusResponse>(url, "POST", onComplete, jsonBody);
+    }
+
     // ── 신규 메서드 ──────────────────────────────────────────────────────────
 
     /// <summary>

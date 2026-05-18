@@ -1,5 +1,10 @@
 using System;
 
+public interface IFurnitureServerRawJsonResponse
+{
+    string RawJson { get; set; }
+}
+
 /// <summary>
 /// Models for the furniture server API. The current server sends transform and
 /// size values as float arrays, for example position: [x, y, z].
@@ -296,4 +301,155 @@ public class FurnitureServerPlacementItem
     public string detection_id;
     public string raw_label;
     public int instance_index;
+}
+
+[Serializable]
+public class PlacedSceneRequest
+{
+    public string scan_session_id;
+    public PlacedSceneObject[] objects;
+}
+
+[Serializable]
+public class PlacedSceneObject
+{
+    public string id;
+    public string label;
+    public float[] position;
+    public float[] rotation;
+    public float[] scale;
+}
+
+[Serializable]
+public class SimulationRequest
+{
+    public float duration_sec = 8.0f;
+    public int fps = 30;
+    public bool enable_vlm = true;
+    public bool no_graphics = false;
+}
+
+[Serializable]
+public class SimulationJobResponse
+{
+    public string scan_session_id;
+    public string session_id;
+    public string job_id;
+    public string status;
+    public string message;
+    public string error;
+    public string result_url;
+    public float progress;
+
+    public bool IsWaitingStatus()
+    {
+        string normalized = NormalizeStatus(status);
+        return normalized == "queued" ||
+               normalized == "running" ||
+               normalized == "processing" ||
+               normalized == "pending";
+    }
+
+    public bool IsCompletedStatus()
+    {
+        string normalized = NormalizeStatus(status);
+        return normalized == "completed" ||
+               normalized == "done" ||
+               normalized == "success" ||
+               normalized == "ready";
+    }
+
+    public bool IsFailedStatus()
+    {
+        string normalized = NormalizeStatus(status);
+        return normalized == "failed" ||
+               normalized == "error";
+    }
+
+    private static string NormalizeStatus(string raw)
+    {
+        return string.IsNullOrWhiteSpace(raw) ? string.Empty : raw.Trim().ToLowerInvariant();
+    }
+}
+
+[Serializable]
+public class SimulationResultResponse : IFurnitureServerRawJsonResponse
+{
+    public string scan_session_id;
+    public string session_id;
+    public string job_id;
+    public string status;
+    public string message;
+    public string error;
+
+    public string risk_level;
+    public float risk_score;
+    public string[] recognized;
+    public string[] fallen;
+    public string advice;
+    public string destructive_direction;
+    public float destructive_direction_score;
+    public string[] before_after_images;
+    public SimulationTransformLog[] transform_logs;
+    public SimulationVlmResult vlm;
+
+    [NonSerialized] private string rawJson;
+    public string RawJson
+    {
+        get => rawJson;
+        set => rawJson = value;
+    }
+
+    public bool IsFailedStatus()
+    {
+        string normalized = NormalizeStatus(status);
+        return normalized == "failed" || normalized == "error";
+    }
+
+    private static string NormalizeStatus(string raw)
+    {
+        return string.IsNullOrWhiteSpace(raw) ? string.Empty : raw.Trim().ToLowerInvariant();
+    }
+}
+
+[Serializable]
+public class SimulationTransformLog
+{
+    public string id;
+    public string label;
+    public float[] before_position;
+    public float[] after_position;
+    public float[] before_rotation;
+    public float[] after_rotation;
+    public float[] before_scale;
+    public float[] after_scale;
+    public string state;
+    public bool fallen;
+}
+
+[Serializable]
+public class SimulationVlmResult
+{
+    public string status;
+    public string error;
+    public string message;
+}
+
+[Serializable]
+public class SimulationPlaybackResponse : IFurnitureServerRawJsonResponse
+{
+    public string scan_session_id;
+    public string session_id;
+    public string job_id;
+    public string status;
+    public string message;
+    public string error;
+    public string[] frames;
+
+    [NonSerialized] private string rawJson;
+    public string RawJson
+    {
+        get => rawJson;
+        set => rawJson = value;
+    }
 }

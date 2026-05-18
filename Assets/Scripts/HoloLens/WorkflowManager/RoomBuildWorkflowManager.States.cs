@@ -309,6 +309,12 @@ public partial class RoomBuildWorkflowManager
                     workflow.SetStatus("Simulation result received, but simulation failed. Failure UI is not implemented yet.");
                     return false;
 
+                case WorkflowCommand.StartFurnitureRePlacement:
+                    return workflow.RequestWorkflowState(
+                        WorkflowState.FurniturePlacement,
+                        "Returned to furniture placement from simulation process."
+                    );
+
                 default:
                     return Reject(command);
             }

@@ -26,6 +26,8 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
     [Header("Pose Correction")]
     public bool snapFurnitureToFloor = true;
     public bool keepFurnitureUpright = true;
+    [Tooltip("When enabled, furniture movement/scale validation rejects poses outside the confirmed room boundary. Disable this if boundary checks are too aggressive while placing furniture.")]
+    public bool validateFurnitureInsideRoomBoundary = true;
     public bool validateCeilingHeight = true;
     [Min(0.0f)] public float ceilingBoundaryTolerance = 0.12f;
     public float boundsShrinkForWallCheck = 0.01f;
@@ -162,7 +164,7 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
     {
         reason = string.Empty;
         if (!TryGetFurnitureBounds(furniture, out Bounds furnitureBounds)) { reason = "Furniture has no valid collider or renderer bounds."; return false; }
-        if (!AreFurnitureBoundsInsideRoom(furnitureBounds, furniture.isFloorContactless)) { reason = "Furniture is outside the confirmed room boundary."; return false; }
+        if (validateFurnitureInsideRoomBoundary && !AreFurnitureBoundsInsideRoom(furnitureBounds, furniture.isFloorContactless)) { reason = "Furniture is outside the confirmed room boundary."; return false; }
         if (ExceedsCeiling(furnitureBounds)) { reason = "Furniture is higher than the ceiling."; return false; }
 
         // 踰쎄구??媛援щ뒗 踰쎄낵 援먯감?섎뒗 寃껋쓣 ?대뒓?뺣룄 ?덉슜?댁빞 遺숈쓣 ???덉쓬
@@ -191,7 +193,7 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
             bool changed = false;
 
             // 踰쎄구?대뒗 ?듭?濡?諛?以묒븰?쇰줈 諛?대꽔吏 ?딆쓬 (踰쎌뿉 遺숈뼱?덉뼱???섎?濡?
-            if (!furniture.isFloorContactless && TryGetFurnitureBounds(furniture, out Bounds bounds) && !AreFurnitureBoundsInsideRoom(bounds))
+            if (validateFurnitureInsideRoomBoundary && !furniture.isFloorContactless && TryGetFurnitureBounds(furniture, out Bounds bounds) && !AreFurnitureBoundsInsideRoom(bounds))
             {
                 changed |= TryMoveFurnitureToNearbyInsideRoom(furniture);
             }
@@ -312,7 +314,7 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
             return false;
         }
 
-        if (!IsInsideRoom(furnitureBounds.center))
+        if (validateFurnitureInsideRoomBoundary && !IsInsideRoom(furnitureBounds.center))
         {
             reason = "Furniture center is outside the confirmed room boundary.";
             return false;
@@ -862,7 +864,7 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
     private bool IsSpawnCandidateValid(PlacedFurniture furniture)
     {
         return TryGetFurnitureBounds(furniture, out Bounds b)
-               && AreFurnitureBoundsInsideRoom(b)
+               && (!validateFurnitureInsideRoomBoundary || AreFurnitureBoundsInsideRoom(b))
                && !ExceedsCeiling(b)
                && !IntersectsAnyOtherFurniture(furniture, out _);
     }

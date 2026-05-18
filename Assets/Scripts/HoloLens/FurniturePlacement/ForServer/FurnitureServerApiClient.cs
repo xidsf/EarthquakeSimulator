@@ -75,6 +75,48 @@ public class FurnitureServerApiClient : MonoBehaviour
         yield return SendJsonRequest<FurnitureServerStatusResponse>(url, "POST", onComplete, jsonBody);
     }
 
+    public IEnumerator PostPlacedScene(
+        string sessionId,
+        string jsonBody,
+        Action<bool, FurnitureServerStatusResponse, string> onComplete)
+    {
+        string url = BuildUrl($"/placed-scene/{UnityWebRequest.EscapeURL(sessionId)}");
+        yield return SendJsonRequest<FurnitureServerStatusResponse>(url, "POST", onComplete, jsonBody);
+    }
+
+    public IEnumerator PostSimulate(
+        string sessionId,
+        string jsonBody,
+        Action<bool, SimulationJobResponse, string> onComplete)
+    {
+        string url = BuildUrl($"/simulate/{UnityWebRequest.EscapeURL(sessionId)}");
+        yield return SendJsonRequest<SimulationJobResponse>(url, "POST", onComplete, jsonBody);
+    }
+
+    public IEnumerator GetSimulationJob(
+        string sessionId,
+        Action<bool, SimulationJobResponse, string> onComplete)
+    {
+        string url = BuildUrl($"/simulation-job/{UnityWebRequest.EscapeURL(sessionId)}");
+        yield return SendJsonRequest<SimulationJobResponse>(url, "GET", onComplete);
+    }
+
+    public IEnumerator GetSimulationResult(
+        string sessionId,
+        Action<bool, SimulationResultResponse, string> onComplete)
+    {
+        string url = BuildUrl($"/simulation-result/{UnityWebRequest.EscapeURL(sessionId)}");
+        yield return SendJsonRequest<SimulationResultResponse>(url, "GET", onComplete);
+    }
+
+    public IEnumerator GetSimulationPlayback(
+        string sessionId,
+        Action<bool, SimulationPlaybackResponse, string> onComplete)
+    {
+        string url = BuildUrl($"/simulation-playback/{UnityWebRequest.EscapeURL(sessionId)}");
+        yield return SendJsonRequest<SimulationPlaybackResponse>(url, "GET", onComplete);
+    }
+
     public IEnumerator GetScanJobStatus(string scanSessionId, Action<bool, FurnitureServerStatusResponse, string> onComplete)
     {
         string url = BuildUrl($"/scan-job/{UnityWebRequest.EscapeURL(scanSessionId)}");
@@ -175,10 +217,24 @@ public class FurnitureServerApiClient : MonoBehaviour
             try
             {
                 T parsed = JsonUtility.FromJson<T>(body);
+                if (parsed is IFurnitureServerRawJsonResponse rawJsonResponse)
+                {
+                    rawJsonResponse.RawJson = body;
+                }
+
                 onComplete?.Invoke(true, parsed, string.Empty);
             }
             catch (Exception e)
             {
+                if (typeof(IFurnitureServerRawJsonResponse).IsAssignableFrom(typeof(T)))
+                {
+                    T fallback = new T();
+                    ((IFurnitureServerRawJsonResponse)fallback).RawJson = body;
+                    Debug.LogWarning($"[FurnitureServerApiClient] JSON parse failed; returning raw response. {e.Message}");
+                    onComplete?.Invoke(true, fallback, string.Empty);
+                    yield break;
+                }
+
                 string error = $"JSON parse failed. {e.Message}. body:{body}";
                 Debug.LogWarning($"[FurnitureServerApiClient] {error}");
                 onComplete?.Invoke(false, null, error);

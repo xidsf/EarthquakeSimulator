@@ -1091,6 +1091,7 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
     {
         return currentState == WorkflowState.RoomCapture ||
                currentState == WorkflowState.FurniturePlacement ||
+               currentState == WorkflowState.SimulationProcess ||
                currentState == WorkflowState.FurnitureRePlacement;
     }
 
@@ -1182,7 +1183,7 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
     private void OnExitFurniturePlacementState() { }
     private void OnEnterSimulationProcessState()
     {
-        SetStatus("Simulation process started. Waiting for simulation result.");
+        SetStatus("Simulation process ready. Review furniture placement before starting simulation.");
     }
     private void OnExitSimulationProcessState() { }
     private void OnEnterSimulationSuccessState() { }

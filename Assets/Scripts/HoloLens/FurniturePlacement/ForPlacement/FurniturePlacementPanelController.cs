@@ -1,6 +1,5 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
-using System.IO;
 using MixedReality.Toolkit.UX;
 using TMPro;
 using UnityEngine;
@@ -22,7 +21,6 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     [Header("Furniture Placement References")]
     public FurniturePlacementManager furniturePlacementManager;
     public FurnitureMoveModeController moveModeController;
-    public FurnitureSimulationStartController simulationStartController;
     public ConfirmedRoomGeometryProvider roomGeometryProvider;
     public FurnitureServerPlacementPipeline serverPlacementPipeline;
     [Tooltip("珥ъ쁺 ?몄뀡 ?뺣낫瑜??쎌뼱 媛援??앹꽦 踰꾪듉 ?쒖꽦??議곌굔???먮떒?⑸땲??")]
@@ -68,12 +66,6 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
 
     [Header("Server Furniture Request Guard")]
     [Min(1.0f)] public float serverFurnitureRequestTimeoutSeconds = 600.0f;
-
-    [Header("Simulation Input (Test)")]
-    [Tooltip("耳쒕㈃ 諛곗튂 ?꾨즺 ???쒕쾭濡??꾩넚?섏? ?딄퀬 ?쒕??덉씠???낅젰 JSON??濡쒖뺄 ?뚯씪濡???ν빀?덈떎(?뚯뒪?몄슜).")]
-    public bool saveSimulationInputLocallyInsteadOfSend = false;
-    [Tooltip("濡쒖뺄 ????뚯씪紐낆엯?덈떎. Application.persistentDataPath ?섏쐞????λ맗?덈떎.")]
-    public string simulationInputLocalFileName = "simulation_input.json";
 
     [Header("Mode Text")]
     [SerializeField] private string moveModeStatusText = "?대룞 紐⑤뱶 ?쒖꽦?? 媛援щ? ?≪븘 ?꾩튂瑜?議곗젙?섏꽭??";
@@ -199,7 +191,6 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         if (!autoFindReferences) return;
         if (furniturePlacementManager == null) furniturePlacementManager = FindFirst<FurniturePlacementManager>();
         if (moveModeController == null) moveModeController = FindFirst<FurnitureMoveModeController>();
-        if (simulationStartController == null) simulationStartController = FindFirst<FurnitureSimulationStartController>();
         if (roomGeometryProvider == null) roomGeometryProvider = FindFirst<ConfirmedRoomGeometryProvider>();
         if (serverPlacementPipeline == null) serverPlacementPipeline = FindFirst<FurnitureServerPlacementPipeline>();
         if (furnitureCaptureManager == null) furnitureCaptureManager = FindFirst<FurnitureCaptureManager>();
@@ -938,89 +929,9 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
             }
         }
 
-        // 諛곗튂/諛??뺤긽???쒕쾭濡??꾩넚(?ㅻ뱶由ъ뒪 ?쒕??덉씠???낅젰). ?ㅽ듃?뚰겕 ?묐떟??湲곕떎由ъ? ?딄퀬
-        // ?ㅼ쓬 ?④퀎濡?吏꾪뻾??UX瑜?留됱? ?딅뒗??
-        SendSimulationInputToServer();
-
-        // ?꾩옱 紐⑤뱶 ?댁젣
         moveModeController?.SetManipulationMode(FurnitureManipulationMode.None);
 
-        // ?쒕??덉씠???꾪솚 ?쒕룄 (?먮룞 ?뺤젙 濡쒖쭅?대?濡?蹂꾨룄???뺤젙 ?몄텧 ?놁씠 吏꾪뻾)
-        if (simulationStartController != null && simulationStartController.TryStartSimulation())
-        {
-            Debug.Log("[FurniturePlacementPanelController] Simulation sequence started.");
-            return;
-        }
-
         RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteFurniturePlacement);
-    }
-
-    private void SendSimulationInputToServer()
-    {
-        EnsureFurniturePlacementReferences();
-
-        if (furniturePlacementManager == null)
-        {
-            Debug.LogWarning("[FurniturePlacementPanelController] Cannot build simulation input. placementManager is null.");
-            return;
-        }
-
-        ConfirmRoomManager roomManager = roomGeometryProvider != null ? roomGeometryProvider.confirmRoomManager : null;
-        if (roomManager == null && workflowManager != null) roomManager = workflowManager.confirmRoomManager;
-
-        string sessionId = furnitureCaptureManager != null ? furnitureCaptureManager.CurrentScanSessionId : null;
-        if (string.IsNullOrWhiteSpace(sessionId) && serverPlacementPipeline != null)
-            sessionId = serverPlacementPipeline.ActiveScanSessionId;
-
-        // 濡쒖뺄 ????뚯뒪??紐⑤뱶: ?쒕쾭 ?꾩넚 ?놁씠 ?뚯씪濡쒕쭔 湲곕줉?쒕떎.
-        if (saveSimulationInputLocallyInsteadOfSend)
-        {
-            string localSessionId = string.IsNullOrWhiteSpace(sessionId) ? "local_test" : sessionId;
-            //string json = SimulationInputBuilder.BuildJson(localSessionId, furniturePlacementManager.PlacedFurnitures, roomManager);
-
-            string fileName = string.IsNullOrWhiteSpace(simulationInputLocalFileName)
-                ? "simulation_input.json"
-                : simulationInputLocalFileName;
-            string fullPath = Path.Combine(Application.persistentDataPath, fileName);
-
-            try
-            {
-                //File.WriteAllText(fullPath, json);
-                Debug.Log($"[FurniturePlacementPanelController] Simulation input saved locally: {fullPath}");
-                uiManager?.ShowNotification($"?쒕??덉씠???낅젰??濡쒖뺄????ν뻽?듬땲?? {fullPath}");
-            }
-            catch (System.Exception ex)
-            {
-                Debug.LogError($"[FurniturePlacementPanelController] Local save failed: {ex.Message}");
-                uiManager?.ShowNotification("?쒕??덉씠???낅젰 濡쒖뺄 ??μ뿉 ?ㅽ뙣?덉뒿?덈떎.");
-            }
-            return;
-        }
-
-        FurnitureServerApiClient apiClient = serverPlacementPipeline != null
-            ? serverPlacementPipeline.apiClient
-            : FindFirst<FurnitureServerApiClient>();
-
-        if (apiClient == null || string.IsNullOrWhiteSpace(sessionId))
-        {
-            Debug.LogWarning("[FurniturePlacementPanelController] Cannot send simulation input. " +
-                $"apiClient:{apiClient != null}, sessionId:'{sessionId}'");
-            return;
-        }
-
-        //string body = SimulationInputBuilder.BuildJson(sessionId, furniturePlacementManager.PlacedFurnitures, roomManager);
-        //StartCoroutine(PostSimulationInputRoutine(apiClient, sessionId, body));
-    }
-
-    private IEnumerator PostSimulationInputRoutine(FurnitureServerApiClient apiClient, string sessionId, string json)
-    {
-        yield return apiClient.PostSimulationInput(sessionId, json, (ok, response, error) =>
-        {
-            if (ok)
-                Debug.Log($"[FurniturePlacementPanelController] Simulation input sent. session:{sessionId}");
-            else
-                Debug.LogWarning($"[FurniturePlacementPanelController] Simulation input send failed. session:{sessionId}, error:{error}");
-        });
     }
 
     // --- Debug Actions ---

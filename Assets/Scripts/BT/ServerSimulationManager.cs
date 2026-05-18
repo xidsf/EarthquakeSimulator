@@ -37,7 +37,8 @@ public class ServerSimulationManager : MonoBehaviour
     private GameObject labelsRoot;
     private GameObject entranceMarker;
     private string sessionId;
-    private string baseSavePath;
+    private string imageSavePath;
+    private string csvSavePath;
     private SimulationInput inputData;
 
     private struct PoseData
@@ -71,9 +72,12 @@ public class ServerSimulationManager : MonoBehaviour
 
         inputData = loadedInput;
         sessionId = ResolveSessionId(loadedInput);
-        baseSavePath = ResolveOutputPath();
+        imageSavePath = ResolveImageOutputPath();
+        csvSavePath = ResolveCsvOutputPath();
         roomRoot = roomRootObject;
         roomRigidbody = roomRoot.GetComponent<Rigidbody>();
+        Debug.Log($"[ServerManager] Image output path: {imageSavePath}");
+        Debug.Log($"[ServerManager] CSV output path: {csvSavePath}");
 
         BuildRuntimeRoots(loadedFurnitures);
         ConfigureLoadedFurniture(loadedFurnitures);
@@ -91,8 +95,16 @@ public class ServerSimulationManager : MonoBehaviour
         return DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
     }
 
-    private string ResolveOutputPath()
+    private string ResolveImageOutputPath()
     {
+        if (!string.IsNullOrWhiteSpace(SimulationRunConfig.ImageOutputDir)) return SimulationRunConfig.ImageOutputDir;
+        if (!string.IsNullOrWhiteSpace(SimulationRunConfig.OutputDir)) return SimulationRunConfig.OutputDir;
+        return Path.Combine(Application.persistentDataPath, "ServerSimulationCaptures");
+    }
+
+    private string ResolveCsvOutputPath()
+    {
+        if (!string.IsNullOrWhiteSpace(SimulationRunConfig.CsvOutputDir)) return SimulationRunConfig.CsvOutputDir;
         if (!string.IsNullOrWhiteSpace(SimulationRunConfig.OutputDir)) return SimulationRunConfig.OutputDir;
         return Path.Combine(Application.persistentDataPath, "ServerSimulationCaptures");
     }
@@ -235,16 +247,21 @@ public class ServerSimulationManager : MonoBehaviour
 
     private IEnumerator RunMultiAngleSimulation(List<GameObject> furnitures)
     {
-        string sessionRoot = Path.Combine(baseSavePath, SanitizeFileNamePart(sessionId));
-        Directory.CreateDirectory(sessionRoot);
+        string safeSessionId = SanitizeFileNamePart(sessionId);
+        string imageSessionRoot = Path.Combine(imageSavePath, safeSessionId);
+        string csvSessionRoot = Path.Combine(csvSavePath, safeSessionId);
+        Directory.CreateDirectory(imageSessionRoot);
+        Directory.CreateDirectory(csvSessionRoot);
 
         for (int i = 0; i < simulationAngles.Length; i++)
         {
             int angle = simulationAngles[i];
             Debug.Log($"[ServerManager] Starting seismic angle {angle}.");
 
-            string angleDirPath = Path.Combine(sessionRoot, $"rot_{angle:000}");
-            Directory.CreateDirectory(angleDirPath);
+            string imageAngleDirPath = Path.Combine(imageSessionRoot, $"rot_{angle:000}");
+            string csvAngleDirPath = Path.Combine(csvSessionRoot, $"rot_{angle:000}");
+            Directory.CreateDirectory(imageAngleDirPath);
+            Directory.CreateDirectory(csvAngleDirPath);
 
             RestoreFurniturePoses(furnitures);
             Physics.SyncTransforms();
@@ -259,12 +276,12 @@ public class ServerSimulationManager : MonoBehaviour
 
             if (captureManager != null)
             {
-                yield return StartCoroutine(captureManager.CaptureSequence(sessionId, angle, "before", angleDirPath, entranceMarker));
+                yield return StartCoroutine(captureManager.CaptureSequence(sessionId, angle, "before", imageAngleDirPath, entranceMarker));
             }
 
             if (dataRecorder != null)
             {
-                dataRecorder.StartRecording(angleDirPath, $"{sessionId}_rot{angle:000}", furnitures);
+                dataRecorder.StartRecording(csvAngleDirPath, $"{sessionId}_rot{angle:000}", furnitures);
                 dataRecorder.AddRecordingTarget(roomStructureRoot);
             }
 
@@ -274,7 +291,7 @@ public class ServerSimulationManager : MonoBehaviour
 
             if (captureManager != null)
             {
-                yield return StartCoroutine(captureManager.CaptureSequence(sessionId, angle, "after", angleDirPath, entranceMarker));
+                yield return StartCoroutine(captureManager.CaptureSequence(sessionId, angle, "after", imageAngleDirPath, entranceMarker));
             }
 
             if (restoreFurnitureToOriginAfterCapture)

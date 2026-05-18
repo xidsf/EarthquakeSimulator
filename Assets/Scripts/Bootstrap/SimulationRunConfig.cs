@@ -9,7 +9,10 @@ public static class SimulationRunConfig
     // 헤드리스 시뮬레이션 입출력 경로 (커맨드라인 --input-dir / --output-dir).
     // InputDir 안에 simulation_input.json + 가구 GLB가 존재한다고 가정합니다.
     public static string InputDir;
+    public static string GlbDir;
     public static string OutputDir;
+    public static string ImageOutputDir;
+    public static string CsvOutputDir;
 
     // 선택: THA CSV 경로 (--tha-csv). 비어 있으면 EarthquakeSimulator 기본 경로를 사용합니다.
     public static string ThaCsvPath;
@@ -21,7 +24,10 @@ public static class SimulationRunConfig
 
     public static bool HasHeadlessSimulationPaths()
     {
-        return !string.IsNullOrWhiteSpace(InputDir) && !string.IsNullOrWhiteSpace(OutputDir);
+        return !string.IsNullOrWhiteSpace(InputDir) &&
+               (!string.IsNullOrWhiteSpace(OutputDir) ||
+                !string.IsNullOrWhiteSpace(ImageOutputDir) ||
+                !string.IsNullOrWhiteSpace(CsvOutputDir));
     }
 
     public static void Clear()
@@ -33,7 +39,10 @@ public static class SimulationRunConfig
         DebugInputFileName = "debug_session_input.json";
 
         InputDir = null;
+        GlbDir = null;
         OutputDir = null;
+        ImageOutputDir = null;
+        CsvOutputDir = null;
         ThaCsvPath = null;
     }
 }

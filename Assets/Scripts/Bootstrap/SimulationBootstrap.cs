@@ -36,7 +36,7 @@ public class SimulationBootstrap : MonoBehaviour
         SimulationRunConfig.ApiBaseUrl = defaultApiBaseUrl.TrimEnd('/');
         SimulationRunConfig.DebugInputFileName = defaultDebugInputFileName;
 
-        if (args.TryGetValue("--session-id", out string sessionId))
+        if (TryGetFirstArg(args, out string sessionId, "--session-id", "--session_id"))
         {
             SimulationRunConfig.SessionId = sessionId;
         }
@@ -51,17 +51,32 @@ public class SimulationBootstrap : MonoBehaviour
             SimulationRunConfig.DebugInputFileName = SanitizeFileName(debugFileName);
         }
 
-        if (args.TryGetValue("--input-dir", out string inputDir))
+        if (TryGetFirstArg(args, out string inputDir, "--input-dir", "--input_dir", "--input"))
         {
             SimulationRunConfig.InputDir = inputDir;
         }
 
-        if (args.TryGetValue("--output-dir", out string outputDir))
+        if (TryGetFirstArg(args, out string glbDir, "--glb-dir", "--glb_dir", "--glb-path", "--glb_path", "--model-dir", "--model_dir", "--models-dir", "--models_dir"))
+        {
+            SimulationRunConfig.GlbDir = glbDir;
+        }
+
+        if (TryGetFirstArg(args, out string outputDir, "--output-dir", "--output_dir", "--output"))
         {
             SimulationRunConfig.OutputDir = outputDir;
         }
 
-        if (args.TryGetValue("--tha-csv", out string thaCsv))
+        if (TryGetFirstArg(args, out string imageOutputDir, "--image-dir", "--image_dir", "--images-dir", "--images_dir", "--capture-dir", "--capture_dir"))
+        {
+            SimulationRunConfig.ImageOutputDir = imageOutputDir;
+        }
+
+        if (TryGetFirstArg(args, out string csvOutputDir, "--csv-dir", "--csv_dir", "--data-dir", "--data_dir"))
+        {
+            SimulationRunConfig.CsvOutputDir = csvOutputDir;
+        }
+
+        if (TryGetFirstArg(args, out string thaCsv, "--tha-csv", "--tha_csv"))
         {
             SimulationRunConfig.ThaCsvPath = thaCsv;
         }
@@ -81,6 +96,15 @@ public class SimulationBootstrap : MonoBehaviour
             return;
         }
 
+#if !UNITY_EDITOR
+        if (string.IsNullOrWhiteSpace(SimulationRunConfig.InputDir))
+        {
+            Debug.LogError("Missing required command line argument: --input-dir");
+            QuitWithError();
+            return;
+        }
+#endif
+
         if (IsDebugSessionId(SimulationRunConfig.SessionId))
         {
             SimulationRunConfig.IsDebugSession = true;
@@ -98,7 +122,10 @@ public class SimulationBootstrap : MonoBehaviour
         Debug.Log($"[Bootstrap] API Base URL: {SimulationRunConfig.ApiBaseUrl}");
         Debug.Log($"[Bootstrap] Is Debug Session: {SimulationRunConfig.IsDebugSession}");
         Debug.Log($"[Bootstrap] Input Dir: {SimulationRunConfig.InputDir}");
+        Debug.Log($"[Bootstrap] GLB Dir: {SimulationRunConfig.GlbDir}");
         Debug.Log($"[Bootstrap] Output Dir: {SimulationRunConfig.OutputDir}");
+        Debug.Log($"[Bootstrap] Image Output Dir: {SimulationRunConfig.ImageOutputDir}");
+        Debug.Log($"[Bootstrap] CSV Output Dir: {SimulationRunConfig.CsvOutputDir}");
         Debug.Log($"[Bootstrap] Loading scene: {sceneToLoad}");
 
         // 헤드리스 시뮬레이션 입출력 경로가 주어지면, 씬 로드 후 자동으로
@@ -148,6 +175,18 @@ public class SimulationBootstrap : MonoBehaviour
                 return true;
         }
 
+        return false;
+    }
+
+    private bool TryGetFirstArg(Dictionary<string, string> args, out string value, params string[] names)
+    {
+        foreach (string name in names)
+        {
+            if (args.TryGetValue(name, out value))
+                return true;
+        }
+
+        value = null;
         return false;
     }
 

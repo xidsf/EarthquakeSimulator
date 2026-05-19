@@ -117,6 +117,14 @@ public class FurnitureServerApiClient : MonoBehaviour
         yield return SendJsonRequest<SimulationPlaybackResponse>(url, "GET", onComplete);
     }
 
+    public IEnumerator GetRoomGeometry(
+        string sessionId,
+        Action<bool, SimulationRoomGeometryResponse, string> onComplete)
+    {
+        string url = BuildUrl($"/room-geometry/{UnityWebRequest.EscapeURL(sessionId)}");
+        yield return SendJsonRequest<SimulationRoomGeometryResponse>(url, "GET", onComplete);
+    }
+
     public IEnumerator GetTextFromUrl(string url, Action<bool, string, string> onComplete)
     {
         if (string.IsNullOrWhiteSpace(url))

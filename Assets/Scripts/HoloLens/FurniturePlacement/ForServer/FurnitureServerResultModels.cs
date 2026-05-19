@@ -328,6 +328,23 @@ public class PlacedSceneObject
 }
 
 [Serializable]
+public class SimulationRoomGeometryResponse
+{
+    public string scan_session_id;
+    public string session_id;
+    public string status;
+    public string error;
+    public string entrance_source;
+    public SimulationRoomGeometry room;
+
+    public bool IsFailedStatus()
+    {
+        string normalized = string.IsNullOrWhiteSpace(status) ? string.Empty : status.Trim().ToLowerInvariant();
+        return normalized == "failed" || normalized == "error" || normalized == "not_found";
+    }
+}
+
+[Serializable]
 public class SimulationRequest
 {
     public float duration_sec = 8.0f;

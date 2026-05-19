@@ -20,6 +20,10 @@ public class SimulationProcessManager : MonoBehaviour
     public UIManager uiManager;
     public bool autoFindReferences = true;
 
+    [Header("Editor Debug")]
+    public string debugOverrideSessionId;
+    public bool debugBypassWorkflowState;
+
     [Header("Start Conditions")]
     public bool requireAtLeastOneFurniture = true;
     public bool validatePlacementBeforeStart = true;
@@ -71,7 +75,8 @@ public class SimulationProcessManager : MonoBehaviour
             return false;
         }
 
-        if (workflowManager != null &&
+        if (!debugBypassWorkflowState &&
+            workflowManager != null &&
             workflowManager.currentState != RoomBuildWorkflowManager.WorkflowState.SimulationProcess)
         {
             Debug.LogWarning($"[SimulationProcessManager] Cannot start simulation from state:{workflowManager.currentState}");
@@ -716,12 +721,38 @@ public class SimulationProcessManager : MonoBehaviour
         resultPanel.SetActive(true);
     }
 
+    public void InjectCompletedResultForDebug(SimulationResultResponse result, bool showOnPanel = true)
+    {
+        if (result == null)
+        {
+            Debug.LogWarning("[SimulationProcessManager] Cannot inject debug simulation result. result is null.");
+            return;
+        }
+
+        LastResult = result;
+        LastCompletedResult = result;
+        SimulationResultReceived?.Invoke(result);
+
+        if (showOnPanel)
+        {
+            ShowLatestResultOnSuccessPanel();
+        }
+    }
+
     private string ResolveSessionId()
     {
-        string sessionId = furnitureCaptureManager != null ? furnitureCaptureManager.CurrentScanSessionId : null;
+        string sessionId = !string.IsNullOrWhiteSpace(debugOverrideSessionId) ? debugOverrideSessionId.Trim() : null;
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            sessionId = furnitureCaptureManager != null ? furnitureCaptureManager.CurrentScanSessionId : null;
+        }
         if (string.IsNullOrWhiteSpace(sessionId) && serverPlacementPipeline != null)
         {
             sessionId = serverPlacementPipeline.ActiveScanSessionId;
+        }
+        if (string.IsNullOrWhiteSpace(sessionId) && serverPlacementPipeline != null)
+        {
+            sessionId = serverPlacementPipeline.debugOverrideScanSessionId;
         }
 
         return sessionId;

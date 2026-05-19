@@ -99,6 +99,32 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         return LastResult.objects[index];
     }
 
+    public void InjectResultForDebug(FurnitureServerResultResponse result)
+    {
+        if (result == null)
+        {
+            Debug.LogWarning("[FurnitureServerPlacementPipeline] Cannot inject debug result. result is null.");
+            return;
+        }
+
+        LastResult = result;
+        ActiveScanSessionId = !string.IsNullOrWhiteSpace(result.scan_session_id)
+            ? result.scan_session_id
+            : debugOverrideScanSessionId;
+        LastStatus = result.HasObjects ? "debug_result_ready" : "debug_result_empty";
+        IsRunning = false;
+        runningCoroutine = null;
+        SelectedPendingObjectIndex = result.HasObjects ? 0 : -1;
+        ResetPendingTracking();
+        EnsurePendingTrackingArrays();
+
+        ResultListChanged?.Invoke(this);
+        if (SelectedPendingObjectIndex >= 0)
+        {
+            PendingSelectionChanged?.Invoke(SelectedPendingObjectIndex, SelectedPendingObject);
+        }
+    }
+
     public string GetPendingObjectLabel(int index)
     {
         FurnitureServerResultObject obj = GetPendingObject(index);

@@ -1179,6 +1179,7 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
     {
         DisableNonConfirmedRoomBuildGeometry();
         confirmRoomManager?.SetEntranceMarkerVisible(false);
+        PrepareFurniturePlacementEditingState();
     }
     private void OnExitFurniturePlacementState() { }
     private void OnEnterSimulationProcessState()
@@ -1190,8 +1191,26 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
     private void OnExitSimulationSuccessState() { }
     private void OnEnterRunSimulationState() { }
     private void OnExitRunSimulationState() { }
-    private void OnEnterFurnitureRePlacementState() { }
+    private void OnEnterFurnitureRePlacementState()
+    {
+        DisableNonConfirmedRoomBuildGeometry();
+        confirmRoomManager?.SetEntranceMarkerVisible(false);
+        PrepareFurniturePlacementEditingState();
+    }
     private void OnExitFurnitureRePlacementState() { }
+
+    private void PrepareFurniturePlacementEditingState()
+    {
+        FurniturePlacementManager[] managers =
+            FindObjectsByType<FurniturePlacementManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+
+        if (managers == null || managers.Length == 0)
+        {
+            return;
+        }
+
+        managers[0].PrepareAllForPlacementEditing();
+    }
 
 
 }

@@ -16,7 +16,7 @@ using UnityEngine.XR.Interaction.Toolkit.Interactors;
 /// - 서버가 제공한 MeshCollider를 보존
 /// - 필요 시에만 Mesh가 있는 자식 오브젝트에 MeshCollider 추가
 /// - 필요 시에만 MeshCollider.convex = true 설정
-/// - root에 Rigidbody 추가 및 kinematic 설정
+/// - root에 Rigidbody는 기본 추가하지 않음. 시뮬레이션 단계에서 필요할 때 별도로 구성합니다.
 /// - root에 PlacedFurniture 추가
 /// - root에 MRTK3 ObjectManipulator 추가
 /// - root에 FurnitureObjectManipulatorBridge 추가
@@ -48,7 +48,7 @@ public class RuntimeFurnitureInteractionSetup : MonoBehaviour
     public bool applyScaleCorrectionOnlyOnce = true;
 
     [Header("Interaction Setup")]
-    public bool addKinematicRigidbodyToRoot = true;
+    public bool addKinematicRigidbodyToRoot = false;
     public bool addPlacedFurnitureToRoot = true;
     public bool addObjectManipulatorToRoot = true;
     public bool addObjectManipulatorBridgeToRoot = true;

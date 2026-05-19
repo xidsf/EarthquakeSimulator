@@ -11116,7 +11116,7 @@ MonoBehaviour:
   largeScaleThreshold: 100
   largeScaleMultiplier: 0.1
   applyScaleCorrectionOnlyOnce: 1
-  addKinematicRigidbodyToRoot: 1
+  addKinematicRigidbodyToRoot: 0
   addPlacedFurnitureToRoot: 1
   addObjectManipulatorToRoot: 1
   addObjectManipulatorBridgeToRoot: 1

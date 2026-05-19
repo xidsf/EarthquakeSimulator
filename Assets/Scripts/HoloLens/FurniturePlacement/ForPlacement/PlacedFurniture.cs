@@ -48,7 +48,7 @@ public class PlacedFurniture : MonoBehaviour
     [Header("Move Control")]
     public Behaviour[] moveBehaviours;
     public Collider[] heavyCollidersToDisableWhileMoving;
-    public bool ensureKinematicRigidbody = true;
+    public bool ensureKinematicRigidbody = false;
 
     [Tooltip("?대룞 以?鍮?踰쎄구??媛援ъ쓽 諛붾떏??留??꾨젅??諛?諛붾떏??怨좎젙?? 踰?履쎌쑝濡??????꾨옒濡?媛?쇱븠???꾩긽??諛⑹??⑸땲??")]
     public bool lockToFloorWhileMoving = true;
@@ -427,6 +427,18 @@ public class PlacedFurniture : MonoBehaviour
         // ?곕씪??Rigidbody瑜?kinematic?쇰줈 ?먯? ?딄퀬 ?꾩삁 ?쒓굅?쒕떎.
         // (?쒕쾭 ?쒕??덉씠?섏? ?꾩넚??JSON?쇰줈 ?먯껜 Rigidbody瑜?援ъ꽦?섎?濡??곹뼢 ?놁쓬)
         RemoveRigidbodyForClient();
+    }
+
+    public void PrepareForPlacementEditing()
+    {
+        SetHeavyCollidersEnabled(true);
+        if (ensureKinematicRigidbody)
+        {
+            ConfigureRigidbody();
+        }
+
+        SetManipulationMode(FurnitureManipulationMode.None);
+        SaveCurrentPoseAsValid();
     }
 
     public Collider[] GetActivePlacementColliders()

@@ -448,6 +448,28 @@ public class FurniturePlacementManager : MonoBehaviour
         Debug.Log($"[FurniturePlacementManager] Prepared furniture for simulation. count:{placedFurnitures.Count}");
     }
 
+    public void PrepareAllForPlacementEditing()
+    {
+        EnsureReferences();
+
+        foreach (PlacedFurniture furniture in placedFurnitures)
+        {
+            if (furniture != null)
+            {
+                furniture.PrepareForPlacementEditing();
+            }
+        }
+
+        if (moveModeController != null)
+        {
+            moveModeController.SetManipulationMode(placedFurnitures.Count > 0
+                ? FurnitureManipulationMode.Move
+                : FurnitureManipulationMode.None);
+        }
+
+        Debug.Log($"[FurniturePlacementManager] Prepared furniture for placement editing. count:{placedFurnitures.Count}");
+    }
+
     public void ClearPlacedFurniture()
     {
         for (int i = placedFurnitures.Count - 1; i >= 0; i--)

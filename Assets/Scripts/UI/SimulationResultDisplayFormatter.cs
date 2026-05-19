@@ -163,9 +163,10 @@ public static class SimulationResultDisplayFormatter
             label = label.Substring("scene_".Length);
         }
 
-        Match instanceMatch = Regex.Match(label, @"^(?<base>[A-Za-z_]+?)(?:_(?<index>\d{3,}))?$");
+        Match instanceMatch = Regex.Match(label, @"^(?<base>[A-Za-z_]+?)(?:_(?<index>\d{3,}))?(?:_(?<suffix>[A-Za-z]+|p\d{3,}))?$");
         string baseLabel = instanceMatch.Success ? instanceMatch.Groups["base"].Value : label;
         string index = instanceMatch.Success ? instanceMatch.Groups["index"].Value : string.Empty;
+        string suffix = instanceMatch.Success ? instanceMatch.Groups["suffix"].Value : string.Empty;
 
         string displayBase = LabelDisplayNames.TryGetValue(baseLabel, out string mapped)
             ? mapped
@@ -173,7 +174,8 @@ public static class SimulationResultDisplayFormatter
 
         if (int.TryParse(index, out int numericIndex) && numericIndex > 0)
         {
-            return $"{displayBase} {numericIndex}";
+            string suffixText = string.IsNullOrWhiteSpace(suffix) ? string.Empty : $"-{suffix.ToUpperInvariant()}";
+            return $"{displayBase} {numericIndex}{suffixText}";
         }
 
         return displayBase;

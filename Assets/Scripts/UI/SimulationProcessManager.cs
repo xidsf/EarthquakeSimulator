@@ -313,7 +313,10 @@ public class SimulationProcessManager : MonoBehaviour
                 objects.Add(new PlacedSceneObject
                 {
                     id = furniture.FurnitureId,
+                    source_object_id = furniture.SourceObjectId,
                     label = furniture.Label,
+                    category = furniture.Label,
+                    vlm_label = furniture.FurnitureId,
                     position = ToArray(t.position),
                     rotation = ToArray(t.eulerAngles),
                     scale = ToArray(t.localScale),

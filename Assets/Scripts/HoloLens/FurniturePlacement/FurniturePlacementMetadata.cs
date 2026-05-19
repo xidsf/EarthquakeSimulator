@@ -29,6 +29,9 @@ public class FurniturePlacementMetadata
     [Tooltip("서버 /result objects[].id 원본입니다. furnitureId와 같을 수 있습니다.")]
     public string serverObjectId;
 
+    [Tooltip("서버가 인식한 원본 가구 ID입니다. 중복 배치된 인스턴스와 구분하기 위해 유지합니다.")]
+    public string sourceObjectId;
+
     [Tooltip("서버 /result objects[].mesh_url 원본입니다.")]
     public string meshUrl;
 

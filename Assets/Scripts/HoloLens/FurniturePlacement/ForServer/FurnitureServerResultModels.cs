@@ -316,7 +316,10 @@ public class PlacedSceneRequest
 public class PlacedSceneObject
 {
     public string id;
+    public string source_object_id;
     public string label;
+    public string category;
+    public string vlm_label;
     public float[] position;
     public float[] rotation;
     public float[] scale;

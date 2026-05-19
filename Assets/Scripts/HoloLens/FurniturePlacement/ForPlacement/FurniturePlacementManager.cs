@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 
 /// <summary>
@@ -73,6 +74,7 @@ public class FurniturePlacementManager : MonoBehaviour
             metadata = FurniturePlacementMetadata.CreateDefault(furnitureObject, "server");
         }
 
+        AssignPlacedInstanceIdentity(metadata);
         metadata.EnsureDefaults(furnitureObject, "server");
 
         if (placedFurnitureRoot != null && furnitureObject.transform.parent != placedFurnitureRoot)
@@ -151,6 +153,121 @@ public class FurniturePlacementManager : MonoBehaviour
         Debug.Log($"[FurniturePlacementManager] Furniture registered and auto-confirmed. id:{placedFurniture.FurnitureId}, label:{placedFurniture.Label}, name:{placedFurniture.DisplayName}", furnitureObject);
         PlacementChanged?.Invoke();
         return true;
+    }
+
+    private void AssignPlacedInstanceIdentity(FurniturePlacementMetadata metadata)
+    {
+        if (metadata == null)
+        {
+            return;
+        }
+
+        string sourceObjectId = FirstNonEmpty(metadata.sourceObjectId, metadata.serverObjectId);
+        if (string.IsNullOrWhiteSpace(sourceObjectId))
+        {
+            return;
+        }
+
+        metadata.sourceObjectId = sourceObjectId;
+        metadata.furnitureId = CreateUniquePlacedInstanceId(sourceObjectId, metadata.label);
+    }
+
+    private string CreateUniquePlacedInstanceId(string sourceObjectId, string label)
+    {
+        string baseId = NormalizePlacedInstanceBaseId(sourceObjectId, label);
+        int existingCount = CountPlacedInstancesForSourceBase(baseId);
+        string candidate;
+
+        do
+        {
+            candidate = $"{baseId}_{InstanceSuffix(existingCount)}";
+            existingCount++;
+        }
+        while (IsFurnitureIdInUse(candidate));
+
+        return candidate;
+    }
+
+    private int CountPlacedInstancesForSourceBase(string sourceBaseId)
+    {
+        int count = 0;
+        for (int i = 0; i < placedFurnitures.Count; i++)
+        {
+            PlacedFurniture furniture = placedFurnitures[i];
+            if (furniture == null)
+            {
+                continue;
+            }
+
+            string existingBase = NormalizePlacedInstanceBaseId(furniture.SourceObjectId, furniture.Label);
+            if (string.Equals(existingBase, sourceBaseId, StringComparison.OrdinalIgnoreCase))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private bool IsFurnitureIdInUse(string furnitureId)
+    {
+        for (int i = 0; i < placedFurnitures.Count; i++)
+        {
+            PlacedFurniture furniture = placedFurnitures[i];
+            if (furniture != null &&
+                string.Equals(furniture.FurnitureId, furnitureId, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string NormalizePlacedInstanceBaseId(string sourceObjectId, string label)
+    {
+        string value = FirstNonEmpty(sourceObjectId, label, "furniture").Trim();
+        if (value.StartsWith("scene_", StringComparison.OrdinalIgnoreCase))
+        {
+            value = value.Substring("scene_".Length);
+        }
+        else if (value.StartsWith("obj_", StringComparison.OrdinalIgnoreCase))
+        {
+            value = value.Substring("obj_".Length);
+        }
+
+        StringBuilder builder = new StringBuilder(value.Length);
+        for (int i = 0; i < value.Length; i++)
+        {
+            char c = char.ToLowerInvariant(value[i]);
+            builder.Append(char.IsLetterOrDigit(c) || c == '_' ? c : '_');
+        }
+
+        string normalized = builder.ToString().Trim('_');
+        return string.IsNullOrWhiteSpace(normalized) ? "furniture" : normalized;
+    }
+
+    private static string InstanceSuffix(int zeroBasedIndex)
+    {
+        if (zeroBasedIndex >= 0 && zeroBasedIndex < 26)
+        {
+            return ((char)('a' + zeroBasedIndex)).ToString();
+        }
+
+        return $"p{zeroBasedIndex + 1:000}";
+    }
+
+    private static string FirstNonEmpty(params string[] values)
+    {
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(values[i]))
+            {
+                return values[i];
+            }
+        }
+
+        return string.Empty;
     }
 
     public void HandleFurnitureTouched(PlacedFurniture furniture)

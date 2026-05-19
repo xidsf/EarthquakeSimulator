@@ -302,6 +302,7 @@ public class FurnitureServerResultPlacer : MonoBehaviour
             source = "server_result",
             displayName = string.IsNullOrWhiteSpace(serverObject.label) ? instance.name : serverObject.label,
             serverObjectId = serverObject.id,
+            sourceObjectId = serverObject.id,
             meshUrl = serverObject.mesh_url,
             confidence = serverObject.confidence,
             detectionId = serverObject.detection_id,

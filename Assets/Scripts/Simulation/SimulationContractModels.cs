@@ -75,6 +75,9 @@ public class SimulationFurnitureInstance
 {
     // FurnitureServerResultObject.id (= PlacedFurniture.FurnitureId)와 동일합니다.
     public string furniture_id;
+    public string source_object_id;
+    public string vlm_label;
+    public string category;
 
     // 동일 furniture_id가 여러 번 배치된 경우(중복) 구분하기 위한 0부터 증가하는 인덱스입니다.
     public int instance_index;

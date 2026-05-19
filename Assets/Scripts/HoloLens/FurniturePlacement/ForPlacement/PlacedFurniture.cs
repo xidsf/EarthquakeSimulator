@@ -23,6 +23,7 @@ public class PlacedFurniture : MonoBehaviour
     [Header("Runtime Metadata")]
     [SerializeField] private FurniturePlacementState state = FurniturePlacementState.None;
     [SerializeField] private string furnitureId;
+    [SerializeField] private string sourceObjectId;
     [SerializeField] private string label;
     [SerializeField] private string displayName;
     [SerializeField] private string source;
@@ -101,6 +102,7 @@ public class PlacedFurniture : MonoBehaviour
 
     public FurniturePlacementState State => state;
     public string FurnitureId => furnitureId;
+    public string SourceObjectId => string.IsNullOrWhiteSpace(sourceObjectId) ? furnitureId : sourceObjectId;
     public string Label => label;
     public string DisplayName => !string.IsNullOrWhiteSpace(displayName) ? displayName : gameObject.name;
     public string Source => source;
@@ -124,6 +126,9 @@ public class PlacedFurniture : MonoBehaviour
         metadata.EnsureDefaults(gameObject);
 
         furnitureId = metadata.furnitureId;
+        sourceObjectId = string.IsNullOrWhiteSpace(metadata.sourceObjectId)
+            ? (!string.IsNullOrWhiteSpace(metadata.serverObjectId) ? metadata.serverObjectId : metadata.furnitureId)
+            : metadata.sourceObjectId;
         label = metadata.label;
         displayName = metadata.displayName;
         source = metadata.source;

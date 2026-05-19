@@ -232,6 +232,9 @@ public static class SimulationInputBuilder
             list.Add(new SimulationFurnitureInstance
             {
                 furniture_id = id,
+                source_object_id = furniture.SourceObjectId,
+                vlm_label = id,
+                category = furniture.Label,
                 instance_index = index,
                 position = ToArray(localPos),
                 rotation = ToArray(localRot),

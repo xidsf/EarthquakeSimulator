@@ -746,12 +746,16 @@ public class SimulationProcessManager : MonoBehaviour
     }
 }
 
+// =========================================================================
+// 사용자 정의 UI 연동용으로 재작성된 SimulationResultPanelController
+// =========================================================================
 public class SimulationResultPanelController : MonoBehaviour
 {
-    [Header("Result View")]
-    public TMP_Text resultText;
-    public bool autoCreateResultText = true;
-    [Min(80)] public int rawFieldMaxCharacters = 500;
+    [Header("UI Component References")]
+    public TMP_Text aiAdviceText;             // AIAdviceText 연결
+    public TMP_Text riskResultText;           // RiskResultText 연결
+    public TMP_Text roomLevelText;            // RoomLevelText 연결
+    public TMP_Text fallHazardFurnituresList; // FallHazardFurnituresList 연결
 
     private SimulationResultResponse currentResult;
 
@@ -771,17 +775,49 @@ public class SimulationResultPanelController : MonoBehaviour
     public void SetResult(SimulationResultResponse result)
     {
         currentResult = result;
-        EnsureResultText();
 
-        if (resultText == null)
+        if (result == null) return;
+
+        // 1. AI 조언 업데이트
+        if (aiAdviceText != null)
         {
-            Debug.LogWarning("[SimulationResultPanelController] Result text is missing.");
-            return;
+            aiAdviceText.text = string.IsNullOrEmpty(result.advice)
+                ? "시뮬레이션 분석 결과가 없습니다."
+                : result.advice;
         }
 
-        resultText.text = FormatResult(result);
+        // 2. 위험 점수 업데이트 (소수점 버림)
+        if (riskResultText != null)
+        {
+            riskResultText.text = $"위험지수 (S): {Mathf.RoundToInt(result.risk_score)}";
+        }
+
+        // 3. 레벨 텍스트 업데이트
+        if (roomLevelText != null)
+        {
+            roomLevelText.text = result.risk_level;
+        }
+
+        // 4. 낙하 위험 물건 리스트 업데이트
+        if (fallHazardFurnituresList != null)
+        {
+            string listString = "낙하 위험 물건:\n";
+            if (result.fallen != null && result.fallen.Length > 0)
+            {
+                foreach (string item in result.fallen)
+                {
+                    listString += $"- {item}\n";
+                }
+            }
+            else
+            {
+                listString += "- 없음\n";
+            }
+            fallHazardFurnituresList.text = listString;
+        }
     }
 
+    // Manager 스크립트에서 정적으로 호출하는 부분 (그대로 유지)
     public static void ShowResultOnPanel(GameObject panel, SimulationResultResponse result)
     {
         if (panel == null)
@@ -797,305 +833,5 @@ public class SimulationResultPanelController : MonoBehaviour
         }
 
         controller.SetResult(result);
-    }
-
-    private void EnsureResultText()
-    {
-        if (resultText != null || !autoCreateResultText)
-        {
-            return;
-        }
-
-        resultText = GetComponentInChildren<TMP_Text>(true);
-        if (resultText != null)
-        {
-            return;
-        }
-
-        if (GetComponent<RectTransform>() == null)
-        {
-            return;
-        }
-
-        GameObject textObject = new GameObject("SimulationResultText", typeof(RectTransform), typeof(TextMeshProUGUI));
-        textObject.transform.SetParent(transform, false);
-
-        RectTransform textRect = textObject.GetComponent<RectTransform>();
-        textRect.anchorMin = new Vector2(0.05f, 0.05f);
-        textRect.anchorMax = new Vector2(0.95f, 0.95f);
-        textRect.offsetMin = Vector2.zero;
-        textRect.offsetMax = Vector2.zero;
-
-        TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
-        text.fontSize = 24.0f;
-        text.textWrappingMode = TextWrappingModes.Normal;
-        text.overflowMode = TextOverflowModes.Ellipsis;
-        text.alignment = TextAlignmentOptions.TopLeft;
-        text.color = Color.white;
-        resultText = text;
-    }
-
-    private string FormatResult(SimulationResultResponse result)
-    {
-        if (result == null)
-        {
-            return "Simulation result is empty.";
-        }
-
-        string rawJson = result.RawJson;
-        StringBuilder builder = new StringBuilder(1024);
-        AppendLine(builder, "Risk Level", result.risk_level);
-        AppendLine(builder, "Risk Score", result.risk_score.ToString("0.###"));
-        AppendLine(builder, "Recognized", FormatStringArray(result.recognized, ExtractRawField(rawJson, "recognized")));
-        AppendLine(builder, "Fallen", FormatStringArray(result.fallen, ExtractRawField(rawJson, "fallen")));
-        AppendLine(builder, "Advice", FirstNonEmpty(result.advice, ExtractRawField(rawJson, "advice")));
-        AppendLine(builder, "Destructive Direction", result.destructive_direction);
-        AppendLine(builder, "Destructive Direction Score", result.destructive_direction_score.ToString("0.###"));
-        AppendLine(builder, "Before/After Images", FormatStringArray(result.before_after_images, ExtractRawField(rawJson, "before_after_images")));
-        AppendLine(builder, "Transform Logs", FormatTransformLogs(result.transform_logs, ExtractRawField(rawJson, "transform_logs")));
-        AppendLine(builder, "VLM Status", result.vlm != null ? result.vlm.status : ExtractRawNestedField(rawJson, "vlm", "status"));
-        AppendLine(builder, "VLM Message", result.vlm != null ? result.vlm.message : ExtractRawNestedField(rawJson, "vlm", "message"));
-        AppendLine(builder, "VLM Error", result.vlm != null ? result.vlm.error : ExtractRawNestedField(rawJson, "vlm", "error"));
-        AppendLine(builder, "Playback Status", result.playback != null ? result.playback.status : "-");
-        AppendLine(builder, "Playback Frames", result.playback != null && result.playback.frames != null ? result.playback.frames.Length.ToString() : "0");
-        AppendLine(builder, "Playback Error", result.playback_error);
-        AppendLine(builder, "Debug Folder", result.debug_folder_path);
-
-        return builder.ToString().TrimEnd();
-    }
-
-    private void AppendLine(StringBuilder builder, string label, string value)
-    {
-        builder.Append(label);
-        builder.Append(": ");
-        builder.AppendLine(string.IsNullOrWhiteSpace(value) ? "-" : Compact(value));
-    }
-
-    private string FormatStringArray(string[] values, string fallback)
-    {
-        if (values != null && values.Length > 0)
-        {
-            return string.Join(", ", values);
-        }
-
-        return fallback;
-    }
-
-    private string FormatTransformLogs(SimulationTransformLog[] logs, string fallback)
-    {
-        if (logs == null || logs.Length == 0)
-        {
-            return fallback;
-        }
-
-        StringBuilder builder = new StringBuilder();
-        int count = Mathf.Min(logs.Length, 5);
-        for (int i = 0; i < count; i++)
-        {
-            SimulationTransformLog log = logs[i];
-            if (log == null)
-            {
-                continue;
-            }
-
-            if (builder.Length > 0)
-            {
-                builder.Append(" | ");
-            }
-
-            builder.Append(FirstNonEmpty(log.label, log.id, "object"));
-            if (!string.IsNullOrWhiteSpace(log.state))
-            {
-                builder.Append(" ");
-                builder.Append(log.state);
-            }
-
-            if (log.fallen)
-            {
-                builder.Append(" fallen");
-            }
-        }
-
-        if (logs.Length > count)
-        {
-            builder.Append($" | +{logs.Length - count} more");
-        }
-
-        return builder.ToString();
-    }
-
-    private string ExtractRawNestedField(string json, string parentField, string childField)
-    {
-        string parent = ExtractRawField(json, parentField);
-        return ExtractRawField(parent, childField);
-    }
-
-    private string ExtractRawField(string json, string fieldName)
-    {
-        if (string.IsNullOrWhiteSpace(json) || string.IsNullOrWhiteSpace(fieldName))
-        {
-            return string.Empty;
-        }
-
-        string token = "\"" + fieldName + "\"";
-        int tokenIndex = json.IndexOf(token, StringComparison.Ordinal);
-        if (tokenIndex < 0)
-        {
-            return string.Empty;
-        }
-
-        int colonIndex = json.IndexOf(':', tokenIndex + token.Length);
-        if (colonIndex < 0)
-        {
-            return string.Empty;
-        }
-
-        int valueStart = colonIndex + 1;
-        while (valueStart < json.Length && char.IsWhiteSpace(json[valueStart]))
-        {
-            valueStart++;
-        }
-
-        if (valueStart >= json.Length)
-        {
-            return string.Empty;
-        }
-
-        char startChar = json[valueStart];
-        if (startChar == '"' || startChar == '[' || startChar == '{')
-        {
-            int valueEnd = FindJsonValueEnd(json, valueStart);
-            if (valueEnd > valueStart)
-            {
-                return json.Substring(valueStart, valueEnd - valueStart);
-            }
-        }
-
-        int primitiveEnd = valueStart;
-        while (primitiveEnd < json.Length && json[primitiveEnd] != ',' && json[primitiveEnd] != '}' && json[primitiveEnd] != ']')
-        {
-            primitiveEnd++;
-        }
-
-        return json.Substring(valueStart, primitiveEnd - valueStart);
-    }
-
-    private int FindJsonValueEnd(string json, int start)
-    {
-        char startChar = json[start];
-        if (startChar == '"')
-        {
-            bool escaped = false;
-            for (int i = start + 1; i < json.Length; i++)
-            {
-                char c = json[i];
-                if (escaped)
-                {
-                    escaped = false;
-                    continue;
-                }
-
-                if (c == '\\')
-                {
-                    escaped = true;
-                    continue;
-                }
-
-                if (c == '"')
-                {
-                    return i + 1;
-                }
-            }
-
-            return json.Length;
-        }
-
-        char open = startChar;
-        char close = open == '[' ? ']' : '}';
-        int depth = 0;
-        bool inString = false;
-        bool isEscaped = false;
-
-        for (int i = start; i < json.Length; i++)
-        {
-            char c = json[i];
-            if (inString)
-            {
-                if (isEscaped)
-                {
-                    isEscaped = false;
-                }
-                else if (c == '\\')
-                {
-                    isEscaped = true;
-                }
-                else if (c == '"')
-                {
-                    inString = false;
-                }
-
-                continue;
-            }
-
-            if (c == '"')
-            {
-                inString = true;
-                continue;
-            }
-
-            if (c == open)
-            {
-                depth++;
-            }
-            else if (c == close)
-            {
-                depth--;
-                if (depth == 0)
-                {
-                    return i + 1;
-                }
-            }
-        }
-
-        return json.Length;
-    }
-
-    private string FirstNonEmpty(params string[] values)
-    {
-        if (values == null)
-        {
-            return string.Empty;
-        }
-
-        foreach (string value in values)
-        {
-            if (!string.IsNullOrWhiteSpace(value))
-            {
-                return value;
-            }
-        }
-
-        return string.Empty;
-    }
-
-    private string Compact(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return string.Empty;
-        }
-
-        string compact = value.Replace("\r", " ").Replace("\n", " ").Replace("\t", " ").Trim();
-        while (compact.Contains("  "))
-        {
-            compact = compact.Replace("  ", " ");
-        }
-
-        if (compact.Length > rawFieldMaxCharacters)
-        {
-            compact = compact.Substring(0, rawFieldMaxCharacters) + "...";
-        }
-
-        return compact;
     }
 }

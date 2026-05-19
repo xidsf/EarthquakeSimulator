@@ -292,8 +292,8 @@ public class SimulationProcessManager : MonoBehaviour
         LastResult = result;
         LastCompletedResult = result;
         SimulationResultReceived?.Invoke(result);
-        SimulationResultPanelController.ShowResultOnPanel(uiManager != null ? uiManager.panel_SimulationSuccess : null, result);
         FinishSuccess("Simulation result received.");
+        ShowLatestResultOnSuccessPanel();
     }
 
     private string BuildPlacedSceneJson(string sessionId)
@@ -679,6 +679,7 @@ public class SimulationProcessManager : MonoBehaviour
     private void FinishSuccess(string message)
     {
         Debug.Log($"[SimulationProcessManager] {message}");
+        uiManager?.HideLoading();
         SimulationCompleted?.Invoke(message);
         workflowManager?.RequestCommand(RoomBuildWorkflowManager.WorkflowCommand.SimulationSucceeded);
         runningCoroutine = null;
@@ -687,8 +688,29 @@ public class SimulationProcessManager : MonoBehaviour
     private void FinishFailure(string message)
     {
         Debug.LogWarning($"[SimulationProcessManager] {message}");
+        uiManager?.HideLoading();
         SimulationFailed?.Invoke(message);
         runningCoroutine = null;
+    }
+
+    private void ShowLatestResultOnSuccessPanel()
+    {
+        EnsureReferences();
+
+        if (LastResult == null)
+        {
+            return;
+        }
+
+        GameObject resultPanel = uiManager != null ? uiManager.panel_SimulationSuccess : null;
+        if (resultPanel == null)
+        {
+            Debug.LogWarning("[SimulationProcessManager] Cannot show simulation result. panel_SimulationSuccess is missing.");
+            return;
+        }
+
+        SimulationResultPanelController.ShowResultOnPanel(resultPanel, LastResult);
+        resultPanel.SetActive(true);
     }
 
     private string ResolveSessionId()
@@ -818,6 +840,12 @@ public class SimulationResultPanelController : MonoBehaviour
         {
             Debug.LogWarning("[SimulationResultPanelController] Simulation success panel is missing.");
             return;
+        }
+
+        SimulationResultUI resultUi = panel.GetComponent<SimulationResultUI>();
+        if (resultUi != null)
+        {
+            resultUi.UpdateUI(result);
         }
 
         SimulationResultPanelController controller = panel.GetComponent<SimulationResultPanelController>();

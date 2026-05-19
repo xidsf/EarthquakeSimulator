@@ -40,6 +40,11 @@ public class SimulationResultUI : WorkflowPanelControllerBase
         CreateActions();
         RegisterButtons();
         if (panel_SystemMessage != null) panel_SystemMessage.SetActive(false);
+
+        if (SimulationProcessManager.LastCompletedResult != null)
+        {
+            UpdateUI(SimulationProcessManager.LastCompletedResult);
+        }
     }
 
     private void OnDisable()
@@ -106,10 +111,6 @@ public class SimulationResultUI : WorkflowPanelControllerBase
         SimulationClientPlaybackController[] controllers =
             FindObjectsByType<SimulationClientPlaybackController>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         playbackController = controllers != null && controllers.Length > 0 ? controllers[0] : null;
-        if (playbackController == null)
-        {
-            playbackController = gameObject.AddComponent<SimulationClientPlaybackController>();
-        }
     }
 
     private void StopLoadingAnimation()

@@ -633,7 +633,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         if (serverPlacementPipeline == null || IsServerFurnitureRequestLocked()) return;
 
         // [수정됨] 중앙 통제 로딩 UI 호출
-        uiManager?.ShowLoading("인식된 가구 받는중");
+        uiManager?.ShowLoading("인식된 가구 받는중", "가구 모델링은 5분~10분정도 \n소요됩니다.");
 
         serverPlacementPipeline.StartPlacementFromCurrentScanSession();
         if (serverPlacementPipeline.IsRunning) BeginServerFurnitureRequestLock();

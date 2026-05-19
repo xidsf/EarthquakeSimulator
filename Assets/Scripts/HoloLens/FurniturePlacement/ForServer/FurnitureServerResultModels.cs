@@ -320,6 +320,8 @@ public class PlacedSceneObject
     public float[] position;
     public float[] rotation;
     public float[] scale;
+    public bool is_fixed;
+    public bool is_floor_contactless;
 }
 
 [Serializable]

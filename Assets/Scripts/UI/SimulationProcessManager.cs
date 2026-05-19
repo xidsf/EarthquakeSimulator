@@ -316,7 +316,9 @@ public class SimulationProcessManager : MonoBehaviour
                     label = furniture.Label,
                     position = ToArray(t.position),
                     rotation = ToArray(t.eulerAngles),
-                    scale = ToArray(t.localScale)
+                    scale = ToArray(t.localScale),
+                    is_fixed = furniture.IsFixed,
+                    is_floor_contactless = furniture.IsFloorContactless
                 });
             }
         }

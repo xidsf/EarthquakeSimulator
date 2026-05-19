@@ -7,12 +7,12 @@ using UnityEngine.Events;
 using UnityEngine.Serialization;
 
 /// <summary>
-/// ?섏젙??媛援?諛곗튂 ?⑤꼸 而⑦듃濡ㅻ윭?낅땲??
-/// 二쇱슂 蹂寃??ы빆:
-/// 1. ?섎룞 ?뺤젙(Confirm) 踰꾪듉 ?쒓굅 諛?濡쒖쭅 ??젣 (?먮룞 ?뺤젙 ???
-/// 2. ?숈씪 媛援ъ쓽 ?ㅼ쨷 諛곗튂 ?덉슜 (諛곗튂 ??踰꾪듉 ?좉툑 ?댁젣)
-/// 3. 紐⑤뱺 媛援щ? 諛곗튂?댁빞 ?쒕떎??媛뺤젣 議곌굔 ??젣 (?ъ슜???먯쑉??遺??
-/// 4. 而댄뙆???ㅻ쪟(T ?뺤떇, ??젣??硫붿꽌???몄텧 ?? ?섏젙
+/// 수정된 가구 배치 패널 컨트롤러입니다.
+/// 주요 변경 사항:
+/// 1. 수동 확정(Confirm) 버튼 제거 및 로직 삭제 (자동 확정 대응)
+/// 2. 동일 가구의 다중 배치 허용 (배치 후 버튼 잠금 해제)
+/// 3. 모든 가구를 배치해야 한다는 강제 조건 삭제 (사용자의 자율성 부여)
+/// 4. 통합 로딩 플레이트(Panel_SystemMessage) 연동 (서버 데이터 수신 시 사용)
 /// </summary>
 public class FurniturePlacementPanelController : WorkflowPanelControllerBase
 {
@@ -23,7 +23,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     public FurnitureMoveModeController moveModeController;
     public ConfirmedRoomGeometryProvider roomGeometryProvider;
     public FurnitureServerPlacementPipeline serverPlacementPipeline;
-    [Tooltip("珥ъ쁺 ?몄뀡 ?뺣낫瑜??쎌뼱 媛援??앹꽦 踰꾪듉 ?쒖꽦??議곌굔???먮떒?⑸땲??")]
+    [Tooltip("촬영 세션 정보를 읽어 가구 생성 버튼 활성화 조건을 판단합니다.")]
     public FurnitureCaptureManager furnitureCaptureManager;
 
     [Header("User Buttons")]
@@ -48,9 +48,14 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     public PressableButton userScaleYDownButton;
     public PressableButton userScaleZUpButton;
     public PressableButton userScaleZDownButton;
-    [Tooltip("x/y/z 異뺣퀎 ?ㅼ???踰꾪듉?ㅼ쓽 怨듯넻 ?곸쐞 GameObject. ?붾낫湲??좉? ?????ㅻ툕?앺듃瑜??듭㎏濡??쒖꽦/鍮꾪솢?깊빀?덈떎.")]
+    [Tooltip("x/y/z 축별 스케일 버튼들의 공통 상위 GameObject. 더보기 토글 시 이 오브젝트를 통째로 활성/비활성합니다.")]
     public GameObject userScaleAxisButtonsRoot;
     public PressableButton userCompleteFurniturePlacementButton;
+
+    [Header("System Message UI (로딩창 - 추가됨)")]
+    public GameObject panel_SystemMessage;
+    public TMP_Text text_SystemMessage;
+    private Coroutine loadingCoroutine;
 
     [Header("Server Furniture List UI")]
     public TMP_Text userSelectedServerFurnitureText;
@@ -61,32 +66,32 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     public bool suppressSelectedServerFurniturePreviewOnDevice = false;
     public float selectedServerFurniturePreviewScale = 0.03f;
 
-    [Tooltip("true?대㈃ 由ъ뒪?몄쓽 紐⑤뱺 媛援щ? 理쒖냼 ??踰덉뵫 諛곗튂?댁빞 ?꾨즺 踰꾪듉???쒖꽦?붾맗?덈떎.")]
+    [Tooltip("true이면 리스트의 모든 가구를 최소 한 번씩 배치해야 완료 버튼이 활성화됩니다.")]
     public bool requireAllServerFurniturePlacedBeforeComplete = false;
 
     [Header("Server Furniture Request Guard")]
     [Min(1.0f)] public float serverFurnitureRequestTimeoutSeconds = 600.0f;
 
     [Header("Mode Text")]
-    [SerializeField] private string moveModeStatusText = "?대룞 紐⑤뱶 ?쒖꽦?? 媛援щ? ?≪븘 ?꾩튂瑜?議곗젙?섏꽭??";
-    [SerializeField] private string rotateModeStatusText = "?뚯쟾 紐⑤뱶 ?쒖꽦?? 媛援щ? Y異?湲곗??쇰줈 ?뚯쟾?쒗궎?몄슂.";
-    [SerializeField] private string scaleModeStatusText = "?ш린 議곗젅 紐⑤뱶 ?쒖꽦?? +/- 踰꾪듉?쇰줈 ?ш린瑜?議곗젅?섏꽭??";
+    [SerializeField] private string moveModeStatusText = "이동 모드 활성화. 가구를 잡아 위치를 조정하세요.";
+    [SerializeField] private string rotateModeStatusText = "회전 모드 활성화. 가구를 Y축 기준으로 회전시키세요.";
+    [SerializeField] private string scaleModeStatusText = "크기 조절 모드 활성화. +/- 버튼으로 크기를 조절하세요.";
 
-    [Tooltip("踰꾪듉 ??踰??꾨? ???곸슜?섎뒗 洹좎씪 ?ㅼ???諛곗닔?낅땲?? ?묎쾶??1/??媛믪씠 ?곸슜?⑸땲??")]
+    [Tooltip("버튼 한 번 누를 때 적용되는 균일 스케일 배수입니다. 작게할땐 1/이 값이 적용됩니다.")]
     [SerializeField] private float scaleStepFactor = 1.1f;
 
-    [Tooltip("?ㅼ???+/- 踰꾪듉??湲멸쾶 ?꾨Ⅴ怨??덉쓣 ??諛섎났 ?곸슜?섎뒗 媛꾧꺽(珥??낅땲??")]
+    [Tooltip("스케일 +/- 버튼을 길게 누르고 있을 때 반복 적용되는 간격(초)입니다.")]
     [SerializeField] private float scaleRepeatIntervalSeconds = 0.3f;
 
-    [Tooltip("x/y/z 異뺣퀎 誘몄꽭 議곗젙 踰꾪듉 ??踰덉뿉 ?곸슜?섎뒗 諛곗닔?낅땲??誘몄꽭?섎?濡?洹좎씪 諛곗닔蹂대떎 ?묎쾶 沅뚯옣).")]
+    [Tooltip("x/y/z 축별 미세 조정 버튼 한 번에 적용되는 배수입니다 (미세하므로 균일 배수보다 작게 권장).")]
     [SerializeField] private float axisScaleStepFactor = 1.05f;
 
     [Header("Toggle Button Visuals")]
-    [Tooltip("Move/Rotate ?좉? 踰꾪듉??On?????곸슜??癒명떚由ъ뼹?낅땲?? 鍮꾩썙?먮㈃ ?쒓컖 蹂寃??놁씠 ?숈옉?⑸땲??")]
+    [Tooltip("Move/Rotate 토글 버튼이 On일 때 적용할 머티리얼입니다. 비워두면 시각 변경 없이 동작합니다.")]
     public Material toggleOnMaterial;
-    [Tooltip("媛援?怨좎젙 踰꾪듉??On?????곸슜??蹂꾨룄 癒명떚由ъ뼹?낅땲??")]
+    [Tooltip("가구 고정 버튼이 On일 때 적용할 별도 머티리얼입니다.")]
     public Material fixedToggleOnMaterial;
-    [Tooltip("踰쎄구??踰?遺李?踰꾪듉??On?????곸슜??蹂꾨룄 癒명떚由ъ뼹?낅땲??")]
+    [Tooltip("벽걸이(바닥 띄움) 버튼이 On일 때 적용할 별도 머티리얼입니다.")]
     [FormerlySerializedAs("wallMountedToggleOnMaterial")]
     public Material floorContactlessToggleOnMaterial;
 
@@ -152,6 +157,8 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         SubscribeMoveModeControllerEvents();
         RefreshServerFurnitureListView();
         UpdateManipulationModeVisuals();
+
+        if (panel_SystemMessage != null) panel_SystemMessage.SetActive(false);
     }
 
     private void OnDisable()
@@ -161,6 +168,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         UnregisterButtons();
         RestoreToggleButtonMaterials();
         ClearSelectedServerFurniturePreview();
+        StopLoadingAnimation();
     }
 
     private void Update()
@@ -324,7 +332,11 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
 
     private void OnServerResultListChanged(FurnitureServerPlacementPipeline pipeline)
     {
-        if (HasServerFurnitureResponse()) ClearServerFurnitureRequestLock("server response received");
+        if (HasServerFurnitureResponse())
+        {
+            ClearServerFurnitureRequestLock("server response received");
+            StopLoadingAnimation(); // 데이터 수신 완료 시 로딩창 끄기
+        }
         RefreshServerFurnitureListView();
     }
 
@@ -337,7 +349,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     private void OnServerPendingObjectLoadedForPlacement(int index, FurnitureServerResultObject selectedObject, GameObject placedObject)
     {
         RefreshServerFurnitureListView();
-        SetServerFurnitureStatus($"{BuildFurnitureName(selectedObject, index)}???꾩튂瑜?議곗젙?섏꽭??");
+        SetServerFurnitureStatus($"{BuildFurnitureName(selectedObject, index)}의 위치를 조정하세요.");
     }
 
     private void OnServerPendingObjectConfirmed(int index, FurnitureServerResultObject selectedObject)
@@ -365,7 +377,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
 
         if (serverPlacementPipeline == null || serverPlacementPipeline.PendingObjectCount == 0)
         {
-            SetSelectedFurnitureText("遺덈윭??媛援ш? ?놁뒿?덈떎.");
+            SetSelectedFurnitureText("불러온 가구가 없습니다.");
             SetFurnitureListText(string.Empty);
             SetServerFurnitureStatus(IsServerFurnitureRequestLocked()
                 ? BuildServerFurnitureRequestLockStatus()
@@ -386,7 +398,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         }
         else
         {
-            SetSelectedFurnitureText($"媛援?由ъ뒪??以鍮꾨맖. 諛곗튂??{placed}/{count}");
+            SetSelectedFurnitureText($"가구 리스트 준비됨. 배치됨: {placed}/{count}");
         }
 
         string listText = string.Empty;
@@ -394,8 +406,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         {
             FurnitureServerResultObject obj = serverPlacementPipeline.GetPendingObject(i);
             string marker = i == selectedIndex ? "> " : "  ";
-            // ?먮룞 ?뺤젙?대?濡?諛곗튂 ?щ?留??쒖떆 (?ㅼ쨷 諛곗튂瑜??꾪빐 [諛곗튂???쇰줈 ?좎?)
-            string state = serverPlacementPipeline.IsPendingObjectLoadedForPlacement(i) ? " [諛곗튂??" : "";
+            string state = serverPlacementPipeline.IsPendingObjectLoadedForPlacement(i) ? " [배치중]" : "";
             listText += $"{marker}{i + 1}. {BuildFurnitureName(obj, i)}{state}\n";
         }
 
@@ -410,7 +421,6 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         bool hasServerFurniture = count > 0;
         bool hasSelectedFurniture = hasServerFurniture && serverPlacementPipeline.SelectedPendingObject != null;
 
-        // ?뮕 [?섏젙] ?ㅼ쨷 諛곗튂瑜??꾪빐 ?대? 諛곗튂?섏뿀?붿? 泥댄겕?섎뒗 濡쒖쭅???쒓굅?덉뒿?덈떎.
         bool allPlaced = serverPlacementPipeline != null && serverPlacementPipeline.AreAllPendingObjectsPlaced();
         bool hasPlacedSelection = moveModeController != null && moveModeController.SelectedFurniture != null;
         PlacedFurniture selectedFurniture = moveModeController != null ? moveModeController.SelectedFurniture : null;
@@ -425,7 +435,6 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         SetButtonEnabled(userSelectNextServerFurnitureButton, hasServerFurniture && !isRunning);
         SetButtonEnabled(userSelectPreviousServerFurnitureButton, hasServerFurniture && !isRunning);
 
-        // ?뮕 [?섏젙] ?좏깮??媛援ш? ?덈떎硫??몄젣?좎? ?ㅼ떆 諛곗튂 踰꾪듉???꾨? ???덉뒿?덈떎.
         SetButtonEnabled(userPlaceSelectedServerFurnitureButton, hasSelectedFurniture && !isRunning);
 
         SetButtonVisible(userToggleMoveModeButton, hasPlacedSelection && !isRunning);
@@ -446,7 +455,6 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         bool scaleModeOn = moveModeController != null
             && moveModeController.CurrentMode == FurnitureManipulationMode.Scale;
 
-        // Scale 紐⑤뱶媛 爰쇱?硫??붾낫湲??곹깭瑜??ル뒗?? ?ㅼ떆 耳쒕룄 異뺣퀎 踰꾪듉? ?묓엺 ?곹깭濡??쒖옉.
         if (!scaleModeOn)
         {
             scaleMoreExpanded = false;
@@ -460,7 +468,6 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         SetButtonVisible(userScaleMoreButton, baseScaleVisible);
         if (userScaleAxisButtonsRoot != null) userScaleAxisButtonsRoot.SetActive(axisScaleVisible);
 
-        // ?뮕 [?섏젙] 紐⑤뱺 媛援?諛곗튂 媛뺤젣 議곌굔????덉뒿?덈떎. 媛援?由ъ뒪?몃쭔 ?덉쑝硫??꾨즺 媛?ν빀?덈떎.
         bool canComplete = hasServerFurniture && !isRunning;
         if (requireAllServerFurniturePlacedBeforeComplete)
         {
@@ -567,9 +574,9 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         }
 
         if (serverPlacementPipeline != null && serverPlacementPipeline.AreAllPendingObjectsPlaced())
-            return "紐⑤뱺 媛援ш? 諛곗튂?섏뿀?듬땲?? ?꾨즺 踰꾪듉???뚮윭 ?쒕??덉씠?섏쓣 ?쒖옉?섏꽭??";
+            return "모든 가구가 배치되었습니다. 완료 버튼을 눌러 시뮬레이션을 시작하세요.";
 
-        return $"媛援щ? ?좏깮?섍퀬 諛곗튂 踰꾪듉???꾨Ⅴ?몄슂. ({placed}/{count})";
+        return $"가구를 선택하고 배치 버튼을 누르세요. ({placed}/{count})";
     }
 
     // --- Server Request & Preview Logic ---
@@ -578,8 +585,8 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     private bool HasServerFurnitureResponse() => serverPlacementPipeline != null && serverPlacementPipeline.LastResult != null;
     private bool HasServerFurnitureRequestTimedOut() => serverFurnitureRequestLocked && serverFurnitureRequestStartedRealtime >= 0 && (Time.realtimeSinceStartup - serverFurnitureRequestStartedRealtime >= serverFurnitureRequestTimeoutSeconds);
     private void BeginServerFurnitureRequestLock() { serverFurnitureRequestLocked = true; serverFurnitureRequestStartedRealtime = Time.realtimeSinceStartup; }
-    private void ClearServerFurnitureRequestLock(string reason) { serverFurnitureRequestLocked = false; serverFurnitureRequestStartedRealtime = -1f; }
-    private string BuildServerFurnitureRequestLockStatus() => $"?쒕쾭?먯꽌 媛援щ? ?앹꽦 以묒엯?덈떎. ({Mathf.CeilToInt(serverFurnitureRequestTimeoutSeconds - (Time.realtimeSinceStartup - serverFurnitureRequestStartedRealtime))}珥??⑥쓬)";
+    private void ClearServerFurnitureRequestLock(string reason) { serverFurnitureRequestLocked = false; serverFurnitureRequestStartedRealtime = -1f; StopLoadingAnimation(); }
+    private string BuildServerFurnitureRequestLockStatus() => $"서버에서 가구를 생성 중입니다. ({Mathf.CeilToInt(serverFurnitureRequestTimeoutSeconds - (Time.realtimeSinceStartup - serverFurnitureRequestStartedRealtime))}초 남음)";
 
     private void UpdateSelectedServerFurniturePreview(FurnitureServerResultObject selectedObject)
     {
@@ -622,14 +629,53 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     private void SetSelectedFurnitureText(string v) { if (userSelectedServerFurnitureText != null) userSelectedServerFurnitureText.text = v; }
     private void SetFurnitureListText(string v) { if (userServerFurnitureListText != null) userServerFurnitureListText.text = v; }
     private void SetServerFurnitureStatus(string v) { if (userServerFurnitureStatusText != null) userServerFurnitureStatusText.text = v; }
-    private static string BuildFurnitureName(FurnitureServerResultObject obj, int index) => (obj == null || string.IsNullOrWhiteSpace(obj.label)) ? $"媛援?{index + 1}" : obj.label;
+    private static string BuildFurnitureName(FurnitureServerResultObject obj, int index) => (obj == null || string.IsNullOrWhiteSpace(obj.label)) ? $"가구 {index + 1}" : obj.label;
+
+    // --- Loading UI Animation ---
+
+    private void StartLoadingAnimation(string baseText)
+    {
+        StopLoadingAnimation();
+        if (panel_SystemMessage != null) panel_SystemMessage.SetActive(true);
+        loadingCoroutine = StartCoroutine(AnimateLoadingText(baseText));
+    }
+
+    private void StopLoadingAnimation()
+    {
+        if (loadingCoroutine != null)
+        {
+            StopCoroutine(loadingCoroutine);
+            loadingCoroutine = null;
+        }
+        if (panel_SystemMessage != null) panel_SystemMessage.SetActive(false);
+    }
+
+    private IEnumerator AnimateLoadingText(string baseText)
+    {
+        int dotCount = 1;
+        while (true)
+        {
+            if (text_SystemMessage != null)
+            {
+                text_SystemMessage.text = baseText + new string('.', dotCount);
+            }
+
+            dotCount++;
+            if (dotCount > 3) dotCount = 1;
+
+            yield return new WaitForSeconds(1.0f);
+        }
+    }
 
     // --- Click Actions ---
 
     public void OnClickPlaceFurnitureFromServer()
     {
         if (serverPlacementPipeline == null || IsServerFurnitureRequestLocked()) return;
-        uiManager?.ShowNotification("?쒕쾭?먯꽌 媛援??곗씠?곕? 媛?몄삤??以묒엯?덈떎...");
+
+        // 기존 Notification 대신 통합 로딩 플레이트를 띄웁니다.
+        StartLoadingAnimation("인식된 가구 받는중");
+
         serverPlacementPipeline.StartPlacementFromCurrentScanSession();
         if (serverPlacementPipeline.IsRunning) BeginServerFurnitureRequestLock();
         RefreshServerFurnitureListView();
@@ -672,16 +718,14 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         string status;
         if (selected.IsFixed)
         {
-            // ?꾩껜 ?대룞 紐⑤뱶瑜??꾨㈃ ?대뼡 媛援щ룄 ?곗튂/?좏깮?????놁뼱 紐⑤뱺 踰꾪듉??臾대젰?붾맂??
-            // ???留덉?留됱쑝濡??꾨Ⅸ 鍮꾧퀬??媛援щ줈 ?좏깮????꺼 ?⑤꼸 踰꾪듉??怨꾩냽 ?숈옉?섍쾶 ?쒕떎.
             bool movedSelection = moveModeController != null && moveModeController.SelectLastPressedNonFixedFurniture();
             status = movedSelection
-                ? $"{selected.DisplayName}: 怨좎젙?? ?좏깮??留덉?留됱쑝濡??꾨Ⅸ 媛援щ줈 ?대룞?덉뒿?덈떎."
-                : $"{selected.DisplayName}: 怨좎젙?? ?대룞/?뚯쟾/?ш린 議곗젙???좉꼈?듬땲??";
+                ? $"{selected.DisplayName}: 고정됨. 선택이 마지막으로 누른 가구로 이동했습니다."
+                : $"{selected.DisplayName}: 고정됨. 이동/회전/크기 조정이 잠겼습니다.";
         }
         else
         {
-            status = $"{selected.DisplayName}: 怨좎젙 ?댁젣??";
+            status = $"{selected.DisplayName}: 고정 해제됨.";
         }
 
         UpdateManipulationModeVisuals();
@@ -715,13 +759,13 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         PlacedFurniture selected = moveModeController != null ? moveModeController.SelectedFurniture : null;
         if (selected == null)
         {
-            SetServerFurnitureStatus("No selected furniture to snap.");
+            SetServerFurnitureStatus("스냅할 가구가 선택되지 않았습니다.");
             return;
         }
 
         if (selected.IsFixed)
         {
-            SetServerFurnitureStatus($"{selected.DisplayName}: fixed furniture cannot be snapped.");
+            SetServerFurnitureStatus($"{selected.DisplayName}: 고정된 가구는 스냅할 수 없습니다.");
             return;
         }
 
@@ -757,11 +801,11 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         {
             roomGeometryProvider.ResolveWallPenetrationAfterSnap(selected);
             selected.SaveCurrentPoseAsValid();
-            status = $"{selected.DisplayName}: snapped to nearest {(snappedToWall ? "wall" : "furniture")}.";
+            status = $"{selected.DisplayName}: 가장 가까운 {(snappedToWall ? "벽" : "가구")}에 스냅되었습니다.";
         }
         else
         {
-            status = $"{selected.DisplayName}: no wall or furniture close enough to snap.";
+            status = $"{selected.DisplayName}: 주변에 스냅할 벽이나 가구가 없습니다.";
         }
 
         UpdateManipulationModeVisuals();
@@ -774,7 +818,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         PlacedFurniture selected = moveModeController != null ? moveModeController.SelectedFurniture : null;
         if (selected == null)
         {
-            SetServerFurnitureStatus("??젣??媛援ш? ?좏깮?섏? ?딆븯?듬땲??");
+            SetServerFurnitureStatus("삭제할 가구가 선택되지 않았습니다.");
             return;
         }
 
@@ -786,13 +830,13 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
 
         if (!deleted)
         {
-            SetServerFurnitureStatus($"{deletedName}: 媛援???젣???ㅽ뙣?덉뒿?덈떎.");
+            SetServerFurnitureStatus($"{deletedName}: 가구 삭제에 실패했습니다.");
             return;
         }
 
         UpdateManipulationModeVisuals();
         RefreshServerFurnitureListView();
-        SetServerFurnitureStatus($"{deletedName}: ??젣?섏뿀?듬땲??");
+        SetServerFurnitureStatus($"{deletedName}: 삭제되었습니다.");
     }
 
     public void OnClickScaleUp() => ApplyScaleStepToSelected(Mathf.Max(1.0001f, scaleStepFactor));
@@ -803,22 +847,18 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         PlacedFurniture selected = moveModeController != null ? moveModeController.SelectedFurniture : null;
         if (selected == null)
         {
-            SetServerFurnitureStatus("?ш린瑜?議곗젅??媛援ш? ?좏깮?섏? ?딆븯?듬땲??");
+            SetServerFurnitureStatus("크기를 조절할 가구가 선택되지 않았습니다.");
             return;
         }
 
         FurnitureScaleStepResult result = selected.ApplyUniformScaleStep(factor);
-        if (result == FurnitureScaleStepResult.BlockedByRoomHeight)
-        {
-            uiManager?.ShowNotification("해당 가구는 그 위치에서 더 커질 수 없습니다");
-        }
-        else if (result == FurnitureScaleStepResult.BlockedByOverlap)
+        if (result == FurnitureScaleStepResult.BlockedByRoomHeight || result == FurnitureScaleStepResult.BlockedByOverlap)
         {
             uiManager?.ShowNotification("해당 가구는 그 위치에서 더 커질 수 없습니다");
         }
         else if (result == FurnitureScaleStepResult.BlockedByFixed)
         {
-            uiManager?.ShowNotification("怨좎젙??媛援щ뒗 ?ш린瑜?議곗젙?????놁뒿?덈떎.");
+            uiManager?.ShowNotification("고정된 가구는 크기를 조정할 수 없습니다.");
         }
         RefreshServerFurnitureListView();
     }
@@ -845,27 +885,22 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         PlacedFurniture selected = moveModeController != null ? moveModeController.SelectedFurniture : null;
         if (selected == null)
         {
-            SetServerFurnitureStatus("?ш린瑜?議곗젅??媛援ш? ?좏깮?섏? ?딆븯?듬땲??");
+            SetServerFurnitureStatus("크기를 조절할 가구가 선택되지 않았습니다.");
             return;
         }
 
         FurnitureScaleStepResult result = selected.ApplyAxisScaleStep(axis, factor);
-        if (result == FurnitureScaleStepResult.BlockedByRoomHeight)
-        {
-            uiManager?.ShowNotification("해당 가구는 그 위치에서 더 커질 수 없습니다");
-        }
-        else if (result == FurnitureScaleStepResult.BlockedByOverlap)
+        if (result == FurnitureScaleStepResult.BlockedByRoomHeight || result == FurnitureScaleStepResult.BlockedByOverlap)
         {
             uiManager?.ShowNotification("해당 가구는 그 위치에서 더 커질 수 없습니다");
         }
         else if (result == FurnitureScaleStepResult.BlockedByFixed)
         {
-            uiManager?.ShowNotification("怨좎젙??媛援щ뒗 ?ш린瑜?議곗젙?????놁뒿?덈떎.");
+            uiManager?.ShowNotification("고정된 가구는 크기를 조정할 수 없습니다.");
         }
         RefreshServerFurnitureListView();
     }
 
-    // ?ㅼ???+/- 踰꾪듉??袁??꾨Ⅴ怨??덉쑝硫??꾨Ⅸ ?쒓컙 1?? ?댄썑 scaleRepeatIntervalSeconds留덈떎 諛섎났 ?곸슜?쒕떎.
     private void UpdateScaleButtonHoldRepeat()
     {
         HandleHoldRepeat(userScaleUpButton, ref scaleUpHeldActive, ref scaleUpNextRepeatTime, OnClickScaleUp);
@@ -901,15 +936,12 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
 
     public void OnClickCompleteFurniturePlacement()
     {
-        // ?뮕 [?섏젙] 媛뺤젣 諛곗튂 議곌굔 濡쒖쭅???쒓굅?섍굅???ㅼ젙媛믪뿉 ?곕Ⅴ?꾨줉 蹂寃쏀뻽?듬땲??
         if (requireAllServerFurniturePlacedBeforeComplete && serverPlacementPipeline != null && !serverPlacementPipeline.AreAllPendingObjectsPlaced())
         {
-            uiManager?.ShowNotification("紐⑤뱺 ?쒕쾭 媛援щ? 諛곗튂?댁빞 ?⑸땲??");
+            uiManager?.ShowNotification("모든 서버 가구를 배치해야 합니다.");
             return;
         }
 
-        // 諛곗튂 議곌굔 寃利? 留ㅻ쾲 ?꾩껜 ?ы솗?명븯???꾨컲 媛援щ쭔 誘몄땐議?material濡??꾪솚 ?쒖떆?쒕떎.
-        // ?꾨컲 媛援ш? ?섎굹?쇰룄 ?덉쑝硫??쒕??덉씠??吏꾪뻾??李⑤떒?쒕떎.
         EnsureFurniturePlacementReferences();
         if (furniturePlacementManager != null)
         {
@@ -923,7 +955,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
 
             if (invalidFurnitures.Count > 0)
             {
-                uiManager?.ShowNotification($"諛곗튂 議곌굔??留뚯”?섏? ?딅뒗 媛援ш? {invalidFurnitures.Count}媛??덉뒿?덈떎. ?쒖떆??媛援щ? ?ㅼ떆 諛곗튂?????꾨즺 踰꾪듉???꾨Ⅴ?몄슂.");
+                uiManager?.ShowNotification($"배치 조건에 맞지 않는 가구가 {invalidFurnitures.Count}개 있습니다. 표시된 가구를 다시 배치한 뒤 완료 버튼을 누르세요.");
                 RefreshServerFurnitureListView();
                 return;
             }
@@ -947,7 +979,6 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         if (workflow?.confirmRoomManager != null) roomGeometryProvider.BindFromConfirmRoomManager(workflow.confirmRoomManager);
     }
 
-    // ?뮕 [?섏젙] T ?뺤떇 ?ㅻ쪟 ?닿껐???꾪빐 void? 紐낇솗??UnityEngine.Object ?ъ슜
     private static void SetButtonEnabled(PressableButton b, bool e) { if (b != null) b.enabled = e; }
     private static void SetButtonVisible(PressableButton b, bool v) { if (b != null) { b.gameObject.SetActive(v); b.enabled = v; } }
     private static T FindFirst<T>() where T : UnityEngine.Object { T[] objs = FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None); return objs != null && objs.Length > 0 ? objs[0] : null; }

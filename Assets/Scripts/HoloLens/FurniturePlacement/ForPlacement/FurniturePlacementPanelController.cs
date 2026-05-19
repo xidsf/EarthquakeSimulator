@@ -576,6 +576,13 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         if (serverPlacementPipeline != null && serverPlacementPipeline.AreAllPendingObjectsPlaced())
             return "모든 가구가 배치되었습니다. 완료 버튼을 눌러 시뮬레이션을 시작하세요.";
 
+        if (serverPlacementPipeline != null &&
+            !string.IsNullOrWhiteSpace(serverPlacementPipeline.LastStatus) &&
+            serverPlacementPipeline.LastStatus.StartsWith("manual_object_place_failed"))
+        {
+            return serverPlacementPipeline.LastStatus;
+        }
+
         return $"가구를 선택하고 배치 버튼을 누르세요. ({placed}/{count})";
     }
 
@@ -623,11 +630,23 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         if (meshLoader == null) yield break;
 
         GameObject preview = null;
-        yield return meshLoader.LoadFurnitureObject(selectedObject, (obj, err) => preview = obj);
+        string loadError = string.Empty;
+        yield return meshLoader.LoadFurnitureObject(selectedObject, (obj, err) =>
+        {
+            preview = obj;
+            loadError = err;
+        });
 
-        if (preview == null || requestId != selectedServerFurniturePreviewRequestId || userSelectedServerFurniturePreviewAnchor == null)
+        if (requestId != selectedServerFurniturePreviewRequestId || userSelectedServerFurniturePreviewAnchor == null)
         {
             if (preview != null) Destroy(preview);
+            yield break;
+        }
+
+        if (preview == null)
+        {
+            int selectedIndex = serverPlacementPipeline != null ? Mathf.Max(0, serverPlacementPipeline.SelectedPendingObjectIndex) : 0;
+            SetServerFurnitureStatus($"{BuildFurnitureName(selectedObject, selectedIndex)} mesh load failed. {loadError}");
             yield break;
         }
 

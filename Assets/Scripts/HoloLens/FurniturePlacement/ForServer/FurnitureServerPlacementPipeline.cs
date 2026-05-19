@@ -191,7 +191,9 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
             error = placeError;
         });
 
-        LastStatus = placed ? "manual_object_placed" : "manual_object_place_failed";
+        LastStatus = placed
+            ? "manual_object_placed"
+            : string.IsNullOrWhiteSpace(error) ? "manual_object_place_failed" : $"manual_object_place_failed: {error}";
         if (placed)
         {
             EnsurePendingTrackingArrays();
@@ -211,6 +213,11 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
             PendingObjectLoadedForPlacement?.Invoke(index, obj, instance);
             ResultListChanged?.Invoke(this);
             Debug.Log($"[FurnitureServerPlacementPipeline] Server object placed. index:{index}, id:{obj.id}, label:{obj.label}", instance);
+        }
+        else
+        {
+            ResultListChanged?.Invoke(this);
+            Debug.LogWarning($"[FurnitureServerPlacementPipeline] Server object placement failed. index:{index}, id:{obj?.id}, label:{obj?.label}, error:{error}");
         }
     }
 

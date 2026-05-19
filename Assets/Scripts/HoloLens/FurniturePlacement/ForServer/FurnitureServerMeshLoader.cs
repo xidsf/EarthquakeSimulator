@@ -39,8 +39,8 @@ public class FurnitureServerMeshLoader : MonoBehaviour
     public bool loadAssetBundleUrls = false;
 
     [Header("Fallback")]
-    [Tooltip("지원하지 않는 mesh_url이거나 로딩 실패 시 placeholder cube를 생성합니다. 서버 GLB 연동 실패 확인용입니다.")]
-    public bool createPlaceholderWhenLoadFails = true;
+    [Tooltip("Debug only. When enabled, failed mesh loads create a placeholder cube. Keep disabled in production because missing mesh is a server/data error.")]
+    public bool createPlaceholderWhenLoadFails = false;
 
     public Vector3 placeholderSize = Vector3.one * 0.5f;
     public Material placeholderMaterial;
@@ -64,7 +64,7 @@ public class FurnitureServerMeshLoader : MonoBehaviour
         string meshUrl = ResolveMeshUrl(serverObject.mesh_url);
         if (string.IsNullOrWhiteSpace(meshUrl))
         {
-            yield return CreateFallback(serverObject, "mesh_url is empty", onLoaded);
+            CompleteLoadFailure("mesh_url is empty", onLoaded);
             yield break;
         }
 
@@ -75,7 +75,7 @@ public class FurnitureServerMeshLoader : MonoBehaviour
                 serverObject,
                 "VisualGLB",
                 disableRenderers: false,
-                createFallbackOnFail: true,
+                createFallbackOnFail: createPlaceholderWhenLoadFails,
                 onLoaded: onLoaded);
             yield break;
         }
@@ -86,10 +86,10 @@ public class FurnitureServerMeshLoader : MonoBehaviour
             yield break;
         }
 
-        yield return CreateFallback(
-            serverObject,
+        CompleteLoadFailure(
             $"Unsupported mesh_url format. Expected server GLB(.glb). url:{meshUrl}",
             onLoaded);
+        yield break;
     }
 
     public IEnumerator LoadColliderObject(FurnitureServerResultObject serverObject, Action<GameObject, string> onLoaded)
@@ -305,6 +305,10 @@ public class FurnitureServerMeshLoader : MonoBehaviour
             yield break;
         }
 
+#if !UNITY_EDITOR
+        onLoaded?.Invoke(null, reason);
+        yield break;
+#else
         Vector3 size = GetFallbackSize(serverObject);
         GameObject placeholder = new GameObject(BuildObjectName(serverObject, "Placeholder"));
         GameObject visual = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -330,6 +334,17 @@ public class FurnitureServerMeshLoader : MonoBehaviour
 
         onLoaded?.Invoke(placeholder, reason);
         yield break;
+#endif
+    }
+
+    private static void CompleteLoadFailure(string reason, Action<GameObject, string> onLoaded)
+    {
+        if (!string.IsNullOrWhiteSpace(reason))
+        {
+            Debug.LogWarning($"[FurnitureServerMeshLoader] {reason}");
+        }
+
+        onLoaded?.Invoke(null, reason);
     }
 
     private static IEnumerator WaitForTask(Task task)

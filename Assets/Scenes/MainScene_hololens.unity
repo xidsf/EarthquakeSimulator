@@ -11214,7 +11214,7 @@ MonoBehaviour:
   resolveRelativeUrls: 1
   retainGltfImportsForObjectLifetime: 1
   loadAssetBundleUrls: 1
-  createPlaceholderWhenLoadFails: 1
+  createPlaceholderWhenLoadFails: 0
   placeholderSize: {x: 0.5, y: 0.5, z: 0.5}
   placeholderMaterial: {fileID: 0}
   requestTimeoutSeconds: 60

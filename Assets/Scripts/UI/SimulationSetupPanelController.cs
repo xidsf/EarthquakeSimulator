@@ -15,9 +15,13 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
     public bool autoFindSimulationProcessManager = true;
     public bool hideLegacyIntensityControls = true;
 
-    // [수정됨] 내부 System Message UI 변수들 삭제 (UIManager에서 중앙 통제)
+    [Header("System Message UI")]
+    public GameObject panel_SystemMessage;
+    public TMP_Text text_SystemMessage;
 
-    private Coroutine delayCoroutine; // 결과 대기용 코루틴
+    private Coroutine simulationCoroutine;
+    private readonly string simulationBaseText = "Simulation running";
+    private string simulationStatusText = "Simulation running";
 
     private UnityAction startSimulationAction;
     private UnityAction backToFurnitureAction;
@@ -38,19 +42,14 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
 
         HideLegacyIntensityControls();
         SetButtonsActive(true);
+        if (panel_SystemMessage != null) panel_SystemMessage.SetActive(false);
     }
 
     private void OnDisable()
     {
         UnsubscribeSimulationProcessManager();
         UnregisterButtons();
-
-        if (delayCoroutine != null)
-        {
-            StopCoroutine(delayCoroutine);
-            delayCoroutine = null;
-        }
-        uiManager?.HideLoading(); // 패널 꺼질 때 안전하게 로딩창 끄기
+        StopSimulationAnimation();
     }
 
     private void CreateActions()
@@ -107,30 +106,57 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
 
         if (simulationProcessManager == null || !simulationProcessManager.TryStartSimulation())
         {
-            uiManager?.ShowWarningMessage("Simulation start failed."); // Warning 패널로 대체
+            if (panel_SystemMessage != null) panel_SystemMessage.SetActive(true);
+            if (text_SystemMessage != null) text_SystemMessage.text = "Simulation start failed.";
         }
     }
 
     public void StartSimulationUI()
     {
-        // [수정됨] UIManager를 통해 로딩창 시작
-        uiManager?.ShowLoading("시뮬레이션 실행중");
+        StopSimulationAnimation();
+        if (panel_SystemMessage != null) panel_SystemMessage.SetActive(true);
+        simulationCoroutine = StartCoroutine(AnimateSimulationText());
     }
 
     public void CompleteSimulationUI()
     {
-        if (delayCoroutine != null) StopCoroutine(delayCoroutine);
-        delayCoroutine = StartCoroutine(HandleSimulationCompleteSequence());
+        StopSimulationAnimation();
+        StartCoroutine(HandleSimulationCompleteSequence());
     }
 
     private IEnumerator HandleSimulationCompleteSequence()
     {
-        // [수정됨] 애니메이션 루프 없이 텍스트만 업데이트 후 대기
-        uiManager?.UpdateLoadingText("결과 창 로딩중");
+        if (text_SystemMessage != null) text_SystemMessage.text = "Simulation complete";
+        yield return new WaitForSeconds(2.0f);
 
-        yield return new WaitForSeconds(2.0f); // 2초 대기
+        if (panel_SystemMessage != null) panel_SystemMessage.SetActive(false);
+    }
 
-        uiManager?.HideLoading(); // 로딩창 종료
+    private void StopSimulationAnimation()
+    {
+        if (simulationCoroutine != null)
+        {
+            StopCoroutine(simulationCoroutine);
+            simulationCoroutine = null;
+        }
+    }
+
+    private IEnumerator AnimateSimulationText()
+    {
+        int dotCount = 1;
+        while (true)
+        {
+            if (text_SystemMessage != null)
+            {
+                string baseText = string.IsNullOrWhiteSpace(simulationStatusText)
+                    ? simulationBaseText
+                    : simulationStatusText;
+                text_SystemMessage.text = baseText + new string('.', dotCount);
+            }
+
+            dotCount = dotCount % 3 + 1;
+            yield return new WaitForSeconds(1.0f);
+        }
     }
 
     public void OnClickBackToFurniture()
@@ -165,6 +191,7 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
         }
 
         simulationProcessManager.SimulationStarted += HandleSimulationStarted;
+        simulationProcessManager.SimulationStatusChanged += HandleSimulationStatusChanged;
         simulationProcessManager.SimulationCompleted += HandleSimulationCompleted;
         simulationProcessManager.SimulationFailed += HandleSimulationFailed;
     }
@@ -177,14 +204,28 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
         }
 
         simulationProcessManager.SimulationStarted -= HandleSimulationStarted;
+        simulationProcessManager.SimulationStatusChanged -= HandleSimulationStatusChanged;
         simulationProcessManager.SimulationCompleted -= HandleSimulationCompleted;
         simulationProcessManager.SimulationFailed -= HandleSimulationFailed;
     }
 
     private void HandleSimulationStarted(string message)
     {
+        simulationStatusText = string.IsNullOrWhiteSpace(message) ? simulationBaseText : message;
         SetButtonsActive(false);
         StartSimulationUI();
+    }
+
+    private void HandleSimulationStatusChanged(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        simulationStatusText = message;
+        if (panel_SystemMessage != null) panel_SystemMessage.SetActive(true);
+        if (text_SystemMessage != null) text_SystemMessage.text = simulationStatusText;
     }
 
     private void HandleSimulationCompleted(string message)
@@ -194,8 +235,9 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
 
     private void HandleSimulationFailed(string message)
     {
+        StopSimulationAnimation();
         SetButtonsActive(true);
-        uiManager?.HideLoading(); // 로딩창 끄기
-        uiManager?.ShowWarningMessage(string.IsNullOrWhiteSpace(message) ? "Simulation failed." : message); // Warning 패널로 대체
+        if (panel_SystemMessage != null) panel_SystemMessage.SetActive(true);
+        if (text_SystemMessage != null) text_SystemMessage.text = string.IsNullOrWhiteSpace(message) ? "Simulation failed." : message;
     }
 }

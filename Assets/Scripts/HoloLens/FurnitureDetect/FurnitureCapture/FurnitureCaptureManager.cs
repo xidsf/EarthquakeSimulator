@@ -117,10 +117,10 @@ public class FurnitureCaptureManager : MonoBehaviour
         Transform root = confirmRoomManager.confirmedRoomRoot;
 
         if (furnitureCapture != null)
-            furnitureCapture.SetRoomObjects(root, floor.transform, ceiling.transform, wallTransforms);
+            furnitureCapture.SetRoomObjectsFromConfirmRoomManager(confirmRoomManager);
 
         if (photoCaptureDebugger != null)
-            photoCaptureDebugger.SetRoomObjects(root, floor.transform, ceiling.transform, wallTransforms);
+            photoCaptureDebugger.SetRoomObjectsFromConfirmRoomManager(confirmRoomManager);
 
         if (roomSnapshotProvider != null)
         {

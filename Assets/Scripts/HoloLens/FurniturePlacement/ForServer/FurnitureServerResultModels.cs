@@ -307,6 +307,8 @@ public class FurnitureServerPlacementItem
 public class PlacedSceneRequest
 {
     public string scan_session_id;
+    public float[] entrance_position;
+    public float entrance_radius = 1.5f;
     public PlacedSceneObject[] objects;
 }
 

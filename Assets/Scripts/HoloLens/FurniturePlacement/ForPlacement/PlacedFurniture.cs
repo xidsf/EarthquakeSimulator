@@ -325,33 +325,30 @@ public class PlacedFurniture : MonoBehaviour
         Vector3 previousPosition = transform.position;
         Quaternion previousRotation = transform.rotation;
 
-        transform.localScale *= factor;
-        ClampScaleToLimits();
+        Vector3 targetScale = ClampScaleVectorToLimits(previousScale * factor);
+        bool growing = HasScaleGrowth(previousScale, targetScale);
+
+        if (growing)
+        {
+            bool applied = ownerManager == null
+                ? ApplyScaleWithoutManager(targetScale)
+                : ownerManager.TryApplyFurnitureScaleGrowth(this, targetScale, out _);
+
+            if (!applied)
+            {
+                transform.localScale = previousScale;
+                transform.SetPositionAndRotation(previousPosition, previousRotation);
+                Physics.SyncTransforms();
+                return FurnitureScaleStepResult.BlockedByOverlap;
+            }
+
+            return FurnitureScaleStepResult.Applied;
+        }
+
+        transform.localScale = targetScale;
         Physics.SyncTransforms();
-
-        bool growing = factor > 1f;
-
-        // ?ㅼ슦???ㅽ뀦?먯꽌 媛援ш? 泥쒖옣~諛붾떏 ?믪씠瑜??섏쑝硫??섎룎由ш퀬 ?쒓퀎?꾩쓣 ?뚮┛??
-        if (growing && ExceedsRoomHeight())
-        {
-            transform.localScale = previousScale;
-            Physics.SyncTransforms();
-            return FurnitureScaleStepResult.BlockedByRoomHeight;
-        }
-
-        // 踰?紐⑥꽌由??ㅻⅨ 媛援ъ? 寃뱀튂硫?HandleFurnitureScaleChanged ?대???
-        // ValidateAndCorrectFurniturePose媛 ?꾩튂瑜??대룞?쒖폒 ?섏슜???쒕룄?쒕떎.
-        bool valid = ownerManager == null || ownerManager.HandleFurnitureScaleChanged(this);
-
-        // ?ㅼ슦?붾뜲 ?대룞?대룄 怨듦컙?????섏삤硫??대쾲 ?ㅽ뀦留?痍⑥냼?쒕떎.
-        // (異뺤냼????긽 ?덉슜????媛援ш? 以꾩? 紐삵븯??援먯갑??留됰뒗??)
-        if (growing && !valid)
-        {
-            transform.localScale = previousScale;
-            transform.SetPositionAndRotation(previousPosition, previousRotation);
-            Physics.SyncTransforms();
-            return FurnitureScaleStepResult.BlockedByOverlap;
-        }
+        if (ownerManager != null) ownerManager.HandleFurnitureScaleChanged(this, false);
+        else SaveCurrentPoseAsValid();
 
         return FurnitureScaleStepResult.Applied;
     }
@@ -375,27 +372,29 @@ public class PlacedFurniture : MonoBehaviour
 
         Vector3 scale = previousScale;
         scale[axis] = Mathf.Clamp(scale[axis] * factor, minScalePerAxis, maxScalePerAxis);
+        bool growing = HasScaleGrowth(previousScale, scale);
+
+        if (growing)
+        {
+            bool applied = ownerManager == null
+                ? ApplyScaleWithoutManager(scale)
+                : ownerManager.TryApplyFurnitureScaleGrowth(this, scale, out _);
+
+            if (!applied)
+            {
+                transform.localScale = previousScale;
+                transform.SetPositionAndRotation(previousPosition, previousRotation);
+                Physics.SyncTransforms();
+                return FurnitureScaleStepResult.BlockedByOverlap;
+            }
+
+            return FurnitureScaleStepResult.Applied;
+        }
+
         transform.localScale = scale;
         Physics.SyncTransforms();
-
-        bool growing = factor > 1f;
-
-        if (growing && ExceedsRoomHeight())
-        {
-            transform.localScale = previousScale;
-            Physics.SyncTransforms();
-            return FurnitureScaleStepResult.BlockedByRoomHeight;
-        }
-
-        bool valid = ownerManager == null || ownerManager.HandleFurnitureScaleChanged(this);
-
-        if (growing && !valid)
-        {
-            transform.localScale = previousScale;
-            transform.SetPositionAndRotation(previousPosition, previousRotation);
-            Physics.SyncTransforms();
-            return FurnitureScaleStepResult.BlockedByOverlap;
-        }
+        if (ownerManager != null) ownerManager.HandleFurnitureScaleChanged(this, false);
+        else SaveCurrentPoseAsValid();
 
         return FurnitureScaleStepResult.Applied;
     }
@@ -478,10 +477,11 @@ public class PlacedFurniture : MonoBehaviour
     {
         if (!isMoving) return;
 
+        FurnitureManipulationMode endedMode = manipulationMode;
         isMoving = false;
         SetHeavyCollidersEnabled(true);
         MoveEnded?.Invoke(this);
-        ownerManager?.HandleFurnitureMoveEnded(this);
+        ownerManager?.HandleFurnitureMoveEnded(this, endedMode);
         ResetTransformMonitor();
     }
 
@@ -503,7 +503,11 @@ public class PlacedFurniture : MonoBehaviour
     // 鍮꾩쑉??源⑥? ?딅룄濡???異?湲곗??쇰줈 ?ㅻⅨ 異뺤쓣 ?뺥븯吏 ?딄퀬, ?꾩껜 踰≫꽣???숈씪 factor瑜?怨깊빐 ?쒗븳?쒕떎.
     private void ClampScaleToLimits()
     {
-        Vector3 scale = transform.localScale;
+        transform.localScale = ClampScaleVectorToLimits(transform.localScale);
+    }
+
+    private Vector3 ClampScaleVectorToLimits(Vector3 scale)
+    {
         float maxComponent = Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z));
         float minComponent = Mathf.Min(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z));
 
@@ -517,10 +521,23 @@ public class PlacedFurniture : MonoBehaviour
             factor = minScalePerAxis / minComponent;
         }
 
-        if (!Mathf.Approximately(factor, 1f))
-        {
-            transform.localScale = scale * factor;
-        }
+        return Mathf.Approximately(factor, 1f) ? scale : scale * factor;
+    }
+
+    private bool ApplyScaleWithoutManager(Vector3 targetScale)
+    {
+        transform.localScale = targetScale;
+        Physics.SyncTransforms();
+        SaveCurrentPoseAsValid();
+        return true;
+    }
+
+    private static bool HasScaleGrowth(Vector3 from, Vector3 to)
+    {
+        const float epsilon = 0.0001f;
+        return Mathf.Abs(to.x) > Mathf.Abs(from.x) + epsilon ||
+               Mathf.Abs(to.y) > Mathf.Abs(from.y) + epsilon ||
+               Mathf.Abs(to.z) > Mathf.Abs(from.z) + epsilon;
     }
 
     // ?쒓컖 ?뚮뜑?щ? 1???섏쭛?쒕떎. SelectionBoxVisual? Initialize ?댄썑 ?앹꽦?섎?濡?

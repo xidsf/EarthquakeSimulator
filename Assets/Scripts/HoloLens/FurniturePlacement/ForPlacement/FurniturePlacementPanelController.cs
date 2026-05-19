@@ -810,11 +810,11 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         FurnitureScaleStepResult result = selected.ApplyUniformScaleStep(factor);
         if (result == FurnitureScaleStepResult.BlockedByRoomHeight)
         {
-            uiManager?.ShowNotification("泥쒖옣怨?諛붾떏???우븘 媛援щ? ???ш쾶 留뚮뱾 ???놁뒿?덈떎.");
+            uiManager?.ShowNotification("해당 가구는 그 위치에서 더 커질 수 없습니다");
         }
         else if (result == FurnitureScaleStepResult.BlockedByOverlap)
         {
-            uiManager?.ShowNotification("怨듦컙??遺議깊빐 媛援щ? ???ш쾶 留뚮뱾 ???놁뒿?덈떎.");
+            uiManager?.ShowNotification("해당 가구는 그 위치에서 더 커질 수 없습니다");
         }
         else if (result == FurnitureScaleStepResult.BlockedByFixed)
         {
@@ -852,11 +852,11 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         FurnitureScaleStepResult result = selected.ApplyAxisScaleStep(axis, factor);
         if (result == FurnitureScaleStepResult.BlockedByRoomHeight)
         {
-            uiManager?.ShowNotification("泥쒖옣怨?諛붾떏???우븘 媛援щ? ???ш쾶 留뚮뱾 ???놁뒿?덈떎.");
+            uiManager?.ShowNotification("해당 가구는 그 위치에서 더 커질 수 없습니다");
         }
         else if (result == FurnitureScaleStepResult.BlockedByOverlap)
         {
-            uiManager?.ShowNotification("怨듦컙??遺議깊빐 媛援щ? ???ш쾶 留뚮뱾 ???놁뒿?덈떎.");
+            uiManager?.ShowNotification("해당 가구는 그 위치에서 더 커질 수 없습니다");
         }
         else if (result == FurnitureScaleStepResult.BlockedByFixed)
         {

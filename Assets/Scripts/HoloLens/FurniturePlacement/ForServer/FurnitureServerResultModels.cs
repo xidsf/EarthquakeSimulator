@@ -395,6 +395,10 @@ public class SimulationResultResponse : IFurnitureServerRawJsonResponse
     public SimulationTransformLog[] transform_logs;
     public SimulationVlmResult vlm;
 
+    [NonSerialized] public SimulationPlaybackResponse playback;
+    [NonSerialized] public string playback_error;
+    [NonSerialized] public string debug_folder_path;
+
     [NonSerialized] private string rawJson;
     public string RawJson
     {

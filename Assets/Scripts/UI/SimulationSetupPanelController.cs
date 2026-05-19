@@ -21,6 +21,7 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
 
     private Coroutine simulationCoroutine;
     private readonly string simulationBaseText = "Simulation running";
+    private string simulationStatusText = "Simulation running";
 
     private UnityAction startSimulationAction;
     private UnityAction backToFurnitureAction;
@@ -147,7 +148,10 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
         {
             if (text_SystemMessage != null)
             {
-                text_SystemMessage.text = simulationBaseText + new string('.', dotCount);
+                string baseText = string.IsNullOrWhiteSpace(simulationStatusText)
+                    ? simulationBaseText
+                    : simulationStatusText;
+                text_SystemMessage.text = baseText + new string('.', dotCount);
             }
 
             dotCount = dotCount % 3 + 1;
@@ -187,6 +191,7 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
         }
 
         simulationProcessManager.SimulationStarted += HandleSimulationStarted;
+        simulationProcessManager.SimulationStatusChanged += HandleSimulationStatusChanged;
         simulationProcessManager.SimulationCompleted += HandleSimulationCompleted;
         simulationProcessManager.SimulationFailed += HandleSimulationFailed;
     }
@@ -199,14 +204,28 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
         }
 
         simulationProcessManager.SimulationStarted -= HandleSimulationStarted;
+        simulationProcessManager.SimulationStatusChanged -= HandleSimulationStatusChanged;
         simulationProcessManager.SimulationCompleted -= HandleSimulationCompleted;
         simulationProcessManager.SimulationFailed -= HandleSimulationFailed;
     }
 
     private void HandleSimulationStarted(string message)
     {
+        simulationStatusText = string.IsNullOrWhiteSpace(message) ? simulationBaseText : message;
         SetButtonsActive(false);
         StartSimulationUI();
+    }
+
+    private void HandleSimulationStatusChanged(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        simulationStatusText = message;
+        if (panel_SystemMessage != null) panel_SystemMessage.SetActive(true);
+        if (text_SystemMessage != null) text_SystemMessage.text = simulationStatusText;
     }
 
     private void HandleSimulationCompleted(string message)

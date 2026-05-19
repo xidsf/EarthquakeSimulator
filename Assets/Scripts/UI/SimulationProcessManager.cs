@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using TMPro;
 using UnityEngine;
@@ -29,6 +30,11 @@ public class SimulationProcessManager : MonoBehaviour
     public bool enableVlm = true;
     public bool noGraphics = false;
 
+    [Header("Debug Save")]
+    public bool fetchSimulationPlaybackAfterResult = true;
+    public bool saveSimulationDebugFiles = true;
+    public string simulationDebugFolderName = "SimulationDebug";
+
     [Header("Job Polling")]
     [Min(1)] public int maxJobPollAttempts = 120;
     [Min(0.1f)] public float jobPollIntervalSeconds = 2.0f;
@@ -36,6 +42,7 @@ public class SimulationProcessManager : MonoBehaviour
     public event Action<string> SimulationStarted;
     public event Action<string> SimulationCompleted;
     public event Action<string> SimulationFailed;
+    public event Action<string> SimulationStatusChanged;
     public event Action<SimulationResultResponse> SimulationResultReceived;
 
     private Coroutine runningCoroutine;
@@ -107,6 +114,7 @@ public class SimulationProcessManager : MonoBehaviour
             yield break;
         }
 
+        ReportStatus("Uploading placed scene.");
         string placedSceneJson = BuildPlacedSceneJson(sessionId);
         bool placedSceneOk = false;
         FurnitureServerStatusResponse placedSceneResponse = null;
@@ -133,6 +141,7 @@ public class SimulationProcessManager : MonoBehaviour
             yield break;
         }
 
+        ReportStatus("Starting simulation job.");
         string simulationJson = BuildSimulationRequestJson();
         bool simulateOk = false;
         SimulationJobResponse simulateResponse = null;
@@ -165,6 +174,7 @@ public class SimulationProcessManager : MonoBehaviour
             yield break;
         }
 
+        ReportStatus("Waiting for simulation job.");
         yield return PollSimulationJobRoutine(resolvedApiClient, sessionId);
     }
 
@@ -189,6 +199,8 @@ public class SimulationProcessManager : MonoBehaviour
             }
             else if (job != null)
             {
+                ReportStatus(FormatSimulationJobStatus(job));
+
                 if (job.IsFailedStatus())
                 {
                     FinishFailure(string.IsNullOrWhiteSpace(job.error)
@@ -215,6 +227,8 @@ public class SimulationProcessManager : MonoBehaviour
 
     private IEnumerator FetchSimulationResultRoutine(FurnitureServerApiClient resolvedApiClient, string sessionId)
     {
+        ReportStatus("Fetching simulation result.");
+
         bool resultOk = false;
         SimulationResultResponse result = null;
         string resultError = string.Empty;
@@ -238,6 +252,41 @@ public class SimulationProcessManager : MonoBehaviour
                 ? "Simulation failed on server."
                 : result.error);
             yield break;
+        }
+
+        if (fetchSimulationPlaybackAfterResult)
+        {
+            ReportStatus("Fetching simulation playback.");
+
+            bool playbackOk = false;
+            SimulationPlaybackResponse playback = null;
+            string playbackError = string.Empty;
+
+            yield return resolvedApiClient.GetSimulationPlayback(sessionId, (ok, response, error) =>
+            {
+                playbackOk = ok;
+                playback = response;
+                playbackError = error;
+            });
+
+            if (playbackOk)
+            {
+                result.playback = playback;
+            }
+            else
+            {
+                result.playback_error = playbackError;
+                Debug.LogWarning($"[SimulationProcessManager] Simulation playback request failed. {playbackError}");
+            }
+        }
+
+        if (saveSimulationDebugFiles)
+        {
+            result.debug_folder_path = SaveSimulationDebugFiles(sessionId, result, result.playback);
+            if (!string.IsNullOrWhiteSpace(result.debug_folder_path))
+            {
+                ReportStatus("Simulation debug files saved.");
+            }
         }
 
         LastResult = result;
@@ -360,6 +409,269 @@ public class SimulationProcessManager : MonoBehaviour
         Debug.LogWarning($"[SimulationProcessManager] {message}");
         uiManager?.ShowNotification(message);
         return false;
+    }
+
+    private void ReportStatus(string message)
+    {
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            Debug.Log($"[SimulationProcessManager] {message}");
+        }
+
+        SimulationStatusChanged?.Invoke(message);
+    }
+
+    private string FormatSimulationJobStatus(SimulationJobResponse job)
+    {
+        if (job == null)
+        {
+            return "Simulation job status is empty.";
+        }
+
+        string status = string.IsNullOrWhiteSpace(job.status) ? "running" : job.status;
+        if (job.progress > 0f)
+        {
+            return $"Simulation {status}. progress:{job.progress:0.##}";
+        }
+
+        return $"Simulation {status}.";
+    }
+
+    private string SaveSimulationDebugFiles(string sessionId, SimulationResultResponse result, SimulationPlaybackResponse playback)
+    {
+        string safeSessionId = SanitizePathPart(string.IsNullOrWhiteSpace(sessionId) ? "no_session" : sessionId);
+        string stamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
+        string folder = Path.Combine(Application.persistentDataPath, simulationDebugFolderName, safeSessionId, stamp);
+
+        try
+        {
+            Directory.CreateDirectory(folder);
+
+            string resultJson = !string.IsNullOrWhiteSpace(result != null ? result.RawJson : null)
+                ? result.RawJson
+                : JsonUtility.ToJson(result, true);
+            WriteText(folder, "simulation_result.json", resultJson);
+            SaveRawCsvLikeText(folder, "simulation_result_raw.csv", resultJson);
+
+            if (playback != null)
+            {
+                string playbackJson = !string.IsNullOrWhiteSpace(playback.RawJson)
+                    ? playback.RawJson
+                    : JsonUtility.ToJson(playback, true);
+                WriteText(folder, "simulation_playback.json", playbackJson);
+                SaveRawCsvLikeText(folder, "simulation_playback_raw.csv", playback.RawJson);
+
+                if (playback.frames != null && playback.frames.Length > 0)
+                {
+                    WriteText(folder, "simulation_playback_frames.txt", string.Join(Environment.NewLine, playback.frames));
+                }
+            }
+
+            if (result != null && result.vlm != null)
+            {
+                WriteText(folder, "vlm_result.json", JsonUtility.ToJson(result.vlm, true));
+            }
+
+            ExtractAndSaveCsvFields(folder, "result", resultJson);
+            if (playback != null)
+            {
+                ExtractAndSaveCsvFields(folder, "playback", playback.RawJson);
+            }
+
+            WriteText(folder, "summary.txt", BuildDebugSummary(sessionId, result, playback));
+            Debug.Log($"[SimulationProcessManager] Simulation debug files saved: {folder}");
+            return folder;
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"[SimulationProcessManager] Failed to save simulation debug files. {e.Message}");
+            return string.Empty;
+        }
+    }
+
+    private void ExtractAndSaveCsvFields(string folder, string prefix, string rawJson)
+    {
+        if (string.IsNullOrWhiteSpace(rawJson))
+        {
+            return;
+        }
+
+        string[] candidateFields =
+        {
+            "csv",
+            "csv_data",
+            "csv_text",
+            "simulation_csv",
+            "playback_csv",
+            "transform_csv",
+            "result_csv",
+            "frames_csv",
+            "trajectory_csv"
+        };
+
+        for (int i = 0; i < candidateFields.Length; i++)
+        {
+            string field = candidateFields[i];
+            if (TryExtractJsonStringField(rawJson, field, out string value) && !string.IsNullOrWhiteSpace(value))
+            {
+                WriteText(folder, $"{prefix}_{field}.csv", value);
+            }
+        }
+    }
+
+    private void SaveRawCsvLikeText(string folder, string fileName, string rawText)
+    {
+        if (string.IsNullOrWhiteSpace(rawText))
+        {
+            return;
+        }
+
+        string trimmed = rawText.TrimStart();
+        if (trimmed.StartsWith("{", StringComparison.Ordinal) || trimmed.StartsWith("[", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (rawText.Contains(",") || rawText.Contains("\n"))
+        {
+            WriteText(folder, fileName, rawText);
+        }
+    }
+
+    private string BuildDebugSummary(string sessionId, SimulationResultResponse result, SimulationPlaybackResponse playback)
+    {
+        StringBuilder builder = new StringBuilder();
+        builder.AppendLine($"saved_utc: {DateTime.UtcNow:o}");
+        builder.AppendLine($"session_id: {sessionId}");
+        builder.AppendLine($"result_status: {(result != null ? result.status : string.Empty)}");
+        builder.AppendLine($"risk_level: {(result != null ? result.risk_level : string.Empty)}");
+        builder.AppendLine($"risk_score: {(result != null ? result.risk_score.ToString("0.###") : string.Empty)}");
+        builder.AppendLine($"vlm_status: {(result != null && result.vlm != null ? result.vlm.status : string.Empty)}");
+        builder.AppendLine($"vlm_error: {(result != null && result.vlm != null ? result.vlm.error : string.Empty)}");
+        builder.AppendLine($"playback_status: {(playback != null ? playback.status : string.Empty)}");
+        builder.AppendLine($"playback_frames: {(playback != null && playback.frames != null ? playback.frames.Length : 0)}");
+        return builder.ToString();
+    }
+
+    private void WriteText(string folder, string fileName, string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        File.WriteAllText(Path.Combine(folder, fileName), text, Encoding.UTF8);
+    }
+
+    private string SanitizePathPart(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "empty";
+        }
+
+        char[] invalid = Path.GetInvalidFileNameChars();
+        StringBuilder builder = new StringBuilder(value.Length);
+        for (int i = 0; i < value.Length; i++)
+        {
+            char c = value[i];
+            builder.Append(Array.IndexOf(invalid, c) >= 0 ? '_' : c);
+        }
+
+        return builder.ToString();
+    }
+
+    private bool TryExtractJsonStringField(string json, string fieldName, out string value)
+    {
+        value = string.Empty;
+        if (string.IsNullOrWhiteSpace(json) || string.IsNullOrWhiteSpace(fieldName))
+        {
+            return false;
+        }
+
+        string token = "\"" + fieldName + "\"";
+        int tokenIndex = json.IndexOf(token, StringComparison.Ordinal);
+        if (tokenIndex < 0)
+        {
+            return false;
+        }
+
+        int colonIndex = json.IndexOf(':', tokenIndex + token.Length);
+        if (colonIndex < 0)
+        {
+            return false;
+        }
+
+        int valueStart = colonIndex + 1;
+        while (valueStart < json.Length && char.IsWhiteSpace(json[valueStart]))
+        {
+            valueStart++;
+        }
+
+        if (valueStart >= json.Length || json[valueStart] != '"')
+        {
+            return false;
+        }
+
+        StringBuilder builder = new StringBuilder();
+        bool escaped = false;
+        for (int i = valueStart + 1; i < json.Length; i++)
+        {
+            char c = json[i];
+            if (escaped)
+            {
+                AppendEscapedJsonChar(builder, json, ref i, c);
+                escaped = false;
+                continue;
+            }
+
+            if (c == '\\')
+            {
+                escaped = true;
+                continue;
+            }
+
+            if (c == '"')
+            {
+                value = builder.ToString();
+                return true;
+            }
+
+            builder.Append(c);
+        }
+
+        return false;
+    }
+
+    private void AppendEscapedJsonChar(StringBuilder builder, string json, ref int index, char escapedChar)
+    {
+        switch (escapedChar)
+        {
+            case '"': builder.Append('"'); break;
+            case '\\': builder.Append('\\'); break;
+            case '/': builder.Append('/'); break;
+            case 'b': builder.Append('\b'); break;
+            case 'f': builder.Append('\f'); break;
+            case 'n': builder.Append('\n'); break;
+            case 'r': builder.Append('\r'); break;
+            case 't': builder.Append('\t'); break;
+            case 'u':
+                if (index + 4 < json.Length)
+                {
+                    string hex = json.Substring(index + 1, 4);
+                    if (ushort.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out ushort code))
+                    {
+                        builder.Append((char)code);
+                        index += 4;
+                        break;
+                    }
+                }
+                builder.Append("\\u");
+                break;
+            default:
+                builder.Append(escapedChar);
+                break;
+        }
     }
 
     private void FinishSuccess(string message)
@@ -542,7 +854,12 @@ public class SimulationResultPanelController : MonoBehaviour
         AppendLine(builder, "Before/After Images", FormatStringArray(result.before_after_images, ExtractRawField(rawJson, "before_after_images")));
         AppendLine(builder, "Transform Logs", FormatTransformLogs(result.transform_logs, ExtractRawField(rawJson, "transform_logs")));
         AppendLine(builder, "VLM Status", result.vlm != null ? result.vlm.status : ExtractRawNestedField(rawJson, "vlm", "status"));
+        AppendLine(builder, "VLM Message", result.vlm != null ? result.vlm.message : ExtractRawNestedField(rawJson, "vlm", "message"));
         AppendLine(builder, "VLM Error", result.vlm != null ? result.vlm.error : ExtractRawNestedField(rawJson, "vlm", "error"));
+        AppendLine(builder, "Playback Status", result.playback != null ? result.playback.status : "-");
+        AppendLine(builder, "Playback Frames", result.playback != null && result.playback.frames != null ? result.playback.frames.Length.ToString() : "0");
+        AppendLine(builder, "Playback Error", result.playback_error);
+        AppendLine(builder, "Debug Folder", result.debug_folder_path);
 
         return builder.ToString().TrimEnd();
     }

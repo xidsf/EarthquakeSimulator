@@ -434,6 +434,8 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         if (!autoBindRoomObjectsBeforeCapture)
             return HasCompleteRoomObjects();
 
+        EnsureConfirmRoomManagerReference();
+
         if (HasCompleteRoomObjects())
         {
             if (roomSnapshotProvider != null && confirmRoomManager != null)
@@ -443,13 +445,6 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
                 roomSnapshotProvider.SetRoomObjects(roomRoot, floorObject, ceilingObject, wallObjects);
 
             return true;
-        }
-
-        if (confirmRoomManager == null && autoFindConfirmRoomManager)
-        {
-            ConfirmRoomManager[] managers = FindObjectsByType<ConfirmRoomManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-            if (managers != null && managers.Length > 0)
-                confirmRoomManager = managers[0];
         }
 
         if (confirmRoomManager != null && SetRoomObjectsFromConfirmRoomManager(confirmRoomManager))
@@ -465,6 +460,16 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
                ceilingObject != null &&
                wallObjects != null &&
                wallObjects.Any(wall => wall != null);
+    }
+
+    private void EnsureConfirmRoomManagerReference()
+    {
+        if (confirmRoomManager != null || !autoFindConfirmRoomManager)
+            return;
+
+        ConfirmRoomManager[] managers = FindObjectsByType<ConfirmRoomManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        if (managers != null && managers.Length > 0)
+            confirmRoomManager = managers[0];
     }
 
     public void SetRoomObjects(Transform root, Transform floor, Transform ceiling, IList<Transform> walls)

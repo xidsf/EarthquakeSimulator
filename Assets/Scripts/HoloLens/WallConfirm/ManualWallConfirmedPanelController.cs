@@ -14,12 +14,7 @@ public class ManualWallConfirmedPanelController : WorkflowPanelControllerBase
         Fail
     }
 
-    [Header("UI References (MainPlate 하위)")]
-    [Tooltip("SystemMessageToPlayer 패널 오브젝트를 연결해주세요.")]
-    public GameObject panel_SystemMessage;
-
-    [Tooltip("상태 문구를 띄워줄 TextMeshPro 컴포넌트를 연결해주세요.")]
-    public TMP_Text text_SystemMessage;
+    // [수정됨] 내부 System Message 변수들 제거 (UIManager에서 중앙 통제)
 
     [Header("User Buttons (현재 오브젝트 하위)")]
     [Tooltip("수동 벽 생성 단계로 돌아가는 버튼입니다.")]
@@ -41,10 +36,6 @@ public class ManualWallConfirmedPanelController : WorkflowPanelControllerBase
     private UnityAction setEntrancePointAction;
     private UnityAction clearEntrancePointAction;
 
-    // 코루틴 및 애니메이션 상태
-    private Coroutine checkingCoroutine;
-    private readonly string checkingBaseText = "방이 닫혀있는지 검사하는 중";
-
     // 현재 상태 추적용 변수 (디버깅용)
     private ValidationState currentValidationState;
 
@@ -60,8 +51,6 @@ public class ManualWallConfirmedPanelController : WorkflowPanelControllerBase
         CreateActions();
         RegisterButtons();
 
-        if (panel_SystemMessage != null) panel_SystemMessage.SetActive(true);
-
         // 패널 활성화 시 검사 상태로 진입
         SetValidationState(ValidationState.Checking);
     }
@@ -69,7 +58,7 @@ public class ManualWallConfirmedPanelController : WorkflowPanelControllerBase
     private void OnDisable()
     {
         UnregisterButtons();
-        StopCheckingAnimation();
+        uiManager?.HideLoading(); // [추가됨] 패널이 꺼질 때 안전하게 로딩창 끄기
     }
 
     // ==========================================
@@ -77,7 +66,6 @@ public class ManualWallConfirmedPanelController : WorkflowPanelControllerBase
     // ==========================================
     private void Update()
     {
-        // MRTK3 (New Input System) 키보드 입력 체크 방식
         if (Keyboard.current != null && Keyboard.current.gKey.wasPressedThisFrame)
         {
             int nextStateIndex = ((int)currentValidationState + 1) % 3;
@@ -136,62 +124,34 @@ public class ManualWallConfirmedPanelController : WorkflowPanelControllerBase
     }
 
     // ==========================================
-    // 검사 상태 변경 및 애니메이션 로직
+    // [수정됨] 검사 상태 변경 로직 (UIManager 연동)
     // ==========================================
 
     public void SetValidationState(ValidationState state)
     {
-        StopCheckingAnimation();
-
-        // 현재 상태 저장
         currentValidationState = state;
 
         switch (state)
         {
             case ValidationState.Checking:
                 if (btn_ProceedNext != null) btn_ProceedNext.enabled = false;
-                checkingCoroutine = StartCoroutine(AnimateCheckingText());
+                uiManager?.ShowLoading("방이 닫혀있는지 검사하는 중"); // 중앙 통제 로딩창 호출
                 break;
 
             case ValidationState.Success:
-                if (text_SystemMessage != null) text_SystemMessage.text = "방 생성 성공";
+                uiManager?.HideLoading(); // 로딩창 끄기
+                uiManager?.ShowNotification("방 생성 성공"); // 알림으로 대체
                 RefreshProceedButtonState();
                 break;
 
             case ValidationState.Fail:
+                uiManager?.HideLoading(); // 로딩창 끄기
                 if (btn_ProceedNext != null) btn_ProceedNext.enabled = false;
-                if (text_SystemMessage != null) text_SystemMessage.text = "방 생성 실패";
+                uiManager?.ShowWarningMessage("방 생성 실패"); // 경고 메시지로 대체
                 break;
         }
 
         RefreshEntranceStatus();
-    }
-
-    private void StopCheckingAnimation()
-    {
-        if (checkingCoroutine != null)
-        {
-            StopCoroutine(checkingCoroutine);
-            checkingCoroutine = null;
-        }
-    }
-
-    private IEnumerator AnimateCheckingText()
-    {
-        int dotCount = 1;
-
-        while (true)
-        {
-            if (text_SystemMessage != null)
-            {
-                text_SystemMessage.text = checkingBaseText + new string('.', dotCount);
-            }
-
-            dotCount++;
-            if (dotCount > 3) dotCount = 1; // . -> .. -> ... -> . 사이클 구현
-
-            yield return new WaitForSeconds(1.0f); // 초 단위 업데이트
-        }
     }
 
     // ==========================================

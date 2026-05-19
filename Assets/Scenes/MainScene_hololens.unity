@@ -3733,8 +3733,6 @@ MonoBehaviour:
   userScaleZDownButton: {fileID: 1246780211}
   userScaleAxisButtonsRoot: {fileID: 492540142}
   userCompleteFurniturePlacementButton: {fileID: 8537063}
-  panel_SystemMessage: {fileID: 1779334458}
-  text_SystemMessage: {fileID: 1761074261}
   userSelectedServerFurnitureText: {fileID: 0}
   userServerFurnitureListText: {fileID: 0}
   userServerFurnitureStatusText: {fileID: 0}
@@ -9027,8 +9025,6 @@ MonoBehaviour:
   simulationProcessManager: {fileID: 0}
   autoFindSimulationProcessManager: 1
   hideLegacyIntensityControls: 1
-  panel_SystemMessage: {fileID: 1779334458}
-  text_SystemMessage: {fileID: 1761074261}
 --- !u!1 &471420006
 GameObject:
   m_ObjectHideFlags: 0
@@ -9701,11 +9697,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7923360315435289473, guid: 261c5af00aa7e194ba92eeab23a289d4, type: 3}
       propertyPath: m_AnchorMax.x
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7923360315435289473, guid: 261c5af00aa7e194ba92eeab23a289d4, type: 3}
       propertyPath: m_AnchorMax.y
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7923360315435289473, guid: 261c5af00aa7e194ba92eeab23a289d4, type: 3}
       propertyPath: m_AnchorMin.y
@@ -9713,11 +9709,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7923360315767014169, guid: 261c5af00aa7e194ba92eeab23a289d4, type: 3}
       propertyPath: m_AnchorMax.y
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7923360315767014169, guid: 261c5af00aa7e194ba92eeab23a289d4, type: 3}
       propertyPath: m_SizeDelta.y
-      value: 0
+      value: -1
       objectReference: {fileID: 0}
     - target: {fileID: 7923360315767014170, guid: 261c5af00aa7e194ba92eeab23a289d4, type: 3}
       propertyPath: m_Size
@@ -9729,39 +9725,39 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7923360316045258655, guid: 261c5af00aa7e194ba92eeab23a289d4, type: 3}
       propertyPath: m_AnchorMax.x
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7923360316045258655, guid: 261c5af00aa7e194ba92eeab23a289d4, type: 3}
       propertyPath: m_SizeDelta.x
-      value: 0
+      value: -1
       objectReference: {fileID: 0}
     - target: {fileID: 7923360316112496114, guid: 261c5af00aa7e194ba92eeab23a289d4, type: 3}
       propertyPath: m_AnchorMax.x
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7923360316112496114, guid: 261c5af00aa7e194ba92eeab23a289d4, type: 3}
       propertyPath: m_AnchorMax.y
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7923360316112496114, guid: 261c5af00aa7e194ba92eeab23a289d4, type: 3}
       propertyPath: m_SizeDelta.x
-      value: 0
+      value: -1
       objectReference: {fileID: 0}
     - target: {fileID: 7923360316112496114, guid: 261c5af00aa7e194ba92eeab23a289d4, type: 3}
       propertyPath: m_SizeDelta.y
-      value: 0
+      value: -1
       objectReference: {fileID: 0}
     - target: {fileID: 7923360316537591950, guid: 261c5af00aa7e194ba92eeab23a289d4, type: 3}
       propertyPath: m_AnchorMax.x
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7923360316537591950, guid: 261c5af00aa7e194ba92eeab23a289d4, type: 3}
       propertyPath: m_AnchorMax.y
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7923360316537591950, guid: 261c5af00aa7e194ba92eeab23a289d4, type: 3}
       propertyPath: m_AnchorMin.x
-      value: 0
+      value: 0.000000059604645
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -13735,7 +13731,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &867777435
 RectTransform:
   m_ObjectHideFlags: 0
@@ -20426,17 +20422,17 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1375367834}
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -290.00006}
-  m_LocalScale: {x: 10, y: 10, z: 10}
+  m_LocalPosition: {x: 0, y: 0, z: -30}
+  m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1315946188}
   - {fileID: 5927199}
-  m_Father: {fileID: 2037681335}
+  m_Father: {fileID: 1658226658}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0.009994509, y: -1800.0004}
+  m_AnchoredPosition: {x: 0, y: -180}
   m_SizeDelta: {x: 250, y: 58.8}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1001 &1386362540
@@ -24056,8 +24052,6 @@ MonoBehaviour:
   uiManager: {fileID: 0}
   workflowManager: {fileID: 0}
   autoFindReferences: 1
-  panel_SystemMessage: {fileID: 1779334458}
-  text_SystemMessage: {fileID: 1761074261}
   btn_EditWallAgain: {fileID: 1322078428}
   btn_ProceedNext: {fileID: 724747839}
   btn_SetEntrancePoint: {fileID: 505722830}
@@ -24609,6 +24603,7 @@ RectTransform:
   m_LocalScale: {x: 0.001, y: 0.001, z: 0.001}
   m_ConstrainProportionsScale: 0
   m_Children:
+  - {fileID: 1375367835}
   - {fileID: 2128505334}
   - {fileID: 1779334459}
   - {fileID: 129256258}
@@ -26072,6 +26067,8 @@ MonoBehaviour:
     hideSubPanelsOnEnter: 0
   panel_SystemMessage: {fileID: 0}
   text_SystemMessage: {fileID: 0}
+  panel_LoadingPlate: {fileID: 1779334458}
+  text_LoadingText: {fileID: 1761074261}
   notificationUI: {fileID: 1375367834}
   text_Notification: {fileID: 5927200}
   notificationHiddenY: -180
@@ -26310,7 +26307,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &1779334459
 RectTransform:
   m_ObjectHideFlags: 0
@@ -29159,7 +29156,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &2037681335
 RectTransform:
   m_ObjectHideFlags: 0
@@ -29178,7 +29175,6 @@ RectTransform:
   - {fileID: 169228458}
   - {fileID: 1178008135}
   - {fileID: 1201389752}
-  - {fileID: 1375367835}
   - {fileID: 1485931823}
   m_Father: {fileID: 1658226658}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}

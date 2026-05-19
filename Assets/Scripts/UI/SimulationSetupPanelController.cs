@@ -15,12 +15,9 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
     public bool autoFindSimulationProcessManager = true;
     public bool hideLegacyIntensityControls = true;
 
-    [Header("System Message UI (로딩창)")]
-    public GameObject panel_SystemMessage;
-    public TMP_Text text_SystemMessage;
+    // [수정됨] 내부 System Message UI 변수들 삭제 (UIManager에서 중앙 통제)
 
-    private Coroutine simulationCoroutine;
-    private string currentBaseText = "시뮬레이션 실행중";
+    private Coroutine delayCoroutine; // 결과 대기용 코루틴
 
     private UnityAction startSimulationAction;
     private UnityAction backToFurnitureAction;
@@ -41,14 +38,19 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
 
         HideLegacyIntensityControls();
         SetButtonsActive(true);
-        if (panel_SystemMessage != null) panel_SystemMessage.SetActive(false);
     }
 
     private void OnDisable()
     {
         UnsubscribeSimulationProcessManager();
         UnregisterButtons();
-        StopSimulationAnimation();
+
+        if (delayCoroutine != null)
+        {
+            StopCoroutine(delayCoroutine);
+            delayCoroutine = null;
+        }
+        uiManager?.HideLoading(); // 패널 꺼질 때 안전하게 로딩창 끄기
     }
 
     private void CreateActions()
@@ -105,73 +107,30 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
 
         if (simulationProcessManager == null || !simulationProcessManager.TryStartSimulation())
         {
-            if (panel_SystemMessage != null) panel_SystemMessage.SetActive(true);
-            if (text_SystemMessage != null) text_SystemMessage.text = "Simulation start failed.";
+            uiManager?.ShowWarningMessage("Simulation start failed."); // Warning 패널로 대체
         }
     }
 
     public void StartSimulationUI()
     {
-        StopSimulationAnimation();
-        currentBaseText = "시뮬레이션 실행중";
-        if (panel_SystemMessage != null) panel_SystemMessage.SetActive(true);
-        simulationCoroutine = StartCoroutine(AnimateSimulationText());
+        // [수정됨] UIManager를 통해 로딩창 시작
+        uiManager?.ShowLoading("시뮬레이션 실행중");
     }
 
     public void CompleteSimulationUI()
     {
-        StopSimulationAnimation();
-        currentBaseText = "결과 창 로딩중";
-        simulationCoroutine = StartCoroutine(HandleSimulationCompleteSequence());
+        if (delayCoroutine != null) StopCoroutine(delayCoroutine);
+        delayCoroutine = StartCoroutine(HandleSimulationCompleteSequence());
     }
 
     private IEnumerator HandleSimulationCompleteSequence()
     {
-        int dotCount = 1;
-        float elapsed = 0f;
-        float duration = 2.0f; // 결과 창 로딩중 문구를 보여줄 시간 (2초 후 닫힘)
+        // [수정됨] 애니메이션 루프 없이 텍스트만 업데이트 후 대기
+        uiManager?.UpdateLoadingText("결과 창 로딩중");
 
-        while (elapsed < duration)
-        {
-            if (text_SystemMessage != null)
-            {
-                text_SystemMessage.text = currentBaseText + new string('.', dotCount);
-            }
+        yield return new WaitForSeconds(2.0f); // 2초 대기
 
-            dotCount++;
-            if (dotCount > 3) dotCount = 1; // . -> .. -> ... -> . 사이클
-
-            elapsed += 1.0f;
-            yield return new WaitForSeconds(1.0f);
-        }
-
-        if (panel_SystemMessage != null) panel_SystemMessage.SetActive(false);
-    }
-
-    private void StopSimulationAnimation()
-    {
-        if (simulationCoroutine != null)
-        {
-            StopCoroutine(simulationCoroutine);
-            simulationCoroutine = null;
-        }
-    }
-
-    private IEnumerator AnimateSimulationText()
-    {
-        int dotCount = 1;
-        while (true)
-        {
-            if (text_SystemMessage != null)
-            {
-                text_SystemMessage.text = currentBaseText + new string('.', dotCount);
-            }
-
-            dotCount++;
-            if (dotCount > 3) dotCount = 1; // . -> .. -> ... -> . 사이클
-
-            yield return new WaitForSeconds(1.0f); // 1초 단위 루프
-        }
+        uiManager?.HideLoading(); // 로딩창 종료
     }
 
     public void OnClickBackToFurniture()
@@ -235,9 +194,8 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
 
     private void HandleSimulationFailed(string message)
     {
-        StopSimulationAnimation();
         SetButtonsActive(true);
-        if (panel_SystemMessage != null) panel_SystemMessage.SetActive(true);
-        if (text_SystemMessage != null) text_SystemMessage.text = string.IsNullOrWhiteSpace(message) ? "Simulation failed." : message;
+        uiManager?.HideLoading(); // 로딩창 끄기
+        uiManager?.ShowWarningMessage(string.IsNullOrWhiteSpace(message) ? "Simulation failed." : message); // Warning 패널로 대체
     }
 }

@@ -88,6 +88,12 @@ public class UIManager : MonoBehaviour
     public GameObject panel_SystemMessage;
     public TMP_Text text_SystemMessage;
 
+    [Header("3-1. 통합 로딩 UI (추가됨)")]
+    [Tooltip("공용으로 사용할 LoadingPlate 오브젝트를 연결해주세요.")]
+    public GameObject panel_LoadingPlate;
+    [Tooltip("로딩 텍스트(Log) 컴포넌트를 연결해주세요.")]
+    public TMP_Text text_LoadingText;
+
     [Header("4. Notification UI")]
     [Tooltip("알림 UI 루트 GameObject입니다. RectTransform을 가진 UI 오브젝트를 연결합니다.")]
     public GameObject notificationUI;
@@ -115,6 +121,10 @@ public class UIManager : MonoBehaviour
     private RectTransform notificationRectTransform;
     private Coroutine notificationCoroutine;
 
+    // 로딩 전용 제어 변수들
+    private Coroutine loadingCoroutine;
+    private string currentLoadingBaseText;
+
     public GameObject CurrentMainPanel => currentMainPanel;
 
     private void Awake()
@@ -133,9 +143,14 @@ public class UIManager : MonoBehaviour
         HideWarningMessage();
         InitializeNotificationUI();
         SetNotificationY(notificationHiddenY);
+
         if (notificationUI != null)
         {
             notificationUI.SetActive(false);
+        }
+        if (panel_LoadingPlate != null)
+        {
+            panel_LoadingPlate.SetActive(false); // 시작 시 로딩창 끄기
         }
 
         EnsureWorkflowManagerReference();
@@ -159,9 +174,71 @@ public class UIManager : MonoBehaviour
             return;
         }
 
-        // WorkflowManager 미연결 시 Opening 또는 RoomInfoInput 패널 표시
         ShowMainPanel(panel_Opening != null ? panel_Opening : panel_RoomInfoInput);
     }
+
+    // ==========================================
+    // [추가됨] 공용 로딩 시스템 제어 메서드
+    // ==========================================
+
+    /// <summary>
+    /// 공용 로딩창을 켜고 입력된 문구 뒤에 . -> .. -> ... 애니메이션을 반복합니다.
+    /// </summary>
+    public void ShowLoading(string baseText)
+    {
+        StopLoadingAnimation();
+        currentLoadingBaseText = baseText;
+
+        if (panel_LoadingPlate != null) panel_LoadingPlate.SetActive(true);
+        loadingCoroutine = StartCoroutine(AnimateLoadingTextRoutine());
+    }
+
+    /// <summary>
+    /// 공용 로딩창을 끄고 애니메이션 루프를 정지합니다.
+    /// </summary>
+    public void HideLoading()
+    {
+        StopLoadingAnimation();
+        if (panel_LoadingPlate != null) panel_LoadingPlate.SetActive(false);
+    }
+
+    /// <summary>
+    /// 로딩창을 끄지 않고 내부 텍스트 문구만 실시간으로 변경합니다 (예: 결과 창 로딩중 등 연속 대기 시).
+    /// </summary>
+    public void UpdateLoadingText(string newBaseText)
+    {
+        currentLoadingBaseText = newBaseText;
+    }
+
+    private void StopLoadingAnimation()
+    {
+        if (loadingCoroutine != null)
+        {
+            StopCoroutine(loadingCoroutine);
+            loadingCoroutine = null;
+        }
+    }
+
+    private IEnumerator AnimateLoadingTextRoutine()
+    {
+        int dotCount = 1;
+        while (true)
+        {
+            if (text_LoadingText != null)
+            {
+                text_LoadingText.text = currentLoadingBaseText + new string('.', dotCount);
+            }
+
+            dotCount++;
+            if (dotCount > 3) dotCount = 1; // . -> .. -> ... -> . 루프
+
+            yield return new WaitForSeconds(1.0f); // 1초 정기 업데이트
+        }
+    }
+
+    // ==========================================
+    // 기존 기능 메서드들
+    // ==========================================
 
     public RoomBuildWorkflowManager GetWorkflowManager()
     {
@@ -247,7 +324,6 @@ public class UIManager : MonoBehaviour
         // 2. MainPlate 활성화 제어
         if (panel_MainPlate != null)
         {
-            // 설정이 있으면 설정값에 따르고, 설정이 없으면 기본적으로 켭니다.
             bool shouldShowMainPlate = (config != null) ? config.showMainPlate : true;
             panel_MainPlate.SetActive(shouldShowMainPlate);
         }
@@ -424,7 +500,6 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    // Help 컨트롤러에서 호출합니다. 현재 메인 패널을 켜거나 끄는 인터페이스입니다.
     public void SetCurrentMainPanelInteractable(bool interactable)
     {
         if (currentMainPanel != null)

@@ -43,9 +43,9 @@ public class ManualWallConfirmedPanelController : WorkflowPanelControllerBase
 
     // 코루틴 및 애니메이션 상태
     private Coroutine checkingCoroutine;
-    private readonly string checkingBaseText = "방의 구조가\n닫혀있는지\n검사 중";
+    private readonly string checkingBaseText = "방이 닫혀있는지 검사하는 중";
 
-    // [추가됨] 현재 상태 추적용 변수 (디버깅용)
+    // 현재 상태 추적용 변수 (디버깅용)
     private ValidationState currentValidationState;
 
     protected override void Awake()
@@ -73,7 +73,7 @@ public class ManualWallConfirmedPanelController : WorkflowPanelControllerBase
     }
 
     // ==========================================
-    // [추가됨] 디버깅용 키 입력 (G키)
+    // 디버깅용 키 입력 (G키)
     // ==========================================
     private void Update()
     {
@@ -143,7 +143,7 @@ public class ManualWallConfirmedPanelController : WorkflowPanelControllerBase
     {
         StopCheckingAnimation();
 
-        // [추가됨] 현재 상태 저장
+        // 현재 상태 저장
         currentValidationState = state;
 
         switch (state)
@@ -188,9 +188,9 @@ public class ManualWallConfirmedPanelController : WorkflowPanelControllerBase
             }
 
             dotCount++;
-            if (dotCount > 3) dotCount = 1;
+            if (dotCount > 3) dotCount = 1; // . -> .. -> ... -> . 사이클 구현
 
-            yield return new WaitForSeconds(1.0f);
+            yield return new WaitForSeconds(1.0f); // 초 단위 업데이트
         }
     }
 

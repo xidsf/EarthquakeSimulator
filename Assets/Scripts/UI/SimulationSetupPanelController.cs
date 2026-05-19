@@ -15,12 +15,12 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
     public bool autoFindSimulationProcessManager = true;
     public bool hideLegacyIntensityControls = true;
 
-    [Header("System Message UI")]
+    [Header("System Message UI (로딩창)")]
     public GameObject panel_SystemMessage;
     public TMP_Text text_SystemMessage;
 
     private Coroutine simulationCoroutine;
-    private readonly string simulationBaseText = "Simulation running";
+    private string currentBaseText = "시뮬레이션 실행중";
 
     private UnityAction startSimulationAction;
     private UnityAction backToFurnitureAction;
@@ -113,6 +113,7 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
     public void StartSimulationUI()
     {
         StopSimulationAnimation();
+        currentBaseText = "시뮬레이션 실행중";
         if (panel_SystemMessage != null) panel_SystemMessage.SetActive(true);
         simulationCoroutine = StartCoroutine(AnimateSimulationText());
     }
@@ -120,13 +121,29 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
     public void CompleteSimulationUI()
     {
         StopSimulationAnimation();
-        StartCoroutine(HandleSimulationCompleteSequence());
+        currentBaseText = "결과 창 로딩중";
+        simulationCoroutine = StartCoroutine(HandleSimulationCompleteSequence());
     }
 
     private IEnumerator HandleSimulationCompleteSequence()
     {
-        if (text_SystemMessage != null) text_SystemMessage.text = "Simulation complete";
-        yield return new WaitForSeconds(2.0f);
+        int dotCount = 1;
+        float elapsed = 0f;
+        float duration = 2.0f; // 결과 창 로딩중 문구를 보여줄 시간 (2초 후 닫힘)
+
+        while (elapsed < duration)
+        {
+            if (text_SystemMessage != null)
+            {
+                text_SystemMessage.text = currentBaseText + new string('.', dotCount);
+            }
+
+            dotCount++;
+            if (dotCount > 3) dotCount = 1; // . -> .. -> ... -> . 사이클
+
+            elapsed += 1.0f;
+            yield return new WaitForSeconds(1.0f);
+        }
 
         if (panel_SystemMessage != null) panel_SystemMessage.SetActive(false);
     }
@@ -147,11 +164,13 @@ public class SimulationSetupPanelController : WorkflowPanelControllerBase
         {
             if (text_SystemMessage != null)
             {
-                text_SystemMessage.text = simulationBaseText + new string('.', dotCount);
+                text_SystemMessage.text = currentBaseText + new string('.', dotCount);
             }
 
-            dotCount = dotCount % 3 + 1;
-            yield return new WaitForSeconds(1.0f);
+            dotCount++;
+            if (dotCount > 3) dotCount = 1; // . -> .. -> ... -> . 사이클
+
+            yield return new WaitForSeconds(1.0f); // 1초 단위 루프
         }
     }
 

@@ -448,7 +448,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         SetButtonEnabled(userToggleRotateModeButton, hasPlacedSelection && !isRunning && !selectedFurnitureFixed);
         SetButtonEnabled(userToggleScaleModeButton, hasPlacedSelection && !isRunning && !selectedFurnitureFixed);
         SetButtonEnabled(userToggleFurnitureFixedButton, hasPlacedSelection && !isRunning);
-        SetButtonEnabled(userToggleFloorContactlessButton, hasPlacedSelection && !isRunning);
+        SetButtonEnabled(userToggleFloorContactlessButton, hasPlacedSelection && !isRunning && !selectedFurnitureFixed);
         SetButtonEnabled(userSnapSelectedFurnitureButton, canUseManualSnap);
         SetButtonEnabled(userDeleteSelectedFurnitureButton, canDeleteSelectedFurniture);
 
@@ -460,7 +460,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
             scaleMoreExpanded = false;
         }
 
-        bool baseScaleVisible = hasPlacedSelection && !isRunning && scaleModeOn;
+        bool baseScaleVisible = hasPlacedSelection && !isRunning && !selectedFurnitureFixed && scaleModeOn;
         bool axisScaleVisible = baseScaleVisible && scaleMoreExpanded;
 
         SetButtonVisible(userScaleUpButton, baseScaleVisible);
@@ -566,6 +566,11 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
 
     private string BuildCurrentPlacementStatus(int placed, int count)
     {
+        if (IsSelectedFurnitureFixed())
+        {
+            return BuildSelectedFixedStatus();
+        }
+
         if (moveModeController != null)
         {
             if (moveModeController.CurrentMode == FurnitureManipulationMode.Move) return moveModeStatusText;
@@ -577,6 +582,24 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
             return "모든 가구가 배치되었습니다. 완료 버튼을 눌러 시뮬레이션을 시작하세요.";
 
         return $"가구를 선택하고 배치 버튼을 누르세요. ({placed}/{count})";
+    }
+
+    private bool IsSelectedFurnitureFixed()
+    {
+        PlacedFurniture selected = moveModeController != null ? moveModeController.SelectedFurniture : null;
+        return selected != null && selected.IsFixed;
+    }
+
+    private string BuildSelectedFixedStatus()
+    {
+        PlacedFurniture selected = moveModeController != null ? moveModeController.SelectedFurniture : null;
+        string name = selected != null ? selected.DisplayName : "선택된 가구";
+        return $"{name}: 고정 상태입니다. 고정 해제 또는 삭제만 가능합니다.";
+    }
+
+    private void SetSelectedFixedStatus()
+    {
+        SetServerFurnitureStatus(BuildSelectedFixedStatus());
     }
 
     // --- Server Request & Preview Logic ---
@@ -688,6 +711,13 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     public void OnClickToggleMoveMode()
     {
         if (moveModeController == null) return;
+        if (IsSelectedFurnitureFixed())
+        {
+            SetSelectedFixedStatus();
+            RefreshServerFurnitureListView();
+            return;
+        }
+
         moveModeController.ToggleMoveMode();
         UpdateManipulationModeVisuals();
         RefreshServerFurnitureListView();
@@ -696,6 +726,13 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     public void OnClickToggleRotateMode()
     {
         if (moveModeController == null) return;
+        if (IsSelectedFurnitureFixed())
+        {
+            SetSelectedFixedStatus();
+            RefreshServerFurnitureListView();
+            return;
+        }
+
         moveModeController.ToggleRotateMode();
         UpdateManipulationModeVisuals();
         RefreshServerFurnitureListView();
@@ -704,6 +741,13 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     public void OnClickToggleScaleMode()
     {
         if (moveModeController == null) return;
+        if (IsSelectedFurnitureFixed())
+        {
+            SetSelectedFixedStatus();
+            RefreshServerFurnitureListView();
+            return;
+        }
+
         moveModeController.ToggleScaleMode();
         UpdateManipulationModeVisuals();
         RefreshServerFurnitureListView();
@@ -715,13 +759,15 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         if (selected == null) return;
 
         selected.ToggleFixed();
+        if (moveModeController != null)
+        {
+            moveModeController.SetManipulationMode(moveModeController.CurrentMode);
+        }
+
         string status;
         if (selected.IsFixed)
         {
-            bool movedSelection = moveModeController != null && moveModeController.SelectLastPressedNonFixedFurniture();
-            status = movedSelection
-                ? $"{selected.DisplayName}: 고정됨. 선택이 마지막으로 누른 가구로 이동했습니다."
-                : $"{selected.DisplayName}: 고정됨. 이동/회전/크기 조정이 잠겼습니다.";
+            status = $"{selected.DisplayName}: 고정됨. 선택/고정 해제/삭제는 가능하며 이동/회전/크기 조정은 잠겼습니다.";
         }
         else
         {
@@ -737,6 +783,12 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     {
         PlacedFurniture selected = moveModeController != null ? moveModeController.SelectedFurniture : null;
         if (selected == null) return;
+        if (selected.IsFixed)
+        {
+            SetSelectedFixedStatus();
+            RefreshServerFurnitureListView();
+            return;
+        }
 
         selected.ToggleFloorContactless();
         if (selected.IsFloorContactless && roomGeometryProvider != null &&
@@ -850,6 +902,11 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
             SetServerFurnitureStatus("크기를 조절할 가구가 선택되지 않았습니다.");
             return;
         }
+        if (selected.IsFixed)
+        {
+            SetSelectedFixedStatus();
+            return;
+        }
 
         FurnitureScaleStepResult result = selected.ApplyUniformScaleStep(factor);
         if (result == FurnitureScaleStepResult.BlockedByRoomHeight || result == FurnitureScaleStepResult.BlockedByOverlap)
@@ -865,6 +922,12 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
 
     public void OnClickScaleMore()
     {
+        if (IsSelectedFurnitureFixed())
+        {
+            SetSelectedFixedStatus();
+            return;
+        }
+
         bool scaleModeOn = moveModeController != null
             && moveModeController.CurrentMode == FurnitureManipulationMode.Scale;
         if (!scaleModeOn) return;
@@ -886,6 +949,11 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         if (selected == null)
         {
             SetServerFurnitureStatus("크기를 조절할 가구가 선택되지 않았습니다.");
+            return;
+        }
+        if (selected.IsFixed)
+        {
+            SetSelectedFixedStatus();
             return;
         }
 

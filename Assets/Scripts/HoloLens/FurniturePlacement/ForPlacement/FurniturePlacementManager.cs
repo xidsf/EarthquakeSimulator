@@ -176,6 +176,13 @@ public class FurniturePlacementManager : MonoBehaviour
             return;
         }
 
+        if (furniture.IsFixed)
+        {
+            moveModeController.SelectFurniture(furniture);
+            Debug.Log($"[FurniturePlacementManager] Fixed furniture selected by touch. source:{inputSource}, furniture:{furniture.DisplayName}", furniture);
+            return;
+        }
+
         if (moveModeController.CurrentMode == FurnitureManipulationMode.Scale &&
             moveModeController.SelectedFurniture == furniture &&
             IsDirectFurnitureManipulationInput(inputSource))

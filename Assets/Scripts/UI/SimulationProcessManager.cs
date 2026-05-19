@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -749,15 +749,15 @@ public class SimulationProcessManager : MonoBehaviour
 }
 
 // =========================================================================
-// »ç¿ëÀÚ Á¤ÀÇ UI ¿¬µ¿¿ëÀ¸·Î ÀçÀÛ¼ºµÈ SimulationResultPanelController
+// ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ UI ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Û¼ï¿½ï¿½ï¿½ SimulationResultPanelController
 // =========================================================================
 public class SimulationResultPanelController : MonoBehaviour
 {
     [Header("UI Component References")]
-    public TMP_Text aiAdviceText;             // AIAdviceText ¿¬°á
-    public TMP_Text riskResultText;           // RiskResultText ¿¬°á
-    public TMP_Text roomLevelText;            // RoomLevelText ¿¬°á
-    public TMP_Text fallHazardFurnituresList; // FallHazardFurnituresList ¿¬°á
+    public TMP_Text aiAdviceText;             // AIAdviceText ï¿½ï¿½ï¿½ï¿½
+    public TMP_Text riskResultText;           // RiskResultText ï¿½ï¿½ï¿½ï¿½
+    public TMP_Text roomLevelText;            // RoomLevelText ï¿½ï¿½ï¿½ï¿½
+    public TMP_Text fallHazardFurnituresList; // FallHazardFurnituresList ï¿½ï¿½ï¿½ï¿½
 
     private SimulationResultResponse currentResult;
 
@@ -777,49 +777,41 @@ public class SimulationResultPanelController : MonoBehaviour
     public void SetResult(SimulationResultResponse result)
     {
         currentResult = result;
-
         if (result == null) return;
 
-        // 1. AI Á¶¾ð ¾÷µ¥ÀÌÆ®
-        if (aiAdviceText != null)
-        {
-            aiAdviceText.text = string.IsNullOrEmpty(result.advice)
-                ? "½Ã¹Ä·¹ÀÌ¼Ç ºÐ¼® °á°ú°¡ ¾ø½À´Ï´Ù."
-                : result.advice;
-        }
+        AutoBindTextFields();
 
-        // 2. À§Çè Á¡¼ö ¾÷µ¥ÀÌÆ® (¼Ò¼öÁ¡ ¹ö¸²)
-        if (riskResultText != null)
-        {
-            riskResultText.text = $"À§ÇèÁö¼ö (S): {Mathf.RoundToInt(result.risk_score)}";
-        }
-
-        // 3. ·¹º§ ÅØ½ºÆ® ¾÷µ¥ÀÌÆ®
-        if (roomLevelText != null)
-        {
-            roomLevelText.text = result.risk_level;
-        }
-
-        // 4. ³«ÇÏ À§Çè ¹°°Ç ¸®½ºÆ® ¾÷µ¥ÀÌÆ®
-        if (fallHazardFurnituresList != null)
-        {
-            string listString = "³«ÇÏ À§Çè ¹°°Ç:\n";
-            if (result.fallen != null && result.fallen.Length > 0)
-            {
-                foreach (string item in result.fallen)
-                {
-                    listString += $"- {item}\n";
-                }
-            }
-            else
-            {
-                listString += "- ¾øÀ½\n";
-            }
-            fallHazardFurnituresList.text = listString;
-        }
+        if (aiAdviceText != null) aiAdviceText.text = SimulationResultDisplayFormatter.BuildAdviceText(result);
+        if (riskResultText != null) riskResultText.text = SimulationResultDisplayFormatter.BuildRiskScoreText(result);
+        if (roomLevelText != null) roomLevelText.text = SimulationResultDisplayFormatter.BuildRiskLevelText(result);
+        if (fallHazardFurnituresList != null) fallHazardFurnituresList.text = SimulationResultDisplayFormatter.BuildFallHazardText(result);
     }
 
-    // Manager ½ºÅ©¸³Æ®¿¡¼­ Á¤ÀûÀ¸·Î È£ÃâÇÏ´Â ºÎºÐ (±×´ë·Î À¯Áö)
+    private void AutoBindTextFields()
+    {
+        if (aiAdviceText == null) aiAdviceText = FindChildText("AIAdviceText", "Advice", "Summary");
+        if (riskResultText == null) riskResultText = FindChildText("RiskResultText", "RiskScore", "RiskResult");
+        if (roomLevelText == null) roomLevelText = FindChildText("RoomLevelText", "RiskLevel", "RoomLevel");
+        if (fallHazardFurnituresList == null) fallHazardFurnituresList = FindChildText("FallHazardFurnituresList", "FallHazard", "FallenList");
+    }
+
+    private TMP_Text FindChildText(params string[] nameHints)
+    {
+        TMP_Text[] texts = GetComponentsInChildren<TMP_Text>(true);
+        for (int i = 0; i < nameHints.Length; i++)
+        {
+            for (int j = 0; j < texts.Length; j++)
+            {
+                if (texts[j] != null && texts[j].name.IndexOf(nameHints[i], StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return texts[j];
+                }
+            }
+        }
+
+        return null;
+    }
+
     public static void ShowResultOnPanel(GameObject panel, SimulationResultResponse result)
     {
         if (panel == null)

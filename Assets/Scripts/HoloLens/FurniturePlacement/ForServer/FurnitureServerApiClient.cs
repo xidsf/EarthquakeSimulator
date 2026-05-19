@@ -117,6 +117,40 @@ public class FurnitureServerApiClient : MonoBehaviour
         yield return SendJsonRequest<SimulationPlaybackResponse>(url, "GET", onComplete);
     }
 
+    public IEnumerator GetTextFromUrl(string url, Action<bool, string, string> onComplete)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            onComplete?.Invoke(false, string.Empty, "URL is empty.");
+            yield break;
+        }
+
+        if (logRequests)
+        {
+            Debug.Log($"[FurnitureServerApiClient] GET {url}");
+        }
+
+        using (UnityWebRequest request = UnityWebRequest.Get(url))
+        {
+            request.timeout = requestTimeoutSeconds;
+            request.SetRequestHeader("Accept", "text/plain,text/csv,*/*");
+
+            yield return request.SendWebRequest();
+
+            string body = request.downloadHandler != null ? request.downloadHandler.text : string.Empty;
+            bool success = request.result == UnityWebRequest.Result.Success;
+            if (!success)
+            {
+                string error = $"HTTP {(long)request.responseCode} / {request.error} / {body}";
+                Debug.LogWarning($"[FurnitureServerApiClient] Text request failed. {error}");
+                onComplete?.Invoke(false, string.Empty, error);
+                yield break;
+            }
+
+            onComplete?.Invoke(true, body, string.Empty);
+        }
+    }
+
     public IEnumerator GetScanJobStatus(string scanSessionId, Action<bool, FurnitureServerStatusResponse, string> onComplete)
     {
         string url = BuildUrl($"/scan-job/{UnityWebRequest.EscapeURL(scanSessionId)}");

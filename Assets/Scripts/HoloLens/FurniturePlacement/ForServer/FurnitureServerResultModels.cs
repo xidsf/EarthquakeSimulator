@@ -392,13 +392,17 @@ public class SimulationResultResponse : IFurnitureServerRawJsonResponse
     public string[] fallen;
     public string advice;
     public string destructive_direction;
+    public string destructive_direction_key;
     public float destructive_direction_score;
     public string[] before_after_images;
     public SimulationTransformLog[] transform_logs;
+    public SimulationTransformLog selected_transform_log;
     public SimulationVlmResult vlm;
 
     [NonSerialized] public SimulationPlaybackResponse playback;
     [NonSerialized] public string playback_error;
+    [NonSerialized] public string selected_transform_csv_text;
+    [NonSerialized] public string selected_transform_log_url;
     [NonSerialized] public string debug_folder_path;
 
     [NonSerialized] private string rawJson;
@@ -425,6 +429,11 @@ public class SimulationTransformLog
 {
     public string id;
     public string label;
+    public string path;
+    public string url;
+    public string format;
+    public string rotation;
+    public string rotation_label;
     public float[] before_position;
     public float[] after_position;
     public float[] before_rotation;
@@ -441,6 +450,19 @@ public class SimulationVlmResult
     public string status;
     public string error;
     public string message;
+    public string model;
+    public string[] valid_labels;
+    public string[] topple_risk_labels;
+    public string pair_source;
+    public string[] analysis_image_pairs;
+    public string destructive_direction_key;
+    public string destructive_direction;
+    public float destructive_direction_score;
+    public SimulationTransformLog selected_transform_log;
+    public string raw_text;
+    public string[] recognized;
+    public string[] fallen;
+    public string advice;
 }
 
 [Serializable]
@@ -452,7 +474,10 @@ public class SimulationPlaybackResponse : IFurnitureServerRawJsonResponse
     public string status;
     public string message;
     public string error;
+    public string source;
+    public SimulationTransformLog[] transform_logs;
     public string[] frames;
+    public string[] notes;
 
     [NonSerialized] private string rawJson;
     public string RawJson

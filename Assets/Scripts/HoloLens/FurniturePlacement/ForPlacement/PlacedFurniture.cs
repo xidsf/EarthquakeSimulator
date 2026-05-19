@@ -205,7 +205,8 @@ public class PlacedFurniture : MonoBehaviour
 
     public void SetManipulationMode(FurnitureManipulationMode mode)
     {
-        if (disableManipulationWhenFixed && isFixed)
+        bool fixedInteractionOnly = disableManipulationWhenFixed && isFixed && mode != FurnitureManipulationMode.None;
+        if (fixedInteractionOnly)
         {
             mode = FurnitureManipulationMode.None;
         }
@@ -222,8 +223,15 @@ public class PlacedFurniture : MonoBehaviour
             {
                 if (behaviour != null)
                 {
-                    if (behaviour is ObjectManipulator manipulator) manipulator.AllowedManipulations = allowedManipulations;
-                    behaviour.enabled = isMovable;
+                    if (behaviour is ObjectManipulator manipulator)
+                    {
+                        manipulator.AllowedManipulations = allowedManipulations;
+                        behaviour.enabled = isMovable || fixedInteractionOnly;
+                    }
+                    else
+                    {
+                        behaviour.enabled = isMovable;
+                    }
                 }
             }
         }

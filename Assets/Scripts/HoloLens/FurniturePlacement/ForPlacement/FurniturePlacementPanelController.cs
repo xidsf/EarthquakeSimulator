@@ -12,7 +12,7 @@ using UnityEngine.Serialization;
 /// 1. 수동 확정(Confirm) 버튼 제거 및 로직 삭제 (자동 확정 대응)
 /// 2. 동일 가구의 다중 배치 허용 (배치 후 버튼 잠금 해제)
 /// 3. 모든 가구를 배치해야 한다는 강제 조건 삭제 (사용자의 자율성 부여)
-/// 4. 통합 로딩 플레이트(Panel_SystemMessage) 연동 (서버 데이터 수신 시 사용)
+/// 4. UIManager의 중앙 통제 로딩 UI 연동 (서버 데이터 수신 시 사용)
 /// </summary>
 public class FurniturePlacementPanelController : WorkflowPanelControllerBase
 {
@@ -52,10 +52,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     public GameObject userScaleAxisButtonsRoot;
     public PressableButton userCompleteFurniturePlacementButton;
 
-    [Header("System Message UI (로딩창 - 추가됨)")]
-    public GameObject panel_SystemMessage;
-    public TMP_Text text_SystemMessage;
-    private Coroutine loadingCoroutine;
+    // [수정됨] 내부 System Message UI 변수 및 코루틴 삭제 (UIManager에서 중앙 통제)
 
     [Header("Server Furniture List UI")]
     public TMP_Text userSelectedServerFurnitureText;
@@ -157,8 +154,6 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         SubscribeMoveModeControllerEvents();
         RefreshServerFurnitureListView();
         UpdateManipulationModeVisuals();
-
-        if (panel_SystemMessage != null) panel_SystemMessage.SetActive(false);
     }
 
     private void OnDisable()
@@ -168,7 +163,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         UnregisterButtons();
         RestoreToggleButtonMaterials();
         ClearSelectedServerFurniturePreview();
-        StopLoadingAnimation();
+        uiManager?.HideLoading(); // 패널 꺼질 때 안전하게 로딩창 끄기
     }
 
     private void Update()
@@ -335,7 +330,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         if (HasServerFurnitureResponse())
         {
             ClearServerFurnitureRequestLock("server response received");
-            StopLoadingAnimation(); // 데이터 수신 완료 시 로딩창 끄기
+            uiManager?.HideLoading(); // 데이터 수신 완료 시 로딩창 끄기
         }
         RefreshServerFurnitureListView();
     }
@@ -608,7 +603,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     private bool HasServerFurnitureResponse() => serverPlacementPipeline != null && serverPlacementPipeline.LastResult != null;
     private bool HasServerFurnitureRequestTimedOut() => serverFurnitureRequestLocked && serverFurnitureRequestStartedRealtime >= 0 && (Time.realtimeSinceStartup - serverFurnitureRequestStartedRealtime >= serverFurnitureRequestTimeoutSeconds);
     private void BeginServerFurnitureRequestLock() { serverFurnitureRequestLocked = true; serverFurnitureRequestStartedRealtime = Time.realtimeSinceStartup; }
-    private void ClearServerFurnitureRequestLock(string reason) { serverFurnitureRequestLocked = false; serverFurnitureRequestStartedRealtime = -1f; StopLoadingAnimation(); }
+    private void ClearServerFurnitureRequestLock(string reason) { serverFurnitureRequestLocked = false; serverFurnitureRequestStartedRealtime = -1f; uiManager?.HideLoading(); }
     private string BuildServerFurnitureRequestLockStatus() => $"서버에서 가구를 생성 중입니다. ({Mathf.CeilToInt(serverFurnitureRequestTimeoutSeconds - (Time.realtimeSinceStartup - serverFurnitureRequestStartedRealtime))}초 남음)";
 
     private void UpdateSelectedServerFurniturePreview(FurnitureServerResultObject selectedObject)
@@ -654,50 +649,14 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
     private void SetServerFurnitureStatus(string v) { if (userServerFurnitureStatusText != null) userServerFurnitureStatusText.text = v; }
     private static string BuildFurnitureName(FurnitureServerResultObject obj, int index) => (obj == null || string.IsNullOrWhiteSpace(obj.label)) ? $"가구 {index + 1}" : obj.label;
 
-    // --- Loading UI Animation ---
-
-    private void StartLoadingAnimation(string baseText)
-    {
-        StopLoadingAnimation();
-        if (panel_SystemMessage != null) panel_SystemMessage.SetActive(true);
-        loadingCoroutine = StartCoroutine(AnimateLoadingText(baseText));
-    }
-
-    private void StopLoadingAnimation()
-    {
-        if (loadingCoroutine != null)
-        {
-            StopCoroutine(loadingCoroutine);
-            loadingCoroutine = null;
-        }
-        if (panel_SystemMessage != null) panel_SystemMessage.SetActive(false);
-    }
-
-    private IEnumerator AnimateLoadingText(string baseText)
-    {
-        int dotCount = 1;
-        while (true)
-        {
-            if (text_SystemMessage != null)
-            {
-                text_SystemMessage.text = baseText + new string('.', dotCount);
-            }
-
-            dotCount++;
-            if (dotCount > 3) dotCount = 1;
-
-            yield return new WaitForSeconds(1.0f);
-        }
-    }
-
     // --- Click Actions ---
 
     public void OnClickPlaceFurnitureFromServer()
     {
         if (serverPlacementPipeline == null || IsServerFurnitureRequestLocked()) return;
 
-        // 기존 Notification 대신 통합 로딩 플레이트를 띄웁니다.
-        StartLoadingAnimation("인식된 가구 받는중");
+        // [수정됨] 중앙 통제 로딩 UI 호출
+        uiManager?.ShowLoading("인식된 가구 받는중", "가구 모델링은 5분~10분정도 \n소요됩니다.");
 
         serverPlacementPipeline.StartPlacementFromCurrentScanSession();
         if (serverPlacementPipeline.IsRunning) BeginServerFurnitureRequestLock();

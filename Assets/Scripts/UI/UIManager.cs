@@ -88,6 +88,14 @@ public class UIManager : MonoBehaviour
     public GameObject panel_SystemMessage;
     public TMP_Text text_SystemMessage;
 
+    [Header("3-1. 통합 로딩 UI (추가됨)")]
+    [Tooltip("공용으로 사용할 LoadingPlate 오브젝트를 연결해주세요.")]
+    public GameObject panel_LoadingPlate;
+    [Tooltip("로딩 텍스트(Log) 컴포넌트를 연결해주세요.")]
+    public TMP_Text text_LoadingText;
+    [Tooltip("로딩 시 추가로 띄울 도움말 텍스트 컴포넌트입니다.")]
+    public TMP_Text text_LoadingHelpText; // [추가됨] 도움말 텍스트 변수
+
     [Header("4. Notification UI")]
     [Tooltip("알림 UI 루트 GameObject입니다. RectTransform을 가진 UI 오브젝트를 연결합니다.")]
     public GameObject notificationUI;
@@ -110,10 +118,13 @@ public class UIManager : MonoBehaviour
     public WorkflowHelpPanelController workflowHelpPanel;
     public bool autoFindWorkflowHelpPanel = true;
 
-    // 현재 활성화된 메인 패널을 추적합니다. Help 열림 시 비활성화에 사용합니다.
     private GameObject currentMainPanel;
     private RectTransform notificationRectTransform;
     private Coroutine notificationCoroutine;
+
+    // 로딩 전용 제어 변수들
+    private Coroutine loadingCoroutine;
+    private string currentLoadingBaseText;
 
     public GameObject CurrentMainPanel => currentMainPanel;
 
@@ -133,9 +144,14 @@ public class UIManager : MonoBehaviour
         HideWarningMessage();
         InitializeNotificationUI();
         SetNotificationY(notificationHiddenY);
+
         if (notificationUI != null)
         {
             notificationUI.SetActive(false);
+        }
+        if (panel_LoadingPlate != null)
+        {
+            panel_LoadingPlate.SetActive(false); // 시작 시 로딩창 끄기
         }
 
         EnsureWorkflowManagerReference();
@@ -159,9 +175,79 @@ public class UIManager : MonoBehaviour
             return;
         }
 
-        // WorkflowManager 미연결 시 Opening 또는 RoomInfoInput 패널 표시
         ShowMainPanel(panel_Opening != null ? panel_Opening : panel_RoomInfoInput);
     }
+
+    // ==========================================
+    // [추가됨] 공용 로딩 시스템 제어 메서드
+    // ==========================================
+
+    /// <summary>
+    /// 공용 로딩창을 켜고 입력된 문구 뒤에 . -> .. -> ... 애니메이션을 반복합니다.
+    /// 도움말(helpText)을 전달하면 하단에 추가로 출력합니다.
+    /// </summary>
+    public void ShowLoading(string baseText, string helpText = "")
+    {
+        StopLoadingAnimation();
+        currentLoadingBaseText = baseText;
+
+        // [추가됨] 도움말 텍스트 적용 및 활성/비활성 처리
+        if (text_LoadingHelpText != null)
+        {
+            text_LoadingHelpText.text = helpText;
+            text_LoadingHelpText.gameObject.SetActive(!string.IsNullOrEmpty(helpText));
+        }
+
+        if (panel_LoadingPlate != null) panel_LoadingPlate.SetActive(true);
+        loadingCoroutine = StartCoroutine(AnimateLoadingTextRoutine());
+    }
+
+    public void HideLoading()
+    {
+        StopLoadingAnimation();
+        if (panel_LoadingPlate != null) panel_LoadingPlate.SetActive(false);
+    }
+
+    public void UpdateLoadingText(string newBaseText, string newHelpText = "")
+    {
+        currentLoadingBaseText = newBaseText;
+
+        if (text_LoadingHelpText != null && !string.IsNullOrEmpty(newHelpText))
+        {
+            text_LoadingHelpText.text = newHelpText;
+            text_LoadingHelpText.gameObject.SetActive(true);
+        }
+    }
+
+    private void StopLoadingAnimation()
+    {
+        if (loadingCoroutine != null)
+        {
+            StopCoroutine(loadingCoroutine);
+            loadingCoroutine = null;
+        }
+    }
+
+    private IEnumerator AnimateLoadingTextRoutine()
+    {
+        int dotCount = 1;
+        while (true)
+        {
+            if (text_LoadingText != null)
+            {
+                text_LoadingText.text = currentLoadingBaseText + new string('.', dotCount);
+            }
+
+            dotCount++;
+            if (dotCount > 3) dotCount = 1;
+
+            yield return new WaitForSeconds(1.0f);
+        }
+    }
+
+    // ==========================================
+    // 기존 기능 메서드들
+    // ==========================================
 
     public RoomBuildWorkflowManager GetWorkflowManager()
     {
@@ -171,34 +257,16 @@ public class UIManager : MonoBehaviour
 
     private void EnsureWorkflowManagerReference()
     {
-        if (workflowManager != null || !autoFindWorkflowManager)
-        {
-            return;
-        }
-
-        RoomBuildWorkflowManager[] managers =
-            FindObjectsByType<RoomBuildWorkflowManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-
-        if (managers != null && managers.Length > 0)
-        {
-            workflowManager = managers[0];
-        }
+        if (workflowManager != null || !autoFindWorkflowManager) return;
+        RoomBuildWorkflowManager[] managers = FindObjectsByType<RoomBuildWorkflowManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        if (managers != null && managers.Length > 0) workflowManager = managers[0];
     }
 
     private void EnsureWorkflowHelpPanelReference()
     {
-        if (workflowHelpPanel != null || !autoFindWorkflowHelpPanel)
-        {
-            return;
-        }
-
-        WorkflowHelpPanelController[] helpPanels =
-            FindObjectsByType<WorkflowHelpPanelController>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-
-        if (helpPanels != null && helpPanels.Length > 0)
-        {
-            workflowHelpPanel = helpPanels[0];
-        }
+        if (workflowHelpPanel != null || !autoFindWorkflowHelpPanel) return;
+        WorkflowHelpPanelController[] helpPanels = FindObjectsByType<WorkflowHelpPanelController>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        if (helpPanels != null && helpPanels.Length > 0) workflowHelpPanel = helpPanels[0];
     }
 
     [ContextMenu("Reset Workflow State UI Configs From Panel Fields")]
@@ -219,142 +287,76 @@ public class UIManager : MonoBehaviour
         };
     }
 
-    private static WorkflowStateUiConfig CreateConfig(
-        RoomBuildWorkflowManager.WorkflowState state,
-        GameObject panel,
-        params PressableButton[] visibleButtons)
+    private static WorkflowStateUiConfig CreateConfig(RoomBuildWorkflowManager.WorkflowState state, GameObject panel, params PressableButton[] visibleButtons)
     {
-        return new WorkflowStateUiConfig
-        {
-            state = state,
-            mainPanel = panel,
-            visibleButtons = visibleButtons,
-            visibleObjects = null,
-            hideSubPanelsOnEnter = true
-        };
+        return new WorkflowStateUiConfig { state = state, mainPanel = panel, visibleButtons = visibleButtons, visibleObjects = null, hideSubPanelsOnEnter = true };
     }
 
     public void ShowWorkflowState(RoomBuildWorkflowManager.WorkflowState state)
     {
         if (!useWorkflowDrivenPanels) return;
-
         WorkflowStateUiConfig config = GetWorkflowStateUiConfig(state);
-
-        // 1. 메인 패널 전환
         GameObject targetPanel = GetPanelForWorkflowState(state, config);
         ShowMainPanel(targetPanel);
 
-        // 2. MainPlate 활성화 제어
         if (panel_MainPlate != null)
         {
-            // 설정이 있으면 설정값에 따르고, 설정이 없으면 기본적으로 켭니다.
             bool shouldShowMainPlate = (config != null) ? config.showMainPlate : true;
             panel_MainPlate.SetActive(shouldShowMainPlate);
         }
 
-        // 3. 버튼 및 오브젝트 가시성 적용
         ApplyWorkflowStateVisibleObjects(config);
-
-        if (config != null && config.hideSubPanelsOnEnter)
-        {
-            HideAllSubPanels();
-        }
+        if (config != null && config.hideSubPanelsOnEnter) HideAllSubPanels();
 
         EnsureWorkflowHelpPanelReference();
-        if (workflowHelpPanel != null)
-        {
-            workflowHelpPanel.ShowForState(state);
-        }
+        if (workflowHelpPanel != null) workflowHelpPanel.ShowForState(state);
     }
 
     private WorkflowStateUiConfig GetWorkflowStateUiConfig(RoomBuildWorkflowManager.WorkflowState state)
     {
-        if (!useWorkflowStateUiConfigs || workflowStateUiConfigs == null)
-        {
-            return null;
-        }
-
+        if (!useWorkflowStateUiConfigs || workflowStateUiConfigs == null) return null;
         foreach (WorkflowStateUiConfig config in workflowStateUiConfigs)
         {
-            if (config != null && config.state == state)
-            {
-                return config;
-            }
+            if (config != null && config.state == state) return config;
         }
-
         return null;
     }
 
     private GameObject GetPanelForWorkflowState(RoomBuildWorkflowManager.WorkflowState state, WorkflowStateUiConfig config)
     {
-        if (config != null && config.mainPanel != null)
-        {
-            return config.mainPanel;
-        }
-
+        if (config != null && config.mainPanel != null) return config.mainPanel;
         switch (state)
         {
-            case RoomBuildWorkflowManager.WorkflowState.RoomInfoInput:
-                return panel_RoomInfoInput;
-            case RoomBuildWorkflowManager.WorkflowState.RoomBuild:
-                return panel_RoomBuild;
-            case RoomBuildWorkflowManager.WorkflowState.ManualWallGenerate:
-                return panel_ManualWallGenerate;
-            case RoomBuildWorkflowManager.WorkflowState.ManualWallConfirmed:
-                return panel_ManualWallConfirmed;
-            case RoomBuildWorkflowManager.WorkflowState.RoomCapture:
-                return panel_RoomCapture;
-            case RoomBuildWorkflowManager.WorkflowState.FurniturePlacement:
-                return panel_FurniturePlacement;
-            case RoomBuildWorkflowManager.WorkflowState.SimulationProcess:
-                return panel_SimulationProcess;
-            case RoomBuildWorkflowManager.WorkflowState.SimulationSuccess:
-                return panel_SimulationSuccess;
-            case RoomBuildWorkflowManager.WorkflowState.RunSimulation:
-                return panel_RunSimulation;
-            case RoomBuildWorkflowManager.WorkflowState.FurnitureRePlacement:
-                return panel_FurnitureRePlacement != null ? panel_FurnitureRePlacement : panel_FurniturePlacement;
-            default:
-                return panel_RoomInfoInput;
+            case RoomBuildWorkflowManager.WorkflowState.RoomInfoInput: return panel_RoomInfoInput;
+            case RoomBuildWorkflowManager.WorkflowState.RoomBuild: return panel_RoomBuild;
+            case RoomBuildWorkflowManager.WorkflowState.ManualWallGenerate: return panel_ManualWallGenerate;
+            case RoomBuildWorkflowManager.WorkflowState.ManualWallConfirmed: return panel_ManualWallConfirmed;
+            case RoomBuildWorkflowManager.WorkflowState.RoomCapture: return panel_RoomCapture;
+            case RoomBuildWorkflowManager.WorkflowState.FurniturePlacement: return panel_FurniturePlacement;
+            case RoomBuildWorkflowManager.WorkflowState.SimulationProcess: return panel_SimulationProcess;
+            case RoomBuildWorkflowManager.WorkflowState.SimulationSuccess: return panel_SimulationSuccess;
+            case RoomBuildWorkflowManager.WorkflowState.RunSimulation: return panel_RunSimulation;
+            case RoomBuildWorkflowManager.WorkflowState.FurnitureRePlacement: return panel_FurnitureRePlacement != null ? panel_FurnitureRePlacement : panel_FurniturePlacement;
+            default: return panel_RoomInfoInput;
         }
     }
 
     private void ApplyWorkflowStateVisibleObjects(WorkflowStateUiConfig activeConfig)
     {
-        if (!useWorkflowStateUiConfigs || workflowStateUiConfigs == null)
-        {
-            return;
-        }
-
+        if (!useWorkflowStateUiConfigs || workflowStateUiConfigs == null) return;
         foreach (WorkflowStateUiConfig config in workflowStateUiConfigs)
         {
-            if (config == null)
-            {
-                continue;
-            }
-
+            if (config == null) continue;
             bool active = config == activeConfig;
-
             if (config.visibleButtons != null)
             {
                 foreach (PressableButton button in config.visibleButtons)
-                {
-                    if (button != null)
-                    {
-                        button.gameObject.SetActive(active);
-                    }
-                }
+                    if (button != null) button.gameObject.SetActive(active);
             }
-
             if (config.visibleObjects != null)
             {
                 foreach (GameObject visibleObject in config.visibleObjects)
-                {
-                    if (visibleObject != null)
-                    {
-                        visibleObject.SetActive(active);
-                    }
-                }
+                    if (visibleObject != null) visibleObject.SetActive(active);
             }
         }
     }
@@ -362,41 +364,30 @@ public class UIManager : MonoBehaviour
     private bool RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand command)
     {
         RoomBuildWorkflowManager workflow = GetWorkflowManager();
-
         if (workflow == null)
         {
             ShowWarningMessage("WorkflowManager가 연결되어 있지 않습니다.");
             return false;
         }
-
         return workflow.RequestCommand(command);
     }
 
-    public void CompleteRoomInfoInput()
-    {
-        RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteRoomInfoInput);
-    }
+    public void CompleteRoomInfoInput() => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteRoomInfoInput);
 
     public void OpenRoomInfoInputFromOpening()
     {
         EnsureWorkflowManagerReference();
-
         if (workflowManager != null && workflowManager.currentState != RoomBuildWorkflowManager.WorkflowState.RoomInfoInput)
         {
             ShowWarningMessage("현재 상태에서는 RoomInfoInput 패널로 돌아갈 수 없습니다.");
             return;
         }
-
         ShowWorkflowState(RoomBuildWorkflowManager.WorkflowState.RoomInfoInput);
     }
 
     public void UpdateWorkflowStatus(RoomBuildWorkflowManager workflow)
     {
-        if (workflow == null || text_WorkflowStatus == null)
-        {
-            return;
-        }
-
+        if (workflow == null || text_WorkflowStatus == null) return;
         text_WorkflowStatus.text = workflow.BuildWorkflowStatusText();
     }
 
@@ -415,35 +406,21 @@ public class UIManager : MonoBehaviour
         SetMainPanelActive(panel_FurnitureRePlacement, false);
 
         HideAllSubPanels();
-
         currentMainPanel = targetPanel;
-
-        if (targetPanel != null)
-        {
-            targetPanel.SetActive(true);
-        }
+        if (targetPanel != null) targetPanel.SetActive(true);
     }
 
-    // Help 컨트롤러에서 호출합니다. 현재 메인 패널을 켜거나 끄는 인터페이스입니다.
     public void SetCurrentMainPanelInteractable(bool interactable)
     {
-        if (currentMainPanel != null)
-        {
-            currentMainPanel.SetActive(interactable);
-        }
+        if (currentMainPanel != null) currentMainPanel.SetActive(interactable);
     }
 
     private static void SetMainPanelActive(GameObject panel, bool active)
     {
-        if (panel != null)
-        {
-            panel.SetActive(active);
-        }
+        if (panel != null) panel.SetActive(active);
     }
 
-    public void HideAllSubPanels()
-    {
-    }
+    public void HideAllSubPanels() { }
 
     public void ShowWarningMessage(string message, float duration = 2.0f)
     {
@@ -458,30 +435,15 @@ public class UIManager : MonoBehaviour
 
     public void HideWarningMessage()
     {
-        if (panel_SystemMessage != null)
-        {
-            panel_SystemMessage.SetActive(false);
-        }
+        if (panel_SystemMessage != null) panel_SystemMessage.SetActive(false);
     }
 
     public void ShowNotification(string message)
     {
         InitializeNotificationUI();
-
-        if (notificationUI == null || notificationRectTransform == null)
-        {
-            return;
-        }
-
-        if (text_Notification != null)
-        {
-            text_Notification.text = message;
-        }
-
-        if (notificationCoroutine != null)
-        {
-            StopCoroutine(notificationCoroutine);
-        }
+        if (notificationUI == null || notificationRectTransform == null) return;
+        if (text_Notification != null) text_Notification.text = message;
+        if (notificationCoroutine != null) StopCoroutine(notificationCoroutine);
 
         SetNotificationY(notificationHiddenY);
         notificationUI.SetActive(true);
@@ -491,37 +453,20 @@ public class UIManager : MonoBehaviour
     public void HideNotification()
     {
         InitializeNotificationUI();
-
         if (notificationCoroutine != null)
         {
             StopCoroutine(notificationCoroutine);
             notificationCoroutine = null;
         }
-
         SetNotificationY(notificationHiddenY);
-
-        if (notificationUI != null)
-        {
-            notificationUI.SetActive(false);
-        }
+        if (notificationUI != null) notificationUI.SetActive(false);
     }
 
     private void InitializeNotificationUI()
     {
-        if (notificationUI == null)
-        {
-            return;
-        }
-
-        if (notificationRectTransform == null)
-        {
-            notificationRectTransform = notificationUI.GetComponent<RectTransform>();
-        }
-
-        if (text_Notification == null)
-        {
-            text_Notification = notificationUI.GetComponentInChildren<TMP_Text>(true);
-        }
+        if (notificationUI == null) return;
+        if (notificationRectTransform == null) notificationRectTransform = notificationUI.GetComponent<RectTransform>();
+        if (text_Notification == null) text_Notification = notificationUI.GetComponentInChildren<TMP_Text>(true);
     }
 
     private IEnumerator ShowNotificationRoutine()
@@ -529,22 +474,13 @@ public class UIManager : MonoBehaviour
         yield return SlideNotificationToY(notificationVisibleY);
         yield return new WaitForSecondsRealtime(Mathf.Max(0.0f, notificationVisibleSeconds));
         yield return SlideNotificationToY(notificationHiddenY);
-
-        if (notificationUI != null)
-        {
-            notificationUI.SetActive(false);
-        }
-
+        if (notificationUI != null) notificationUI.SetActive(false);
         notificationCoroutine = null;
     }
 
     private IEnumerator SlideNotificationToY(float targetY)
     {
-        if (notificationRectTransform == null)
-        {
-            yield break;
-        }
-
+        if (notificationRectTransform == null) yield break;
         Vector2 start = notificationRectTransform.anchoredPosition;
         Vector2 target = new Vector2(start.x, targetY);
         float duration = Mathf.Max(0.01f, notificationSlideSeconds);
@@ -564,11 +500,7 @@ public class UIManager : MonoBehaviour
 
     private void SetNotificationY(float y)
     {
-        if (notificationRectTransform == null)
-        {
-            return;
-        }
-
+        if (notificationRectTransform == null) return;
         Vector2 position = notificationRectTransform.anchoredPosition;
         position.y = y;
         notificationRectTransform.anchoredPosition = position;

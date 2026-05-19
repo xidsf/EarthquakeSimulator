@@ -14,8 +14,6 @@ public class ManualWallConfirmedPanelController : WorkflowPanelControllerBase
         Fail
     }
 
-    // [수정됨] 내부 System Message 변수들 제거 (UIManager에서 중앙 통제)
-
     [Header("User Buttons (현재 오브젝트 하위)")]
     [Tooltip("수동 벽 생성 단계로 돌아가는 버튼입니다.")]
     public PressableButton btn_EditWallAgain;
@@ -58,7 +56,6 @@ public class ManualWallConfirmedPanelController : WorkflowPanelControllerBase
     private void OnDisable()
     {
         UnregisterButtons();
-        uiManager?.HideLoading(); // [추가됨] 패널이 꺼질 때 안전하게 로딩창 끄기
     }
 
     // ==========================================
@@ -124,7 +121,7 @@ public class ManualWallConfirmedPanelController : WorkflowPanelControllerBase
     }
 
     // ==========================================
-    // [수정됨] 검사 상태 변경 로직 (UIManager 연동)
+    // [수정됨] 검사 상태 변경 로직 (로딩플레이트 출력 삭제)
     // ==========================================
 
     public void SetValidationState(ValidationState state)
@@ -135,19 +132,19 @@ public class ManualWallConfirmedPanelController : WorkflowPanelControllerBase
         {
             case ValidationState.Checking:
                 if (btn_ProceedNext != null) btn_ProceedNext.enabled = false;
-                uiManager?.ShowLoading("방이 닫혀있는지 검사하는 중"); // 중앙 통제 로딩창 호출
+                // 매우 빠르게 완료되므로 ShowLoading 코드를 호출하지 않고 즉시 검사 진행
                 break;
 
             case ValidationState.Success:
-                uiManager?.HideLoading(); // 로딩창 끄기
-                uiManager?.ShowNotification("방 생성 성공"); // 알림으로 대체
+                // HideLoading 코드 삭제
+                uiManager?.ShowNotification("방 생성 성공");
                 RefreshProceedButtonState();
                 break;
 
             case ValidationState.Fail:
-                uiManager?.HideLoading(); // 로딩창 끄기
+                // HideLoading 코드 삭제
                 if (btn_ProceedNext != null) btn_ProceedNext.enabled = false;
-                uiManager?.ShowWarningMessage("방 생성 실패"); // 경고 메시지로 대체
+                uiManager?.ShowWarningMessage("방 생성 실패");
                 break;
         }
 

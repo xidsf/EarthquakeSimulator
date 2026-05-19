@@ -14,6 +14,7 @@ public class SimulationProcessManager : MonoBehaviour
     public FurnitureServerPlacementPipeline serverPlacementPipeline;
     public FurnitureCaptureManager furnitureCaptureManager;
     public FurnitureServerApiClient apiClient;
+    public ConfirmRoomManager confirmRoomManager;
     public RoomBuildWorkflowManager workflowManager;
     public UIManager uiManager;
     public bool autoFindReferences = true;
@@ -277,7 +278,43 @@ public class SimulationProcessManager : MonoBehaviour
             objects = objects.ToArray()
         };
 
+        if (TryGetEntranceWorldPosition(out Vector3 entrancePosition))
+        {
+            request.entrance_position = ToArray(entrancePosition);
+            request.entrance_radius = confirmRoomManager != null && confirmRoomManager.entranceRadiusMeters > 0f
+                ? confirmRoomManager.entranceRadiusMeters
+                : 1.5f;
+        }
+        else
+        {
+            Debug.LogWarning("[SimulationProcessManager] Placed scene has no entrance_position. ConfirmRoomManager entrance is missing or not assigned.");
+        }
+
         return JsonUtility.ToJson(request);
+    }
+
+    private bool TryGetEntranceWorldPosition(out Vector3 worldPosition)
+    {
+        worldPosition = Vector3.zero;
+        if (confirmRoomManager == null || !confirmRoomManager.hasEntrance)
+        {
+            return false;
+        }
+
+        Transform markerRoot = confirmRoomManager.entranceMarkerRoot;
+        if (markerRoot != null && markerRoot.childCount > 0)
+        {
+            Transform marker = markerRoot.Find("ConfirmedRoom_EntrancePoint");
+            if (marker == null) marker = markerRoot.GetChild(0);
+            if (marker != null)
+            {
+                worldPosition = marker.position;
+                return true;
+            }
+        }
+
+        worldPosition = confirmRoomManager.entrancePointWorld;
+        return worldPosition != Vector3.zero;
     }
 
     private string BuildSimulationRequestJson()
@@ -380,6 +417,8 @@ public class SimulationProcessManager : MonoBehaviour
         if (furnitureCaptureManager == null) furnitureCaptureManager = FindFirst<FurnitureCaptureManager>();
         if (apiClient == null) apiClient = ResolveApiClient();
         if (workflowManager == null) workflowManager = FindFirst<RoomBuildWorkflowManager>();
+        if (confirmRoomManager == null && workflowManager != null) confirmRoomManager = workflowManager.confirmRoomManager;
+        if (confirmRoomManager == null) confirmRoomManager = FindFirst<ConfirmRoomManager>();
         if (uiManager == null) uiManager = FindFirst<UIManager>();
     }
 

@@ -49,6 +49,17 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
     [Min(0.05f)] public float maxCollisionResolutionStepMeters = 0.35f;
     [Min(0.05f)] public float nearbyInsideSearchStepMeters = 0.05f;
     [Min(0.05f)] public float nearbyInsideSearchMaxRadiusMeters = 0.8f;
+    [Min(1)] public int scaleGrowthFitIterations = 10;
+    [Min(1)] public int scaleGrowthBinarySearchIterations = 8;
+    [Min(0.0f)] public float scaleGrowthMinimumProgress = 0.02f;
+    [Tooltip("스케일 증가 후 벽/천장/다른 가구와 남겨둘 최소 여유 간격입니다. Unity 기본 contact offset과 같은 1cm를 기본값으로 사용합니다.")]
+    [Min(0.0f)] public float scaleGrowthClearanceMeters = 0.01f;
+    [Tooltip("크기 증가 중 벽 관통으로 판단하지 않을 아주 작은 수치 오차 허용치입니다. 이동/회전용 얕은 벽 접촉 허용치와 분리됩니다.")]
+    [Min(0.0f)] public float scaleGrowthWallPenetrationToleranceMeters = 0.002f;
+    [Tooltip("한 번의 크기 증가 입력에서 자동 위치 보정이 움직일 수 있는 최대 거리입니다. 이 값을 넘으면 크기 증가량을 줄여 과도한 순간 이동을 막습니다.")]
+    [Min(0.0f)] public float scaleGrowthMaxAutoMoveMeters = 0.1f;
+    [Tooltip("가구 크기 증가 후보, 자동 이동량, 실패 원인을 콘솔에 출력합니다.")]
+    public bool logScaleGrowthDiagnostics = true;
 
     [Tooltip("踰쎌쑝濡??앷퉴吏 ?뚯뼱 ?댁쭩 移⑦닾?덉쓣 ?? 留덉?留??좏슚 ?꾩튂濡??듭㎏ ?먮났?섎뒗 ????묒큺??踰쎌뿉???댁쭩 ?⑥뼱吏?吏?먯쑝濡?蹂댁젙???ъ슜?먭? ?뚯뼱???꾩튂瑜??좎??⑸땲??")]
     public bool releaseFromWallInsteadOfRevert = true;
@@ -158,6 +169,25 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
         if (resolvePoseOnValidationFailure && TryResolveFurniturePose(furniture, out reason)) return true;
 
         return false;
+    }
+
+    public bool NormalizeFurniturePoseForMoveOrRotate(PlacedFurniture furniture)
+    {
+        if (furniture == null || !initialized) return false;
+
+        if (!furniture.isFloorContactless)
+        {
+            if (keepFurnitureUpright) ForceUpright(furniture.transform);
+            if (snapFurnitureToFloor) SnapFurnitureToFloor(furniture);
+        }
+        else
+        {
+            Vector3 euler = furniture.transform.eulerAngles;
+            furniture.transform.rotation = Quaternion.Euler(0f, euler.y, 0f);
+        }
+
+        Physics.SyncTransforms();
+        return true;
     }
 
     private bool IsFurniturePoseValid(PlacedFurniture furniture, out string reason)
@@ -720,6 +750,11 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
     // (?ㅼ“媛?convex-hull??媛숈? ??곸뿉 ?우븘??skin/嫄곕━媛 collider ?섎쭔??以묐났 ?⑹궛?섏? ?딆쓬)
     private Vector3 ComputeSeparationMove(PlacedFurniture furniture, Collider targetCollider)
     {
+        return ComputeSeparationMove(furniture, targetCollider, 0.0f);
+    }
+
+    private Vector3 ComputeSeparationMove(PlacedFurniture furniture, Collider targetCollider, float allowedDepth)
+    {
         Collider[] colliders = furniture.GetActivePlacementColliders();
         if (colliders == null || targetCollider == null || !targetCollider.enabled) return Vector3.zero;
 
@@ -741,8 +776,9 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
             }
         }
 
-        if (worstDistance <= 0f) return Vector3.zero;
-        return worstDirection * (worstDistance + collisionResolutionSkinMeters);
+        float distanceToResolve = worstDistance - Mathf.Max(0.0f, allowedDepth);
+        if (distanceToResolve <= 0f) return Vector3.zero;
+        return worstDirection * (distanceToResolve + collisionResolutionSkinMeters);
     }
 
     public bool IsInsideRoom(Vector3 point)
@@ -1067,6 +1103,753 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
     public bool OverlapsOtherFurniture(PlacedFurniture furniture)
     {
         return IntersectsAnyOtherFurniture(furniture, out _);
+    }
+
+    public bool TryApplyFurnitureScaleGrowth(PlacedFurniture furniture, Vector3 targetLocalScale, out string reason)
+    {
+        reason = string.Empty;
+        if (furniture == null) { reason = "Furniture is null."; return false; }
+        if (!initialized) { reason = "Room geometry is not initialized."; return false; }
+
+        Transform t = furniture.transform;
+        Vector3 originalPosition = t.position;
+        Quaternion originalRotation = t.rotation;
+        Vector3 originalScale = t.localScale;
+
+        if (!HasScaleGrowth(originalScale, targetLocalScale))
+        {
+            t.localScale = targetLocalScale;
+            Physics.SyncTransforms();
+            return IsFurnitureScalePoseValid(furniture, BuildScaleGrowthContext(default, originalScale, targetLocalScale, furniture, CaptureWallPenetrationDepths(furniture)), out reason);
+        }
+
+        if (!TryGetFurnitureBounds(furniture, out Bounds originalBounds))
+        {
+            reason = "Furniture has no valid collider or renderer bounds.";
+            return false;
+        }
+
+        Dictionary<Collider, float> originalWallPenetrationDepths = CaptureWallPenetrationDepths(furniture);
+        ScaleGrowthContext context = BuildScaleGrowthContext(originalBounds, originalScale, targetLocalScale, furniture, originalWallPenetrationDepths);
+        LogScaleGrowth(
+            $"START furniture:{furniture.DisplayName} position:{FormatVector(originalPosition)} " +
+            $"scale:{FormatVector(originalScale)} -> {FormatVector(targetLocalScale)} " +
+            $"growthAxes:{FormatVector(context.GrowthAxes)} floorAnchoredY:{context.FloorAnchoredY} " +
+            $"bounds:{FormatBounds(originalBounds)}",
+            furniture);
+
+        if (TryApplyScaleGrowthCandidate(furniture, originalPosition, originalRotation, targetLocalScale, context, out reason))
+        {
+            LogScaleGrowth(
+                $"APPLIED full target furniture:{furniture.DisplayName} finalPosition:{FormatVector(t.position)} " +
+                $"move:{FormatVector(t.position - originalPosition)} finalScale:{FormatVector(t.localScale)}",
+                furniture);
+            return true;
+        }
+
+        LogScaleGrowth($"FULL target rejected furniture:{furniture.DisplayName} reason:{reason}", furniture);
+
+        Vector3 bestPosition = originalPosition;
+        Quaternion bestRotation = originalRotation;
+        Vector3 bestScale = originalScale;
+        float low = 0f;
+        float high = 1f;
+        string lastReason = reason;
+
+        for (int i = 0; i < scaleGrowthBinarySearchIterations; i++)
+        {
+            float mid = (low + high) * 0.5f;
+            Vector3 candidateScale = Vector3.LerpUnclamped(originalScale, targetLocalScale, mid);
+            ScaleGrowthContext candidateContext = BuildScaleGrowthContext(originalBounds, originalScale, candidateScale, furniture, originalWallPenetrationDepths);
+
+            if (TryApplyScaleGrowthCandidate(furniture, originalPosition, originalRotation, candidateScale, candidateContext, out lastReason))
+            {
+                LogScaleGrowth(
+                    $"BINARY accepted t:{mid:0.###} furniture:{furniture.DisplayName} " +
+                    $"candidateScale:{FormatVector(candidateScale)} candidatePosition:{FormatVector(t.position)} " +
+                    $"move:{FormatVector(t.position - originalPosition)}",
+                    furniture);
+                low = mid;
+                bestPosition = t.position;
+                bestRotation = t.rotation;
+                bestScale = t.localScale;
+            }
+            else
+            {
+                LogScaleGrowth(
+                    $"BINARY rejected t:{mid:0.###} furniture:{furniture.DisplayName} " +
+                    $"candidateScale:{FormatVector(candidateScale)} reason:{lastReason}",
+                    furniture);
+                high = mid;
+            }
+        }
+
+        if (low >= Mathf.Max(0.0f, scaleGrowthMinimumProgress))
+        {
+            t.SetPositionAndRotation(bestPosition, bestRotation);
+            t.localScale = bestScale;
+            Physics.SyncTransforms();
+            reason = string.Empty;
+            LogScaleGrowth(
+                $"APPLIED partial t:{low:0.###} furniture:{furniture.DisplayName} finalPosition:{FormatVector(bestPosition)} " +
+                $"move:{FormatVector(bestPosition - originalPosition)} finalScale:{FormatVector(bestScale)}",
+                furniture);
+            return true;
+        }
+
+        t.SetPositionAndRotation(originalPosition, originalRotation);
+        t.localScale = originalScale;
+        Physics.SyncTransforms();
+        reason = string.IsNullOrEmpty(lastReason) ? "Furniture cannot grow in this position." : lastReason;
+        LogScaleGrowth(
+            $"BLOCKED furniture:{furniture.DisplayName} restoredPosition:{FormatVector(originalPosition)} " +
+            $"restoredScale:{FormatVector(originalScale)} reason:{reason}",
+            furniture,
+            warning: true);
+        return false;
+    }
+
+    private bool TryApplyScaleGrowthCandidate(
+        PlacedFurniture furniture,
+        Vector3 candidatePosition,
+        Quaternion candidateRotation,
+        Vector3 candidateScale,
+        ScaleGrowthContext context,
+        out string reason)
+    {
+        Transform t = furniture.transform;
+        t.SetPositionAndRotation(candidatePosition, candidateRotation);
+        t.localScale = candidateScale;
+        Physics.SyncTransforms();
+
+        Vector3 afterScalePosition = t.position;
+        NormalizeFurniturePoseForMoveOrRotate(furniture);
+        Vector3 normalizeMove = t.position - afterScalePosition;
+        Vector3 penetrationMove = ResolveScaleGrowthPenetrations(furniture, context);
+        Vector3 clearanceMove = ResolveScaleGrowthClearance(furniture, context);
+        Physics.SyncTransforms();
+
+        LogScaleGrowth(
+            $"CANDIDATE furniture:{furniture.DisplayName} scale:{FormatVector(candidateScale)} " +
+            $"normalizeMove:{FormatVector(normalizeMove)} penetrationMove:{FormatVector(penetrationMove)} " +
+            $"clearanceMove:{FormatVector(clearanceMove)} totalMove:{FormatVector(t.position - candidatePosition)} " +
+            $"position:{FormatVector(candidatePosition)} -> {FormatVector(t.position)}",
+            furniture);
+
+        if (!IsScaleGrowthAutoMoveWithinLimit(candidatePosition, t.position, context))
+        {
+            Vector3 delta = t.position - candidatePosition;
+            reason = $"Furniture scale growth requires too much automatic movement. move:{FormatVector(delta)} max:{scaleGrowthMaxAutoMoveMeters:0.###}m";
+            LogScaleGrowth($"CANDIDATE rejected by auto-move limit furniture:{furniture.DisplayName} {reason}", furniture);
+            return false;
+        }
+
+        bool valid = IsFurnitureScalePoseValid(furniture, context, out reason);
+        if (!valid)
+        {
+            LogScaleGrowth($"CANDIDATE invalid furniture:{furniture.DisplayName} reason:{reason}", furniture);
+        }
+
+        return valid;
+    }
+
+    private Vector3 ResolveScaleGrowthPenetrations(PlacedFurniture furniture, ScaleGrowthContext context)
+    {
+        Vector3 totalMove = Vector3.zero;
+
+        for (int i = 0; i < scaleGrowthFitIterations; i++)
+        {
+            Vector3 bestMove = Vector3.zero;
+            float bestSqr = 0f;
+            string bestSource = string.Empty;
+
+            RegisterScaleSeparationMove(furniture, floorCollider, ref bestMove, ref bestSqr, ref bestSource);
+            RegisterScaleSeparationMove(furniture, ceilingCollider, ref bestMove, ref bestSqr, ref bestSource);
+
+            foreach (BoxCollider wallCollider in wallColliders)
+            {
+                RegisterScaleWallSeparationMove(furniture, wallCollider, context, ref bestMove, ref bestSqr, ref bestSource);
+            }
+
+            foreach (PlacedFurniture other in placedFurnitures)
+            {
+                if (other == null || other == furniture) continue;
+                Collider[] otherColliders = other.GetActivePlacementColliders();
+                if (otherColliders == null) continue;
+
+                foreach (Collider otherCollider in otherColliders)
+                {
+                    RegisterScaleSeparationMove(furniture, otherCollider, ref bestMove, ref bestSqr, ref bestSource);
+                }
+            }
+
+            if (bestMove.sqrMagnitude <= 0.000001f) break;
+
+            float maxStep = Mathf.Max(0.01f, maxCollisionResolutionStepMeters);
+            if (bestMove.magnitude > maxStep) bestMove = bestMove.normalized * maxStep;
+
+            furniture.transform.position += bestMove;
+            totalMove += bestMove;
+            LogScaleGrowth($"PENETRATION iteration:{i} source:{bestSource} move:{FormatVector(bestMove)} position:{FormatVector(furniture.transform.position)}", furniture);
+            Physics.SyncTransforms();
+        }
+
+        return totalMove;
+    }
+
+    private void RegisterScaleSeparationMove(PlacedFurniture furniture, Collider targetCollider, ref Vector3 bestMove, ref float bestSqr, ref string bestSource)
+    {
+        if (targetCollider == null || !targetCollider.enabled) return;
+        Vector3 move = ComputeSeparationMove(furniture, targetCollider);
+        if (move.sqrMagnitude > bestSqr)
+        {
+            bestSqr = move.sqrMagnitude;
+            bestMove = move;
+            bestSource = targetCollider.name;
+        }
+    }
+
+    private void RegisterScaleWallSeparationMove(
+        PlacedFurniture furniture,
+        Collider wallCollider,
+        ScaleGrowthContext context,
+        ref Vector3 bestMove,
+        ref float bestSqr,
+        ref string bestSource)
+    {
+        if (wallCollider == null || !wallCollider.enabled) return;
+
+        float originalPenetrationDepth = context.GetOriginalWallPenetration(wallCollider);
+        float allowedPenetrationDepth = originalPenetrationDepth + Mathf.Max(0.0f, scaleGrowthWallPenetrationToleranceMeters);
+        Vector3 move = ComputeSeparationMove(furniture, wallCollider, allowedPenetrationDepth);
+        if (move.sqrMagnitude > bestSqr)
+        {
+            bestSqr = move.sqrMagnitude;
+            bestMove = move;
+            bestSource = wallCollider.name;
+        }
+    }
+
+    private Vector3 ResolveScaleGrowthClearance(PlacedFurniture furniture, ScaleGrowthContext context)
+    {
+        if (scaleGrowthClearanceMeters <= 0f || !context.HasAnyGrowth) return Vector3.zero;
+
+        Vector3 totalMove = Vector3.zero;
+        for (int i = 0; i < scaleGrowthFitIterations; i++)
+        {
+            if (!TryGetFurnitureBounds(furniture, out Bounds bounds)) break;
+
+            Vector3 move = Vector3.zero;
+
+            foreach (BoxCollider wallCollider in wallColliders)
+            {
+                if (wallCollider == null || !wallCollider.enabled) continue;
+                Vector3 wallMove = ComputeScaleWallClearanceMove(bounds, wallCollider, context, out string wallDetail);
+                if (wallMove.sqrMagnitude > 0.000001f)
+                {
+                    LogScaleGrowth($"CLEARANCE wall iteration:{i} wall:{wallCollider.name} move:{FormatVector(wallMove)} {wallDetail}", furniture);
+                }
+                move += wallMove;
+            }
+
+            foreach (PlacedFurniture other in placedFurnitures)
+            {
+                if (other == null || other == furniture) continue;
+                if (!TryGetFurnitureBounds(other, out Bounds otherBounds)) continue;
+                Vector3 otherMove = ComputeScaleClearanceMove(bounds, otherBounds, context, out string otherDetail);
+                if (otherMove.sqrMagnitude > 0.000001f)
+                {
+                    LogScaleGrowth($"CLEARANCE furniture iteration:{i} other:{other.DisplayName} move:{FormatVector(otherMove)} {otherDetail}", furniture);
+                }
+                move += otherMove;
+            }
+
+            if (ceilingCollider != null && context.GrowsY)
+            {
+                Vector3 ceilingMove = ComputeScaleCeilingClearanceMove(bounds, ceilingCollider.bounds, context, out string ceilingDetail);
+                if (ceilingMove.sqrMagnitude > 0.000001f)
+                {
+                    LogScaleGrowth($"CLEARANCE ceiling iteration:{i} move:{FormatVector(ceilingMove)} {ceilingDetail}", furniture);
+                }
+                move += ceilingMove;
+            }
+
+            if (context.FloorAnchoredY)
+            {
+                move.y = 0f;
+            }
+
+            float maxStep = Mathf.Max(0.01f, maxCollisionResolutionStepMeters);
+            if (move.magnitude > maxStep) move = move.normalized * maxStep;
+            if (move.sqrMagnitude <= 0.000001f) break;
+
+            furniture.transform.position += move;
+            if (context.FloorAnchoredY) SnapFurnitureToFloor(furniture);
+            totalMove += move;
+            LogScaleGrowth($"CLEARANCE iteration:{i} appliedMove:{FormatVector(move)} position:{FormatVector(furniture.transform.position)}", furniture);
+            Physics.SyncTransforms();
+        }
+
+        return totalMove;
+    }
+
+    private bool IsFurnitureScalePoseValid(PlacedFurniture furniture, ScaleGrowthContext context, out string reason)
+    {
+        reason = string.Empty;
+
+        if (!TryGetFurnitureBounds(furniture, out Bounds bounds))
+        {
+            reason = "Furniture has no valid collider or renderer bounds.";
+            return false;
+        }
+
+        if (floorCollider != null && bounds.min.y < floorCollider.bounds.max.y - Mathf.Max(0.0f, placementContactTolerance))
+        {
+            reason = "Furniture intersects the floor.";
+            return false;
+        }
+
+        if (context.GrowsY ? ExceedsCeilingForScale(bounds, context) : ExceedsCeiling(bounds))
+        {
+            reason = "Furniture is higher than the ceiling.";
+            return false;
+        }
+
+        if (IntersectsAnyWallForScale(furniture, bounds, context, out Collider wall, out string wallReason))
+        {
+            reason = $"Furniture intersects wall: {wall.name}. {wallReason}";
+            return false;
+        }
+
+        if (IntersectsAnyOtherFurnitureForScale(furniture, bounds, context, out PlacedFurniture other, out string furnitureReason))
+        {
+            reason = $"Furniture intersects other furniture: {other.DisplayName}. {furnitureReason}";
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool IntersectsAnyWallForScale(PlacedFurniture furniture, Bounds furnitureBounds, ScaleGrowthContext context, out Collider hitWall, out string detail)
+    {
+        hitWall = null;
+        detail = string.Empty;
+
+        foreach (BoxCollider wallCollider in wallColliders)
+        {
+            if (wallCollider == null || !wallCollider.enabled) continue;
+
+            float penetrationDepth = ComputeMaxPenetrationDepth(furniture, wallCollider);
+            float originalPenetrationDepth = context.GetOriginalWallPenetration(wallCollider);
+            float allowedPenetrationDepth = originalPenetrationDepth + Mathf.Max(0.0f, scaleGrowthWallPenetrationToleranceMeters);
+            if (penetrationDepth > allowedPenetrationDepth)
+            {
+                hitWall = wallCollider;
+                detail = $"penetration:{penetrationDepth:0.####}m original:{originalPenetrationDepth:0.####}m allowed:{allowedPenetrationDepth:0.####}m";
+                return true;
+            }
+
+            if (HasScaleWallClearanceViolation(furnitureBounds, wallCollider, context, out detail))
+            {
+                hitWall = wallCollider;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool IntersectsAnyOtherFurnitureForScale(PlacedFurniture furniture, Bounds furnitureBounds, ScaleGrowthContext context, out PlacedFurniture hitFurniture, out string detail)
+    {
+        hitFurniture = null;
+        detail = string.Empty;
+
+        foreach (PlacedFurniture other in placedFurnitures)
+        {
+            if (other == null || other == furniture) continue;
+            if (!TryGetFurnitureBounds(other, out Bounds otherBounds)) continue;
+
+            if (furnitureBounds.Intersects(otherBounds) && ComputeAnyPenetration(furniture, other))
+            {
+                hitFurniture = other;
+                detail = $"bounds overlap and Physics.ComputePenetration returned true. selfBounds:{FormatBounds(furnitureBounds)} otherBounds:{FormatBounds(otherBounds)}";
+                return true;
+            }
+
+            if (HasScaleClearanceViolation(furnitureBounds, otherBounds, context, out detail))
+            {
+                hitFurniture = other;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool ExceedsCeilingForScale(Bounds bounds, ScaleGrowthContext context)
+    {
+        if (!validateCeilingHeight || ceilingCollider == null) return false;
+
+        float originalGap = Mathf.Max(0f, ceilingCollider.bounds.min.y - context.OriginalBounds.max.y);
+        float requiredGap = GetRequiredScaleClearance(originalGap, scaleGrowthClearanceMeters);
+        return bounds.max.y > ceilingCollider.bounds.min.y - requiredGap;
+    }
+
+    private Vector3 ComputeScaleCeilingClearanceMove(Bounds furnitureBounds, Bounds ceilingBounds, ScaleGrowthContext context, out string detail)
+    {
+        detail = string.Empty;
+        if (!validateCeilingHeight || !context.GrowsY) return Vector3.zero;
+        float originalGap = Mathf.Max(0f, ceilingBounds.min.y - context.OriginalBounds.max.y);
+        float requiredGap = GetRequiredScaleClearance(originalGap, scaleGrowthClearanceMeters);
+        float gap = ceilingBounds.min.y - furnitureBounds.max.y;
+        detail = $"gap:{gap:0.####}m originalGap:{originalGap:0.####}m requiredGap:{requiredGap:0.####}m";
+        if (gap >= requiredGap) return Vector3.zero;
+
+        return Vector3.down * (requiredGap - gap);
+    }
+
+    private Vector3 ComputeScaleWallClearanceMove(Bounds furnitureBounds, BoxCollider wallCollider, ScaleGrowthContext context, out string detail)
+    {
+        detail = string.Empty;
+        if (wallCollider == null || !wallCollider.enabled) return Vector3.zero;
+        if (!TryGetInwardWallPlane(wallCollider, furnitureBounds.center, out Vector3 planePoint, out Vector3 inwardNormal)) return Vector3.zero;
+
+        float currentGap = ComputeBoundsPlaneGap(furnitureBounds, planePoint, inwardNormal);
+        float originalGap = ComputeBoundsPlaneGap(context.OriginalBounds, planePoint, inwardNormal);
+        float tolerance = GetScaleWallClearanceTolerance();
+        if (!ShouldEnforceScaleWallClearance(originalGap, tolerance))
+        {
+            detail = $"normal:{FormatVector(inwardNormal)} currentGap:{currentGap:0.####}m originalGap:{originalGap:0.####}m contactBaseline:True";
+            return Vector3.zero;
+        }
+
+        bool reduced = IsWallGapReducedByScale(currentGap, originalGap, tolerance);
+
+        float requiredGap = GetRequiredScaleWallClearance(originalGap, scaleGrowthClearanceMeters);
+        float deficit = requiredGap - currentGap;
+        detail = $"normal:{FormatVector(inwardNormal)} currentGap:{currentGap:0.####}m originalGap:{originalGap:0.####}m requiredGap:{requiredGap:0.####}m deficit:{deficit:0.####}m reduced:{reduced}";
+        if (!reduced) return Vector3.zero;
+
+        return deficit > tolerance ? inwardNormal * deficit : Vector3.zero;
+    }
+
+    private bool HasScaleWallClearanceViolation(Bounds furnitureBounds, BoxCollider wallCollider, ScaleGrowthContext context, out string detail)
+    {
+        detail = string.Empty;
+        if (scaleGrowthClearanceMeters <= 0f || !context.HasAnyGrowth) return false;
+        if (wallCollider == null || !wallCollider.enabled) return false;
+        if (!TryGetInwardWallPlane(wallCollider, furnitureBounds.center, out Vector3 planePoint, out Vector3 inwardNormal)) return false;
+
+        float currentGap = ComputeBoundsPlaneGap(furnitureBounds, planePoint, inwardNormal);
+        float originalGap = ComputeBoundsPlaneGap(context.OriginalBounds, planePoint, inwardNormal);
+        float tolerance = GetScaleWallClearanceTolerance();
+        if (!ShouldEnforceScaleWallClearance(originalGap, tolerance)) return false;
+        if (!IsWallGapReducedByScale(currentGap, originalGap, tolerance)) return false;
+
+        float requiredGap = GetRequiredScaleWallClearance(originalGap, scaleGrowthClearanceMeters);
+        detail = $"clearance currentGap:{currentGap:0.####}m originalGap:{originalGap:0.####}m requiredGap:{requiredGap:0.####}m normal:{FormatVector(inwardNormal)}";
+        return currentGap < requiredGap - tolerance;
+    }
+
+    private bool TryGetInwardWallPlane(BoxCollider wallCollider, Vector3 referencePoint, out Vector3 planePoint, out Vector3 inwardNormal)
+    {
+        planePoint = Vector3.zero;
+        inwardNormal = Vector3.zero;
+
+        if (wallCollider == null) return false;
+
+        Vector3 extents = wallCollider.size * 0.5f;
+        Vector3 localAxis;
+        float localExtent;
+
+        if (extents.x <= extents.z)
+        {
+            localAxis = Vector3.right;
+            localExtent = extents.x;
+        }
+        else
+        {
+            localAxis = Vector3.forward;
+            localExtent = extents.z;
+        }
+
+        Vector3 worldAxis = wallCollider.transform.TransformDirection(localAxis).normalized;
+        Vector3 wallCenter = wallCollider.transform.TransformPoint(wallCollider.center);
+        Vector3 positivePlanePoint = wallCenter + worldAxis * localExtent;
+        Vector3 negativePlanePoint = wallCenter - worldAxis * localExtent;
+
+        float positiveFacesRoom = Vector3.Dot(worldAxis, roomBounds.center - positivePlanePoint);
+        float negativeFacesRoom = Vector3.Dot(-worldAxis, roomBounds.center - negativePlanePoint);
+
+        if (positiveFacesRoom >= negativeFacesRoom)
+        {
+            planePoint = positivePlanePoint;
+            inwardNormal = worldAxis;
+        }
+        else
+        {
+            planePoint = negativePlanePoint;
+            inwardNormal = -worldAxis;
+        }
+
+        return inwardNormal.sqrMagnitude > 0.0001f;
+    }
+
+    private static float ComputeBoundsPlaneGap(Bounds bounds, Vector3 planePoint, Vector3 normal)
+    {
+        Vector3 n = normal.normalized;
+        Vector3 e = bounds.extents;
+        float support = Mathf.Abs(n.x) * e.x + Mathf.Abs(n.y) * e.y + Mathf.Abs(n.z) * e.z;
+        return Vector3.Dot(bounds.center - planePoint, n) - support;
+    }
+
+    private float GetScaleWallClearanceTolerance()
+    {
+        return Mathf.Max(0.0005f, scaleGrowthWallPenetrationToleranceMeters);
+    }
+
+    private static bool ShouldEnforceScaleWallClearance(float originalGap, float tolerance)
+    {
+        return originalGap > Mathf.Max(0.0f, tolerance);
+    }
+
+    private static bool IsWallGapReducedByScale(float currentGap, float originalGap, float tolerance)
+    {
+        return currentGap < originalGap - Mathf.Max(0.0005f, tolerance);
+    }
+
+    private Vector3 ComputeScaleClearanceMove(Bounds furnitureBounds, Bounds obstacleBounds, ScaleGrowthContext context, out string detail)
+    {
+        Vector3 move = Vector3.zero;
+        List<string> details = null;
+        TryAccumulateScaleAxisClearanceMove(0, furnitureBounds, obstacleBounds, context, ref move, ref details);
+        TryAccumulateScaleAxisClearanceMove(1, furnitureBounds, obstacleBounds, context, ref move, ref details);
+        TryAccumulateScaleAxisClearanceMove(2, furnitureBounds, obstacleBounds, context, ref move, ref details);
+        detail = details == null ? string.Empty : string.Join(" | ", details);
+        return move;
+    }
+
+    private void TryAccumulateScaleAxisClearanceMove(int axis, Bounds furnitureBounds, Bounds obstacleBounds, ScaleGrowthContext context, ref Vector3 move, ref List<string> details)
+    {
+        if (!context.Grows(axis)) return;
+        if (context.FloorAnchoredY && axis == 1) return;
+        if (!BoundsOverlapOnOtherAxes(furnitureBounds, obstacleBounds, axis)) return;
+
+        float currentGap;
+        float originalGap;
+        float direction;
+
+        if (furnitureBounds.center[axis] <= obstacleBounds.center[axis])
+        {
+            currentGap = obstacleBounds.min[axis] - furnitureBounds.max[axis];
+            originalGap = obstacleBounds.min[axis] - context.OriginalBounds.max[axis];
+            direction = -1f;
+        }
+        else
+        {
+            currentGap = furnitureBounds.min[axis] - obstacleBounds.max[axis];
+            originalGap = context.OriginalBounds.min[axis] - obstacleBounds.max[axis];
+            direction = 1f;
+        }
+
+        float requiredGap = GetRequiredScaleClearance(originalGap, scaleGrowthClearanceMeters);
+        float deficit = requiredGap - currentGap;
+        if (deficit <= 0f) return;
+
+        Vector3 axisMove = Vector3.zero;
+        axisMove[axis] = direction * deficit;
+        move += axisMove;
+        details ??= new List<string>();
+        details.Add($"axis:{AxisName(axis)} currentGap:{currentGap:0.####}m originalGap:{originalGap:0.####}m requiredGap:{requiredGap:0.####}m deficit:{deficit:0.####}m direction:{direction:0.#}");
+    }
+
+    private bool HasScaleClearanceViolation(Bounds furnitureBounds, Bounds obstacleBounds, ScaleGrowthContext context, out string detail)
+    {
+        detail = string.Empty;
+        if (scaleGrowthClearanceMeters <= 0f || !context.HasAnyGrowth) return false;
+        if (context.FloorAnchoredY && context.GrowsY && HasAnchoredYUpperClearanceViolation(furnitureBounds, obstacleBounds, context, out detail)) return true;
+
+        return HasScaleAxisClearanceViolation(0, furnitureBounds, obstacleBounds, context, out detail) ||
+               HasScaleAxisClearanceViolation(1, furnitureBounds, obstacleBounds, context, out detail) ||
+               HasScaleAxisClearanceViolation(2, furnitureBounds, obstacleBounds, context, out detail);
+    }
+
+    private bool HasAnchoredYUpperClearanceViolation(Bounds furnitureBounds, Bounds obstacleBounds, ScaleGrowthContext context, out string detail)
+    {
+        detail = string.Empty;
+        if (!HorizontalBoundsOverlap(furnitureBounds, obstacleBounds, 0.0f)) return false;
+        if (obstacleBounds.min.y < context.OriginalBounds.max.y) return false;
+
+        float originalGap = obstacleBounds.min.y - context.OriginalBounds.max.y;
+        float currentGap = obstacleBounds.min.y - furnitureBounds.max.y;
+        float requiredGap = GetRequiredScaleClearance(originalGap, scaleGrowthClearanceMeters);
+        detail = $"anchoredY upper clearance currentGap:{currentGap:0.####}m originalGap:{originalGap:0.####}m requiredGap:{requiredGap:0.####}m";
+        return currentGap < requiredGap;
+    }
+
+    private bool HasScaleAxisClearanceViolation(int axis, Bounds furnitureBounds, Bounds obstacleBounds, ScaleGrowthContext context, out string detail)
+    {
+        detail = string.Empty;
+        if (!context.Grows(axis)) return false;
+        if (context.FloorAnchoredY && axis == 1) return false;
+        if (!BoundsOverlapOnOtherAxes(furnitureBounds, obstacleBounds, axis)) return false;
+
+        float currentGap;
+        float originalGap;
+
+        if (furnitureBounds.center[axis] <= obstacleBounds.center[axis])
+        {
+            currentGap = obstacleBounds.min[axis] - furnitureBounds.max[axis];
+            originalGap = obstacleBounds.min[axis] - context.OriginalBounds.max[axis];
+        }
+        else
+        {
+            currentGap = furnitureBounds.min[axis] - obstacleBounds.max[axis];
+            originalGap = context.OriginalBounds.min[axis] - obstacleBounds.max[axis];
+        }
+
+        float requiredGap = GetRequiredScaleClearance(originalGap, scaleGrowthClearanceMeters);
+        detail = $"axis:{AxisName(axis)} clearance currentGap:{currentGap:0.####}m originalGap:{originalGap:0.####}m requiredGap:{requiredGap:0.####}m";
+        return currentGap < requiredGap;
+    }
+
+    private static bool BoundsOverlapOnOtherAxes(Bounds a, Bounds b, int axis)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            if (i == axis) continue;
+            if (a.max[i] <= b.min[i] || a.min[i] >= b.max[i]) return false;
+        }
+
+        return true;
+    }
+
+    private static float GetRequiredScaleClearance(float originalGap, float requestedClearance)
+    {
+        return Mathf.Min(Mathf.Max(0.0f, originalGap), Mathf.Max(0.0f, requestedClearance));
+    }
+
+    private static float GetRequiredScaleWallClearance(float originalGap, float requestedClearance)
+    {
+        return originalGap < 0.0f
+            ? originalGap
+            : GetRequiredScaleClearance(originalGap, requestedClearance);
+    }
+
+    private ScaleGrowthContext BuildScaleGrowthContext(Bounds originalBounds, Vector3 originalScale, Vector3 targetScale, PlacedFurniture furniture, Dictionary<Collider, float> originalWallPenetrationDepths)
+    {
+        return new ScaleGrowthContext
+        {
+            OriginalBounds = originalBounds,
+            OriginalWallPenetrationDepths = originalWallPenetrationDepths,
+            GrowthAxes = new Vector3(
+                Mathf.Abs(targetScale.x) > Mathf.Abs(originalScale.x) + 0.0001f ? 1f : 0f,
+                Mathf.Abs(targetScale.y) > Mathf.Abs(originalScale.y) + 0.0001f ? 1f : 0f,
+                Mathf.Abs(targetScale.z) > Mathf.Abs(originalScale.z) + 0.0001f ? 1f : 0f),
+            FloorAnchoredY = furniture != null && !furniture.isFloorContactless
+        };
+    }
+
+    private Dictionary<Collider, float> CaptureWallPenetrationDepths(PlacedFurniture furniture)
+    {
+        Dictionary<Collider, float> depths = new Dictionary<Collider, float>();
+        if (furniture == null) return depths;
+
+        foreach (BoxCollider wallCollider in wallColliders)
+        {
+            if (wallCollider == null || !wallCollider.enabled) continue;
+            float depth = ComputeMaxPenetrationDepth(furniture, wallCollider);
+            if (depth > 0f)
+            {
+                depths[wallCollider] = depth;
+            }
+        }
+
+        return depths;
+    }
+
+    private bool IsScaleGrowthAutoMoveWithinLimit(Vector3 startPosition, Vector3 currentPosition, ScaleGrowthContext context)
+    {
+        float maxMove = Mathf.Max(0.0f, scaleGrowthMaxAutoMoveMeters);
+        if (maxMove <= 0f) return startPosition == currentPosition;
+
+        Vector3 delta = currentPosition - startPosition;
+        float passiveAxisAllowance = Mathf.Max(0.002f, scaleGrowthClearanceMeters);
+
+        for (int axis = 0; axis < 3; axis++)
+        {
+            if (context.FloorAnchoredY && axis == 1) continue;
+
+            float allowed = context.Grows(axis) ? maxMove : passiveAxisAllowance;
+            if (Mathf.Abs(delta[axis]) > allowed)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void LogScaleGrowth(string message, PlacedFurniture furniture = null, bool warning = false)
+    {
+        if (!logScaleGrowthDiagnostics) return;
+
+        string line = $"[FurnitureScaleGrowth] {message}";
+        if (warning)
+        {
+            Debug.LogWarning(line, furniture != null ? furniture.gameObject : gameObject);
+        }
+        else
+        {
+            Debug.Log(line, furniture != null ? furniture.gameObject : gameObject);
+        }
+    }
+
+    private static string FormatVector(Vector3 value)
+    {
+        return $"({value.x:0.####}, {value.y:0.####}, {value.z:0.####})";
+    }
+
+    private static string FormatBounds(Bounds bounds)
+    {
+        return $"center:{FormatVector(bounds.center)} size:{FormatVector(bounds.size)} min:{FormatVector(bounds.min)} max:{FormatVector(bounds.max)}";
+    }
+
+    private static string AxisName(int axis)
+    {
+        return axis == 0 ? "X" : axis == 1 ? "Y" : "Z";
+    }
+
+    private struct ScaleGrowthContext
+    {
+        public Bounds OriginalBounds;
+        public Dictionary<Collider, float> OriginalWallPenetrationDepths;
+        public Vector3 GrowthAxes;
+        public bool FloorAnchoredY;
+
+        public bool GrowsX => GrowthAxes.x > 0.5f;
+        public bool GrowsY => GrowthAxes.y > 0.5f;
+        public bool GrowsZ => GrowthAxes.z > 0.5f;
+        public bool HasAnyGrowth => GrowsX || GrowsY || GrowsZ;
+
+        public bool Grows(int axis)
+        {
+            return axis == 0 ? GrowsX : axis == 1 ? GrowsY : GrowsZ;
+        }
+
+        public float GetOriginalWallPenetration(Collider wallCollider)
+        {
+            if (wallCollider == null || OriginalWallPenetrationDepths == null) return 0f;
+            return OriginalWallPenetrationDepths.TryGetValue(wallCollider, out float depth) ? depth : 0f;
+        }
+    }
+
+    private static bool HasScaleGrowth(Vector3 from, Vector3 to)
+    {
+        const float epsilon = 0.0001f;
+        return Mathf.Abs(to.x) > Mathf.Abs(from.x) + epsilon ||
+               Mathf.Abs(to.y) > Mathf.Abs(from.y) + epsilon ||
+               Mathf.Abs(to.z) > Mathf.Abs(from.z) + epsilon;
     }
 
     // ?ㅻ깄 ??媛援ш? 踰쎌쓣 ?뚭퀬?ㅻ㈃ 踰쎌쓽 "諛??덉そ 硫????ν빐, 媛援?AABB ?꾩껜媛

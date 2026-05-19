@@ -176,6 +176,14 @@ public class FurniturePlacementManager : MonoBehaviour
             return;
         }
 
+        if (moveModeController.CurrentMode == FurnitureManipulationMode.Scale &&
+            moveModeController.SelectedFurniture == furniture &&
+            IsDirectFurnitureManipulationInput(inputSource))
+        {
+            moveModeController.SetMoveMode(true);
+            Debug.Log($"[FurniturePlacementManager] Selected furniture drag switched Scale mode to Move mode. source:{inputSource}, furniture:{furniture.DisplayName}", furniture);
+        }
+
         // ?�� ?�치 ??NotConfirmed ?�태 ?�환 ?�이 바로 ?�택�?진행?�니??
         moveModeController.SelectFurniture(furniture);
         Debug.Log($"[FurniturePlacementManager] Furniture selected by touch/move. source:{inputSource}, furniture:{furniture.DisplayName}", furniture);
@@ -189,7 +197,24 @@ public class FurniturePlacementManager : MonoBehaviour
     // ?�� ?�에???�았????Move Ended) ?�동 ?�정 ?�는 ?�상 복구�?처리?�는 ?�심 로직?�니??
     public void HandleFurnitureMoveEnded(PlacedFurniture furniture)
     {
+        HandleFurnitureMoveEnded(furniture, furniture != null ? furniture.ManipulationMode : FurnitureManipulationMode.None);
+    }
+
+    public void HandleFurnitureMoveEnded(PlacedFurniture furniture, FurnitureManipulationMode endedMode)
+    {
         if (furniture == null) return;
+
+        if (endedMode == FurnitureManipulationMode.Move || endedMode == FurnitureManipulationMode.Rotate)
+        {
+            roomGeometryProvider?.NormalizeFurniturePoseForMoveOrRotate(furniture);
+            furniture.SaveCurrentPoseAsValid();
+            furniture.SetState(FurniturePlacementState.Confirmed);
+            serverPlacementPipeline?.ConfirmPlacedObject(furniture);
+
+            Debug.Log($"[FurniturePlacementManager] Furniture {endedMode} accepted without room boundary validation. {furniture.DisplayName}", furniture);
+            PlacementChanged?.Invoke();
+            return;
+        }
 
         if (roomGeometryProvider == null)
         {
@@ -229,9 +254,14 @@ public class FurniturePlacementManager : MonoBehaviour
     // ?�우???�중 무효�??�텝??취소?�고, 줄이???�중 무효�?그�?�??��??�다.
     public bool HandleFurnitureScaleChanged(PlacedFurniture furniture)
     {
+        return HandleFurnitureScaleChanged(furniture, true);
+    }
+
+    public bool HandleFurnitureScaleChanged(PlacedFurniture furniture, bool validateGeometry)
+    {
         if (furniture == null) return false;
 
-        if (roomGeometryProvider == null)
+        if (!validateGeometry || roomGeometryProvider == null)
         {
             furniture.SaveCurrentPoseAsValid();
             furniture.SetState(FurniturePlacementState.Confirmed);
@@ -255,6 +285,30 @@ public class FurniturePlacementManager : MonoBehaviour
 
         PlacementChanged?.Invoke();
         return valid;
+    }
+
+    public bool TryApplyFurnitureScaleGrowth(PlacedFurniture furniture, Vector3 targetLocalScale, out string reason)
+    {
+        reason = string.Empty;
+        if (furniture == null) return false;
+
+        if (roomGeometryProvider == null)
+        {
+            furniture.transform.localScale = targetLocalScale;
+            Physics.SyncTransforms();
+            return HandleFurnitureScaleChanged(furniture, false);
+        }
+
+        bool applied = roomGeometryProvider.TryApplyFurnitureScaleGrowth(furniture, targetLocalScale, out reason);
+        if (applied)
+        {
+            furniture.SaveCurrentPoseAsValid();
+            furniture.SetState(FurniturePlacementState.Confirmed);
+            serverPlacementPipeline?.ConfirmPlacedObject(furniture);
+            PlacementChanged?.Invoke();
+        }
+
+        return applied;
     }
 
     public void PrepareAllForSimulation()
@@ -341,6 +395,12 @@ public class FurniturePlacementManager : MonoBehaviour
     {
         T[] objects = FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         return objects != null && objects.Length > 0 ? objects[0] : null;
+    }
+
+    private static bool IsDirectFurnitureManipulationInput(string inputSource)
+    {
+        return !string.IsNullOrEmpty(inputSource) &&
+               inputSource.IndexOf("ObjectManipulator", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     // --- Placement Condition Validation ---

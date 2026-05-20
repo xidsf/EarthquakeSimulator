@@ -17,6 +17,7 @@ public class ReplacementPanelController : WorkflowPanelControllerBase
     [Header("References")]
     public ReplacementManager replacementManager;
     public bool autoFindReplacementManager = true;
+    public bool hideCycleSelectionButtons = true;
 
     private UnityAction selectPreviousAction;
     private UnityAction selectNextAction;
@@ -33,6 +34,7 @@ public class ReplacementPanelController : WorkflowPanelControllerBase
         EnsureCommonReferences();
         EnsureReplacementManager();
         CreateActions();
+        ApplySelectionButtonVisibility();
         RegisterButtons();
         SubscribeReplacementManager();
         replacementManager?.BeginReplacementMode();
@@ -54,8 +56,12 @@ public class ReplacementPanelController : WorkflowPanelControllerBase
 
     private void RegisterButtons()
     {
-        AddClick(btn_SelectPreviousFurniture, selectPreviousAction);
-        AddClick(btn_SelectNextFurniture, selectNextAction);
+        if (!hideCycleSelectionButtons)
+        {
+            AddClick(btn_SelectPreviousFurniture, selectPreviousAction);
+            AddClick(btn_SelectNextFurniture, selectNextAction);
+        }
+
         AddClick(btn_BackToResult, backToResultAction);
     }
 
@@ -64,6 +70,20 @@ public class ReplacementPanelController : WorkflowPanelControllerBase
         RemoveClick(btn_SelectPreviousFurniture, selectPreviousAction);
         RemoveClick(btn_SelectNextFurniture, selectNextAction);
         RemoveClick(btn_BackToResult, backToResultAction);
+    }
+
+    private void ApplySelectionButtonVisibility()
+    {
+        SetButtonActive(btn_SelectPreviousFurniture, !hideCycleSelectionButtons);
+        SetButtonActive(btn_SelectNextFurniture, !hideCycleSelectionButtons);
+    }
+
+    private static void SetButtonActive(PressableButton button, bool active)
+    {
+        if (button != null)
+        {
+            button.gameObject.SetActive(active);
+        }
     }
 
     public void OnClickSelectPreviousFurniture()

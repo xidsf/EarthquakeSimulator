@@ -46,16 +46,13 @@ public class ReplacementManager : MonoBehaviour
         }
 
         replacementModeActive = true;
-        moveModeController.allowAllFurnitureMovableInMoveMode = false;
+        moveModeController.allowAllFurnitureMovableInMoveMode = true;
         moveModeController.SetMoveMode(true);
+        moveModeController.ClearSelection();
 
-        if (moveModeController.SelectedFurniture == null && furniturePlacementManager != null && furniturePlacementManager.PlacedCount > 0)
+        if (!SelectInitialFurniture())
         {
-            moveModeController.SelectNext();
-        }
-        else
-        {
-            HandleSelectionChanged(moveModeController.SelectedFurniture);
+            HandleSelectionChanged(null);
         }
     }
 
@@ -91,6 +88,27 @@ public class ReplacementManager : MonoBehaviour
     {
         EnsureReferences();
         moveModeController?.SelectPrevious();
+    }
+
+    private bool SelectInitialFurniture()
+    {
+        if (moveModeController == null)
+        {
+            return false;
+        }
+
+        foreach (PlacedFurniture furniture in moveModeController.RegisteredFurnitures)
+        {
+            if (furniture == null)
+            {
+                continue;
+            }
+
+            moveModeController.SelectFurniture(furniture);
+            return true;
+        }
+
+        return false;
     }
 
     public string BuildEvaluationText(PlacedFurniture furniture)

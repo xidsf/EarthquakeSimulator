@@ -316,11 +316,16 @@ public class UIManager : MonoBehaviour
 
         if (panel_MainPlate != null)
         {
-            bool shouldShowMainPlate = (config != null) ? config.showMainPlate : true;
+            bool shouldShowMainPlate = (config != null)
+                ? config.showMainPlate
+                : state != RoomBuildWorkflowManager.WorkflowState.FurnitureRePlacement;
             panel_MainPlate.SetActive(shouldShowMainPlate);
         }
 
-        ApplyWorkflowStateVisibleObjects(config);
+        if (config != null)
+        {
+            ApplyWorkflowStateVisibleObjects(config);
+        }
         if (config != null && config.hideSubPanelsOnEnter) HideAllSubPanels();
 
         EnsureWorkflowHelpPanelReference();

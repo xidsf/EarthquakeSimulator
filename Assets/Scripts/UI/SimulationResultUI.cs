@@ -3,6 +3,7 @@ using MixedReality.Toolkit.UX;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.Serialization;
 
 public class SimulationResultUI : WorkflowPanelControllerBase
 {
@@ -21,7 +22,8 @@ public class SimulationResultUI : WorkflowPanelControllerBase
     [Header("User Buttons")]
     public PressableButton btn_ViewSimulation; 
     public PressableButton btn_EndSimulation; 
-    public PressableButton btn_ReArrangeFurniture;
+    [FormerlySerializedAs("btn_ReArrangeFurniture")]
+    public PressableButton btn_ReplacementAdvice;
 
     [Header("System Message UI")]
     public GameObject panel_SystemMessage;
@@ -30,7 +32,7 @@ public class SimulationResultUI : WorkflowPanelControllerBase
     private Coroutine loadingCoroutine;
     private UnityAction viewSimulationAction;
     private UnityAction endSimulationAction;
-    private UnityAction reArrangeFurnitureAction;
+    private UnityAction replacementAdviceAction;
 
     protected override void Awake()
     {
@@ -61,21 +63,21 @@ public class SimulationResultUI : WorkflowPanelControllerBase
     {
         viewSimulationAction ??= OnClickViewSimulation;
         endSimulationAction ??= OnClickEndSimulation;
-        reArrangeFurnitureAction ??= OnClickReArrangeFurniture;
+        replacementAdviceAction ??= OnClickReplacementAdvice;
     }
 
     private void RegisterButtons()
     {
         AddClick(btn_ViewSimulation, viewSimulationAction);
         AddClick(btn_EndSimulation, endSimulationAction);
-        AddClick(btn_ReArrangeFurniture, reArrangeFurnitureAction);
+        AddClick(btn_ReplacementAdvice, replacementAdviceAction);
     }
 
     private void UnregisterButtons()
     {
         RemoveClick(btn_ViewSimulation, viewSimulationAction);
         RemoveClick(btn_EndSimulation, endSimulationAction);
-        RemoveClick(btn_ReArrangeFurniture, reArrangeFurnitureAction);
+        RemoveClick(btn_ReplacementAdvice, replacementAdviceAction);
     }
 
     public void UpdateUI(SimulationResultResponse response)
@@ -145,14 +147,19 @@ public class SimulationResultUI : WorkflowPanelControllerBase
 #endif
     }
 
-    public void OnClickReArrangeFurniture()
+    public void OnClickReplacementAdvice()
     {
         StopPlayback();
         bool moved = RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.StartFurnitureRePlacement);
         if (!moved)
         {
-            SetSystemMessage("Cannot enter furniture rearrangement.");
+            SetSystemMessage("Cannot enter replacement advice.");
         }
+    }
+
+    public void OnClickReArrangeFurniture()
+    {
+        OnClickReplacementAdvice();
     }
 
     private void EnsurePlaybackController()

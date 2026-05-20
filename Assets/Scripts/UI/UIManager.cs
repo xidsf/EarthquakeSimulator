@@ -330,6 +330,7 @@ public class UIManager : MonoBehaviour
     private WorkflowStateUiConfig GetWorkflowStateUiConfig(RoomBuildWorkflowManager.WorkflowState state)
     {
         if (!useWorkflowStateUiConfigs || workflowStateUiConfigs == null) return null;
+        if (state == RoomBuildWorkflowManager.WorkflowState.FurnitureRePlacement) return null;
         foreach (WorkflowStateUiConfig config in workflowStateUiConfigs)
         {
             if (config != null && config.state == state) return config;

@@ -14661,7 +14661,7 @@ MonoBehaviour:
   autoFindPlaybackController: 1
   btn_ViewSimulation: {fileID: 125256082}
   btn_EndSimulation: {fileID: 1653405969}
-  btn_ReArrangeFurniture: {fileID: 1109063624}
+  btn_ReplacementAdvice: {fileID: 1109063624}
   panel_SystemMessage: {fileID: 0}
   text_SystemMessage: {fileID: 0}
 --- !u!1 &873452723
@@ -27921,11 +27921,11 @@ MonoBehaviour:
     - {fileID: 1978719260}
     hideSubPanelsOnEnter: 0
   - state: 9
-    mainPanel: {fileID: 2128505333}
+    mainPanel: {fileID: 0}
     showMainPlate: 0
     visibleButtons: []
     visibleObjects:
-    - {fileID: 867777434}
+    - {fileID: 440851683}
     hideSubPanelsOnEnter: 0
   panel_SystemMessage: {fileID: 0}
   text_SystemMessage: {fileID: 0}

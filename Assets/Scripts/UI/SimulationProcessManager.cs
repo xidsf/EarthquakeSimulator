@@ -115,7 +115,8 @@ public class SimulationProcessManager : MonoBehaviour
 
     private IEnumerator StartSimulationRoutine()
     {
-        SimulationStarted?.Invoke("Simulation request started.");
+        // [수정됨] 한국어 적용
+        SimulationStarted?.Invoke("시뮬레이션 요청을 준비 중입니다");
         moveModeController?.SetManipulationMode(FurnitureManipulationMode.None);
 
         string sessionId = ResolveSessionId();
@@ -132,7 +133,8 @@ public class SimulationProcessManager : MonoBehaviour
             yield break;
         }
 
-        ReportStatus("Uploading placed scene.");
+        // [수정됨] 한국어 적용
+        ReportStatus("가구 배치 데이터를 서버로 업로드하는 중입니다");
         string placedSceneJson = BuildPlacedSceneJson(sessionId);
         bool placedSceneOk = false;
         FurnitureServerStatusResponse placedSceneResponse = null;
@@ -159,7 +161,8 @@ public class SimulationProcessManager : MonoBehaviour
             yield break;
         }
 
-        ReportStatus("Starting simulation job.");
+        // [수정됨] 한국어 적용
+        ReportStatus("지진 시뮬레이션 작업을 요청하는 중입니다");
         string simulationJson = BuildSimulationRequestJson();
         bool simulateOk = false;
         SimulationJobResponse simulateResponse = null;
@@ -192,7 +195,8 @@ public class SimulationProcessManager : MonoBehaviour
             yield break;
         }
 
-        ReportStatus("Waiting for simulation job.");
+        // [수정됨] 한국어 적용
+        ReportStatus("서버에서 시뮬레이션 연산을 진행 중입니다");
         yield return PollSimulationJobRoutine(resolvedApiClient, sessionId);
     }
 
@@ -245,7 +249,8 @@ public class SimulationProcessManager : MonoBehaviour
 
     private IEnumerator FetchSimulationResultRoutine(FurnitureServerApiClient resolvedApiClient, string sessionId)
     {
-        ReportStatus("Fetching simulation result.");
+        // [수정됨] 한국어 적용
+        ReportStatus("시뮬레이션 분석 결과를 받아오는 중입니다");
 
         bool resultOk = false;
         SimulationResultResponse result = null;
@@ -274,7 +279,8 @@ public class SimulationProcessManager : MonoBehaviour
 
         if (fetchSimulationPlaybackAfterResult)
         {
-            ReportStatus("Fetching simulation playback.");
+            // [수정됨] 한국어 적용
+            ReportStatus("가구 움직임(재생) 데이터를 다운로드 중입니다");
 
             bool playbackOk = false;
             SimulationPlaybackResponse playback = null;
@@ -303,14 +309,16 @@ public class SimulationProcessManager : MonoBehaviour
             result.debug_folder_path = SaveSimulationDebugFiles(sessionId, result, result.playback);
             if (!string.IsNullOrWhiteSpace(result.debug_folder_path))
             {
-                ReportStatus("Simulation debug files saved.");
+                Debug.Log("[SimulationProcessManager] Simulation debug files saved.");
             }
         }
 
         LastResult = result;
         LastCompletedResult = result;
         SimulationResultReceived?.Invoke(result);
-        FinishSuccess("Simulation result received.");
+
+        // [수정됨] 한국어 적용
+        FinishSuccess("결과 창 로딩중");
         ShowLatestResultOnSuccessPanel();
     }
 
@@ -448,18 +456,30 @@ public class SimulationProcessManager : MonoBehaviour
     {
         if (job == null)
         {
-            return "Simulation job status is empty.";
+            return "서버 상태를 확인하는 중입니다";
         }
 
-        string status = string.IsNullOrWhiteSpace(job.status) ? "running" : job.status;
+        // [수정됨] 서버에서 보내는 영문 상태값(running, queued 등)을 한국어로 매핑
+        string statusText = "연산 진행 중";
+        if (!string.IsNullOrWhiteSpace(job.status))
+        {
+            string s = job.status.ToLower();
+            if (s.Contains("queue") || s.Contains("pending")) statusText = "대기열에서 순서 대기 중";
+            else if (s.Contains("run")) statusText = "시뮬레이션 물리 연산 중";
+            else if (s.Contains("fail")) statusText = "연산 실패";
+            else if (s.Contains("complete")) statusText = "연산 완료";
+        }
+
+        // 진행률이 있을 경우 % 로 변환해서 표시
         if (job.progress > 0f)
         {
-            return $"Simulation {status}. progress:{job.progress:0.##}";
+            return $"{statusText} ({job.progress * 100:0}%)";
         }
 
-        return $"Simulation {status}.";
+        return $"{statusText}...";
     }
 
+    // 파일 저장 로직 (이하 동일, Debug용이라 번역 불필요)
     private string SaveSimulationDebugFiles(string sessionId, SimulationResultResponse result, SimulationPlaybackResponse playback)
     {
         string safeSessionId = SanitizePathPart(string.IsNullOrWhiteSpace(sessionId) ? "no_session" : sessionId);

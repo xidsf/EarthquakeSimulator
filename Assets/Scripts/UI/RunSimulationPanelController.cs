@@ -1,42 +1,50 @@
 using MixedReality.Toolkit.UX;
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.Serialization;
 
 public class RunSimulationPanelController : WorkflowPanelControllerBase
 {
     [Header("Simulation Control Buttons")]
-    [Tooltip("Ω√πƒ∑π¿Ãº«¿ª Ω√¿€«œ∞≈≥™ ¿œΩ√¡§¡ˆ »ƒ ¥ŸΩ√ ¿Á∞≥«’¥œ¥Ÿ.")]
+    [Tooltip("Start playback, or restart it if playback has already ended.")]
     public PressableButton btn_Start;
 
-    [Tooltip("Ω««‡ ¡ﬂ¿Œ Ω√πƒ∑π¿Ãº«¿ª ¿œΩ√¡§¡ˆ«’¥œ¥Ÿ.")]
+    [Tooltip("Stop the currently running playback.")]
     public PressableButton btn_Stop;
 
-    [Tooltip("Ω√πƒ∑π¿Ãº«¿ª ¡ﬂ¥‹«œ∞Ì √≥¿Ω ªÛ≈¬(∞°±∏ πËƒ° ¡˜»ƒ)∑Œ µ«µπ∏≥¥œ¥Ÿ.")]
+    [Tooltip("Restart playback from the latest simulation result.")]
     public PressableButton btn_Reset;
 
-    [Tooltip("Ω√πƒ∑π¿Ãº« ∞·∞˙∏¶ πŸ≈¡¿∏∑Œ ∞°±∏ ¿ÁπËƒ° πÊæ» ¥‹∞Ë∑Œ ¿Ãµø«’¥œ¥Ÿ.")]
-    public PressableButton btn_GoToRelocation;
+    [Tooltip("Return to the simulation result screen.")]
+    [FormerlySerializedAs("btn_GoToRelocation")]
+    public PressableButton btn_BackToResult;
 
-    // UnityAction ƒ≥ΩÃ
+    [Header("Playback References")]
+    public SimulationClientPlaybackController playbackController;
+    public bool autoFindPlaybackController = true;
+
     private UnityAction startAction;
     private UnityAction stopAction;
     private UnityAction resetAction;
-    private UnityAction goToRelocationAction;
+    private UnityAction backToResultAction;
 
     protected override void Awake()
     {
         base.Awake();
+        EnsurePlaybackController();
     }
 
     private void OnEnable()
     {
         EnsureCommonReferences();
+        EnsurePlaybackController();
         CreateActions();
         RegisterButtons();
 
-        // √ ±‚ πˆ∆∞ ªÛ≈¬ º≥¡§ (øπ: Ω√¿€ Ω√ø°¥¬ ¡§¡ˆ/¿Áº≥¡§ πˆ∆∞ »∞º∫»≠ µÓ)
         if (btn_Start != null) btn_Start.enabled = true;
         if (btn_Stop != null) btn_Stop.enabled = true;
+        if (btn_Reset != null) btn_Reset.enabled = true;
+        if (btn_BackToResult != null) btn_BackToResult.enabled = true;
     }
 
     private void OnDisable()
@@ -49,7 +57,7 @@ public class RunSimulationPanelController : WorkflowPanelControllerBase
         startAction ??= OnClick_Start;
         stopAction ??= OnClick_Stop;
         resetAction ??= OnClick_Reset;
-        goToRelocationAction ??= OnClick_GoToRelocation;
+        backToResultAction ??= OnClick_BackToResult;
     }
 
     private void RegisterButtons()
@@ -57,7 +65,7 @@ public class RunSimulationPanelController : WorkflowPanelControllerBase
         AddClick(btn_Start, startAction);
         AddClick(btn_Stop, stopAction);
         AddClick(btn_Reset, resetAction);
-        AddClick(btn_GoToRelocation, goToRelocationAction);
+        AddClick(btn_BackToResult, backToResultAction);
     }
 
     private void UnregisterButtons()
@@ -65,35 +73,74 @@ public class RunSimulationPanelController : WorkflowPanelControllerBase
         RemoveClick(btn_Start, startAction);
         RemoveClick(btn_Stop, stopAction);
         RemoveClick(btn_Reset, resetAction);
-        RemoveClick(btn_GoToRelocation, goToRelocationAction);
+        RemoveClick(btn_BackToResult, backToResultAction);
     }
-
-    // ==========================================
-    // πˆ∆∞ ¿Ã∫•∆Æ ∑Œ¡˜
-    // ==========================================
 
     public void OnClick_Start()
     {
-        // TODO: ¡ˆ¡¯ π∞∏Æ ø¨ªÍ(Rigidbody Shaking)¿ª Ω√¿€«œ∞≈≥™ ¿Á∞≥«œ¥¬ ∑Œ¡˜¿ª »£√‚«œººø‰.
-        Debug.Log("[RunSimulation] Ω√πƒ∑π¿Ãº« Ω√¿€/¿Á∞≥");
+        if (!PlayLatestSimulation())
+        {
+            ShowWarning("Simulation playback is not ready.");
+        }
     }
 
     public void OnClick_Stop()
     {
-        // TODO: «ˆ¿Á ¡¯«‡ ¡ﬂ¿Œ π∞∏Æ ø¨ªÍ¿ª ¿œΩ√¡§¡ˆ Ω√≈∞¥¬ ∑Œ¡˜¿ª »£√‚«œººø‰.
-        Debug.Log("[RunSimulation] Ω√πƒ∑π¿Ãº« ¿œΩ√¡§¡ˆ");
+        EnsurePlaybackController();
+        playbackController?.PausePlayback();
     }
 
     public void OnClick_Reset()
     {
-        // Ω√πƒ∑π¿Ãº«¿ª √ ±‚»≠«œ±‚ ¿ß«ÿ ¥‹∞Ë∏¶ ∏Æº¬«œ∞≈≥™ √≥¿Ω ªÛ≈¬∑Œ µ«µπ∏≥¥œ¥Ÿ.
-        // « ø‰ Ω√ WorkflowCommand.ResetRoomBuild µÓ¿ª »∞øÎ«“ ºˆ ¿÷Ω¿¥œ¥Ÿ.
-        Debug.Log("[RunSimulation] Ω√πƒ∑π¿Ãº« √≥¿Ω∫Œ≈Õ ¥ŸΩ√ Ω√¿€");
+        EnsurePlaybackController();
+        bool restarted = playbackController != null && playbackController.RestartLatestSimulation();
+        if (!restarted)
+        {
+            ShowWarning("Simulation playback is not ready.");
+        }
     }
 
-    public void OnClick_GoToRelocation()
+    public void OnClick_BackToResult()
     {
-        // Ω√πƒ∑π¿Ãº«¿ª ¡æ∑·«œ∞Ì ¿ÁπËƒ° πÊæ»(FurnitureRePlacement) ¥‹∞Ë∑Œ ¿Ãµø«’¥œ¥Ÿ.
-        RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.StartFurnitureRePlacement);
+        EnsurePlaybackController();
+        playbackController?.StopPlayback();
+        bool moved = RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteRunSimulation);
+        EnsureResultPanelVisible();
+        if (!moved)
+        {
+            ShowWarning("Í≤∞Í≥º ÌôîÎ©¥ÏúºÎ°ú ÎèåÏïÑÍ∞ÄÏßÄ Î™ªÌñàÏäµÎãàÎã§.");
+        }
+    }
+
+    private bool PlayLatestSimulation()
+    {
+        EnsurePlaybackController();
+        return playbackController != null && playbackController.PlayLatestSimulation();
+    }
+
+    private void EnsurePlaybackController()
+    {
+        if (playbackController != null || !autoFindPlaybackController)
+        {
+            return;
+        }
+
+        SimulationClientPlaybackController[] controllers =
+            FindObjectsByType<SimulationClientPlaybackController>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        playbackController = controllers != null && controllers.Length > 0 ? controllers[0] : null;
+    }
+
+    private void EnsureResultPanelVisible()
+    {
+        EnsureCommonReferences();
+
+        if (uiManager != null)
+        {
+            uiManager.ShowWorkflowState(RoomBuildWorkflowManager.WorkflowState.SimulationSuccess);
+            if (uiManager.panel_SimulationSuccess != null && SimulationProcessManager.LastCompletedResult != null)
+            {
+                SimulationResultUI.ShowResultOnPanel(uiManager.panel_SimulationSuccess, SimulationProcessManager.LastCompletedResult);
+            }
+        }
     }
 }

@@ -12,6 +12,7 @@ public class SimulationClientPlaybackController : MonoBehaviour
     public FurniturePlacementManager furniturePlacementManager;
     public FurnitureServerApiClient apiClient;
     public FurnitureMoveModeController moveModeController;
+    public UIManager uiManager;
     public bool autoFindReferences = true;
 
     [Header("Playback")]
@@ -19,8 +20,16 @@ public class SimulationClientPlaybackController : MonoBehaviour
     public bool disableManipulationDuringPlayback = true;
 
     private Coroutine playbackCoroutine;
+    private SimulationResultResponse pausedResult;
+    private string pausedCsvText;
+    private bool isPaused;
+    private float pausedSimulationTime;
+    private float currentSimulationTime;
+    private readonly Dictionary<Transform, PlaybackPose> originalPoses = new Dictionary<Transform, PlaybackPose>();
 
     public bool IsPlaying => playbackCoroutine != null;
+    public bool IsPaused => isPaused;
+    public float CurrentSimulationTime => currentSimulationTime;
 
     private void Awake()
     {
@@ -47,11 +56,59 @@ public class SimulationClientPlaybackController : MonoBehaviour
 
         if (playbackCoroutine != null)
         {
-            StopCoroutine(playbackCoroutine);
+            return true;
         }
 
-        playbackCoroutine = StartCoroutine(LoadAndPlayRoutine(result));
+        if (isPaused && pausedResult == result && !string.IsNullOrWhiteSpace(pausedCsvText))
+        {
+            playbackCoroutine = StartCoroutine(PlayCsvRoutine(pausedCsvText, pausedSimulationTime));
+            isPaused = false;
+            return true;
+        }
+
+        ClearPauseState();
+        currentSimulationTime = 0.0f;
+        playbackCoroutine = StartCoroutine(LoadAndPlayRoutine(result, 0.0f));
         return true;
+    }
+
+    public bool RestartLatestSimulation()
+    {
+        EnsureReferences();
+
+        SimulationResultResponse result = simulationProcessManager != null && simulationProcessManager.LastResult != null
+            ? simulationProcessManager.LastResult
+            : SimulationProcessManager.LastCompletedResult;
+        if (result == null)
+        {
+            Debug.LogWarning("[SimulationClientPlaybackController] No simulation result is available.");
+            return false;
+        }
+
+        if (playbackCoroutine != null)
+        {
+            StopCoroutine(playbackCoroutine);
+            playbackCoroutine = null;
+        }
+
+        RestoreOriginalPoses();
+        ClearPauseState();
+        currentSimulationTime = 0.0f;
+        playbackCoroutine = StartCoroutine(LoadAndPlayRoutine(result, 0.0f));
+        return true;
+    }
+
+    public void PausePlayback()
+    {
+        if (playbackCoroutine == null)
+        {
+            return;
+        }
+
+        StopCoroutine(playbackCoroutine);
+        playbackCoroutine = null;
+        isPaused = !string.IsNullOrWhiteSpace(pausedCsvText);
+        pausedSimulationTime = currentSimulationTime;
     }
 
     public void StopPlayback()
@@ -61,9 +118,21 @@ public class SimulationClientPlaybackController : MonoBehaviour
             StopCoroutine(playbackCoroutine);
             playbackCoroutine = null;
         }
+
+        ClearPauseState();
+        currentSimulationTime = 0.0f;
+        RestoreOriginalPoses();
     }
 
-    private IEnumerator LoadAndPlayRoutine(SimulationResultResponse result)
+    private void ClearPauseState()
+    {
+        isPaused = false;
+        pausedResult = null;
+        pausedCsvText = string.Empty;
+        pausedSimulationTime = 0.0f;
+    }
+
+    private IEnumerator LoadAndPlayRoutine(SimulationResultResponse result, float startTime)
     {
         if (string.IsNullOrWhiteSpace(result.selected_transform_csv_text))
         {
@@ -72,6 +141,7 @@ public class SimulationClientPlaybackController : MonoBehaviour
             if (string.IsNullOrWhiteSpace(url))
             {
                 Debug.LogWarning("[SimulationClientPlaybackController] No transform CSV URL found in simulation result.");
+                uiManager?.ShowNotification("시뮬레이션 재생 데이터 주소를 찾지 못했습니다.");
                 playbackCoroutine = null;
                 yield break;
             }
@@ -101,6 +171,7 @@ public class SimulationClientPlaybackController : MonoBehaviour
             if (!ok || string.IsNullOrWhiteSpace(csv))
             {
                 Debug.LogWarning($"[SimulationClientPlaybackController] Failed to load transform CSV. {error}");
+                uiManager?.ShowNotification("시뮬레이션 재생 데이터를 불러오지 못했습니다. 네트워크 상태를 확인한 뒤 다시 시도하세요.");
                 playbackCoroutine = null;
                 yield break;
             }
@@ -110,7 +181,9 @@ public class SimulationClientPlaybackController : MonoBehaviour
             result.selected_transform_csv_text = csv;
         }
 
-        yield return PlayCsvRoutine(result.selected_transform_csv_text);
+        pausedResult = result;
+        pausedCsvText = result.selected_transform_csv_text;
+        yield return PlayCsvRoutine(result.selected_transform_csv_text, startTime);
         playbackCoroutine = null;
     }
 
@@ -127,7 +200,7 @@ public class SimulationClientPlaybackController : MonoBehaviour
         }
     }
 
-    private IEnumerator PlayCsvRoutine(string csvText)
+    private IEnumerator PlayCsvRoutine(string csvText, float startTime)
     {
         Dictionary<string, List<SimulationPlaybackSample>> samplesByObject = ParseTransformCsv(csvText);
         if (samplesByObject.Count == 0)
@@ -143,6 +216,8 @@ public class SimulationClientPlaybackController : MonoBehaviour
             yield break;
         }
 
+        CaptureOriginalPoses(targetMap);
+
         if (disableManipulationDuringPlayback)
         {
             moveModeController?.SetManipulationMode(FurnitureManipulationMode.None);
@@ -157,24 +232,33 @@ public class SimulationClientPlaybackController : MonoBehaviour
             maxTime = Mathf.Max(maxTime, samples[samples.Count - 1].time);
         }
 
+        float clampedStartTime = Mathf.Clamp(startTime, minTime, maxTime);
+        currentSimulationTime = clampedStartTime;
+        ApplyAtTime(samplesByObject, targetMap, clampedStartTime);
+
         if (maxTime <= minTime)
         {
+            currentSimulationTime = minTime;
             ApplyAtTime(samplesByObject, targetMap, minTime);
+            ClearPauseState();
             yield break;
         }
 
         float startedAt = Time.time;
         float speed = Mathf.Max(0.01f, playbackSpeed);
-        float duration = (maxTime - minTime) / speed;
+        float duration = (maxTime - clampedStartTime) / speed;
 
         while (Time.time - startedAt < duration)
         {
-            float simulationTime = minTime + (Time.time - startedAt) * speed;
+            float simulationTime = clampedStartTime + (Time.time - startedAt) * speed;
+            currentSimulationTime = simulationTime;
             ApplyAtTime(samplesByObject, targetMap, simulationTime);
             yield return null;
         }
 
+        currentSimulationTime = maxTime;
         ApplyAtTime(samplesByObject, targetMap, maxTime);
+        ClearPauseState();
     }
 
     private SimulationTransformLog SelectTransformLog(SimulationResultResponse result)
@@ -345,6 +429,47 @@ public class SimulationClientPlaybackController : MonoBehaviour
         }
     }
 
+    private void CaptureOriginalPoses(Dictionary<string, Transform> targetMap)
+    {
+        if (originalPoses.Count > 0 || targetMap == null)
+        {
+            return;
+        }
+
+        foreach (Transform target in targetMap.Values)
+        {
+            if (target == null || originalPoses.ContainsKey(target))
+            {
+                continue;
+            }
+
+            originalPoses.Add(target, new PlaybackPose
+            {
+                position = target.position,
+                rotation = target.rotation,
+                scale = target.localScale
+            });
+        }
+    }
+
+    private void RestoreOriginalPoses()
+    {
+        foreach (KeyValuePair<Transform, PlaybackPose> entry in originalPoses)
+        {
+            Transform target = entry.Key;
+            if (target == null)
+            {
+                continue;
+            }
+
+            target.position = entry.Value.position;
+            target.rotation = entry.Value.rotation;
+            target.localScale = entry.Value.scale;
+        }
+
+        originalPoses.Clear();
+    }
+
     private SimulationPlaybackSample EvaluateSample(List<SimulationPlaybackSample> samples, float time)
     {
         if (samples == null || samples.Count == 0) return default(SimulationPlaybackSample);
@@ -445,6 +570,7 @@ public class SimulationClientPlaybackController : MonoBehaviour
         if (furniturePlacementManager == null) furniturePlacementManager = FindFirst<FurniturePlacementManager>();
         if (apiClient == null) apiClient = FindFirst<FurnitureServerApiClient>();
         if (moveModeController == null) moveModeController = FindFirst<FurnitureMoveModeController>();
+        if (uiManager == null) uiManager = FindFirst<UIManager>();
     }
 
     private static T FindFirst<T>() where T : UnityEngine.Object
@@ -458,5 +584,12 @@ public class SimulationClientPlaybackController : MonoBehaviour
         public float time;
         public Vector3 position;
         public Quaternion rotation;
+    }
+
+    private struct PlaybackPose
+    {
+        public Vector3 position;
+        public Quaternion rotation;
+        public Vector3 scale;
     }
 }

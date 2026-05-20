@@ -13,6 +13,7 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
     public RoomBuildWorkflowManager workflowManager;
     public FurnitureServerApiClient apiClient;
     public FurnitureServerResultPlacer resultPlacer;
+    public UIManager uiManager;
 
     [Tooltip("참조가 비어 있으면 Scene에서 자동 탐색합니다.")]
     public bool autoFindReferences = true;
@@ -72,7 +73,11 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
     public void StartPlacementForSession(string scanSessionId)
     {
         if (blockWhileRunning && IsRunning) return;
-        if (string.IsNullOrWhiteSpace(scanSessionId)) return;
+        if (string.IsNullOrWhiteSpace(scanSessionId))
+        {
+            NotifyUser("가구 생성 요청을 시작할 수 없습니다. 촬영 세션 ID가 없습니다.");
+            return;
+        }
         if (runningCoroutine != null) StopCoroutine(runningCoroutine);
 
         IsRunning = true;
@@ -91,6 +96,24 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         if (runningCoroutine != null) { StopCoroutine(runningCoroutine); runningCoroutine = null; }
         IsRunning = false;
         LastStatus = "stopped";
+    }
+
+    public void ClearState()
+    {
+        if (runningCoroutine != null)
+        {
+            StopCoroutine(runningCoroutine);
+            runningCoroutine = null;
+        }
+
+        IsRunning = false;
+        ActiveScanSessionId = string.Empty;
+        debugOverrideScanSessionId = string.Empty;
+        LastStatus = string.Empty;
+        LastResult = null;
+        SelectedPendingObjectIndex = -1;
+        ResetPendingTracking();
+        ResultListChanged?.Invoke(this);
     }
 
     public FurnitureServerResultObject GetPendingObject(int index)
@@ -287,8 +310,21 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         bool jobCompleted = false;
         for (int attempt = 1; attempt <= maxJobPollAttempts; attempt++)
         {
+            bool pollOk = false;
             FurnitureServerStatusResponse current = null;
-            yield return apiClient.GetScanJobStatus(scanSessionId, (ok, response, error) => current = response);
+            string pollError = string.Empty;
+            yield return apiClient.GetScanJobStatus(scanSessionId, (ok, response, error) =>
+            {
+                pollOk = ok;
+                current = response;
+                pollError = error;
+            });
+            if (!pollOk)
+            {
+                FinishWithFailure($"scan-job status request failed. {pollError}");
+                yield break;
+            }
+
             if (current != null)
             {
                 LastStatus = current.status;
@@ -300,10 +336,17 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
 
         if (!jobCompleted) { FinishWithFailure("scan-job polling timed out."); yield break; }
 
+        bool resultOk = false;
         FurnitureServerResultResponse result = null;
-        yield return apiClient.GetResult(scanSessionId, (ok, response, error) => result = response);
+        string resultError = string.Empty;
+        yield return apiClient.GetResult(scanSessionId, (ok, response, error) =>
+        {
+            resultOk = ok;
+            result = response;
+            resultError = error;
+        });
 
-        if (result == null || result.IsFailedStatus()) { FinishWithFailure("get result failed."); yield break; }
+        if (!resultOk || result == null || result.IsFailedStatus()) { FinishWithFailure($"get result failed. {resultError}"); yield break; }
 
         LastResult = result;
         EnsurePendingTrackingArrays();
@@ -428,6 +471,7 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         runningCoroutine = null;
         ResultListChanged?.Invoke(this);
         Debug.LogWarning($"[FurnitureServerPlacementPipeline] Flow failed. {reason}");
+        NotifyUser("가구 생성 요청에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 시도하세요.");
     }
 
     private string ResolveFinishScanRequestJson()
@@ -453,6 +497,14 @@ public class FurnitureServerPlacementPipeline : MonoBehaviour
         if (furnitureCaptureManager == null) furnitureCaptureManager = FindFirst<FurnitureCaptureManager>();
         if (apiClient == null) apiClient = FindFirst<FurnitureServerApiClient>();
         if (resultPlacer == null) resultPlacer = FindFirst<FurnitureServerResultPlacer>();
+        if (uiManager == null) uiManager = FindFirst<UIManager>();
+    }
+
+    private void NotifyUser(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return;
+        EnsureReferences();
+        uiManager?.ShowNotification(message);
     }
 
     private static T FindFirst<T>() where T : UnityEngine.Object

@@ -22,7 +22,6 @@ public class SimulationResultUI : WorkflowPanelControllerBase
     public PressableButton btn_ViewSimulation; 
     public PressableButton btn_EndSimulation; 
     public PressableButton btn_ReArrangeFurniture;
-    public bool createReArrangeButtonAtRuntime = true;
 
     [Header("System Message UI")]
     public GameObject panel_SystemMessage;
@@ -32,7 +31,6 @@ public class SimulationResultUI : WorkflowPanelControllerBase
     private UnityAction viewSimulationAction;
     private UnityAction endSimulationAction;
     private UnityAction reArrangeFurnitureAction;
-    private bool runtimeReArrangeButtonCreated;
 
     protected override void Awake()
     {
@@ -43,7 +41,6 @@ public class SimulationResultUI : WorkflowPanelControllerBase
     {
         EnsureCommonReferences();
         EnsurePlaybackController();
-        EnsureReArrangeButton();
         CreateActions();
         RegisterButtons();
         if (panel_SystemMessage != null) panel_SystemMessage.SetActive(false);
@@ -93,6 +90,25 @@ public class SimulationResultUI : WorkflowPanelControllerBase
         if (destructiveDirectionText != null) destructiveDirectionText.text = SimulationResultDisplayFormatter.BuildDestructiveDirectionText(response);
     }
 
+    public static void ShowResultOnPanel(GameObject panel, SimulationResultResponse response)
+    {
+        if (panel == null)
+        {
+            Debug.LogWarning("[SimulationResultUI] Simulation success panel is missing.");
+            return;
+        }
+
+        SimulationResultUI resultUi = panel.GetComponent<SimulationResultUI>();
+        if (resultUi == null)
+        {
+            Debug.LogWarning("[SimulationResultUI] SimulationResultUI is missing on the simulation success panel.");
+            return;
+        }
+
+        resultUi.UpdateUI(response);
+        panel.SetActive(true);
+    }
+
     public void OnClickViewSimulation()
     {
         EnsurePlaybackController();
@@ -112,6 +128,14 @@ public class SimulationResultUI : WorkflowPanelControllerBase
     public void OnClickEndSimulation()
     {
         StopPlayback();
+
+        EnsureCommonReferences();
+        if (uiManager != null && uiManager.panel_Opening != null)
+        {
+            uiManager.ReturnToOpeningPanel();
+            return;
+        }
+
         SetSystemMessage("Simulation ended.");
 
 #if UNITY_EDITOR
@@ -138,48 +162,6 @@ public class SimulationResultUI : WorkflowPanelControllerBase
         SimulationClientPlaybackController[] controllers =
             FindObjectsByType<SimulationClientPlaybackController>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         playbackController = controllers != null && controllers.Length > 0 ? controllers[0] : null;
-    }
-
-    private void EnsureReArrangeButton()
-    {
-        if (btn_ReArrangeFurniture != null || !createReArrangeButtonAtRuntime || runtimeReArrangeButtonCreated)
-        {
-            return;
-        }
-
-        PressableButton source = btn_EndSimulation != null ? btn_EndSimulation : btn_ViewSimulation;
-        if (source == null || source.transform.parent == null)
-        {
-            return;
-        }
-
-        PressableButton button = Instantiate(source, source.transform.parent);
-        button.name = "ReArrangeFurnitureButton";
-        btn_ReArrangeFurniture = button;
-        runtimeReArrangeButtonCreated = true;
-
-        RectTransform buttonRect = button.GetComponent<RectTransform>();
-        RectTransform viewRect = btn_ViewSimulation != null ? btn_ViewSimulation.GetComponent<RectTransform>() : null;
-        RectTransform endRect = btn_EndSimulation != null ? btn_EndSimulation.GetComponent<RectTransform>() : null;
-        if (buttonRect != null)
-        {
-            if (viewRect != null && endRect != null)
-            {
-                buttonRect.localPosition = Vector3.Lerp(viewRect.localPosition, endRect.localPosition, 0.5f);
-            }
-            else
-            {
-                buttonRect.localPosition += new Vector3(0f, 240f, 0f);
-            }
-        }
-
-        TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
-        if (label != null)
-        {
-            label.text = "재배치 하기";
-        }
-
-        button.gameObject.SetActive(true);
     }
 
     private void StopPlayback()

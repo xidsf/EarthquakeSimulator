@@ -200,10 +200,43 @@ public static class SimulationResultDisplayFormatter
         int colon = trimmed.IndexOf(':');
         if (colon >= 0 && colon + 1 < trimmed.Length)
         {
-            trimmed = trimmed.Substring(colon + 1).Trim();
+            string left = trimmed.Substring(0, colon).Trim();
+            string right = trimmed.Substring(colon + 1).Trim();
+
+            if (!string.IsNullOrWhiteSpace(left) && LooksLikeInstructionText(right))
+            {
+                trimmed = left;
+            }
+            else
+            {
+                trimmed = right;
+            }
+        }
+
+        if (LooksLikeInstructionText(trimmed))
+        {
+            return string.Empty;
         }
 
         return ToDisplayName(trimmed);
+    }
+
+    private static bool LooksLikeInstructionText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        return text.Contains("하세요") ||
+               text.Contains("붙으") ||
+               text.Contains("고정") ||
+               text.Contains("옮기") ||
+               text.Contains("이동") ||
+               text.Contains("권장") ||
+               text.Contains("필요") ||
+               text.Contains("주의") ||
+               text.Contains("위험");
     }
 
     private static string ExtractAdviceFromRawText(string rawText)

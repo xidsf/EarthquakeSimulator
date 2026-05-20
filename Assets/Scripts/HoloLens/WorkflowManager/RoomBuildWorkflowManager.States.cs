@@ -341,6 +341,13 @@ public partial class RoomBuildWorkflowManager
                     workflow.StartFurnitureRePlacement();
                     return workflow.currentState == WorkflowState.FurnitureRePlacement;
 
+                case WorkflowCommand.CompleteRunSimulation:
+                case WorkflowCommand.CompleteFurnitureRePlacement:
+                    return workflow.RequestWorkflowState(
+                        WorkflowState.SimulationSuccess,
+                        "Simulation success state ready."
+                    );
+
                 default:
                     return Reject(command);
             }
@@ -359,9 +366,17 @@ public partial class RoomBuildWorkflowManager
         {
             switch (command)
             {
+                case WorkflowCommand.StartRunSimulation:
+                    workflow.StartRunSimulation();
+                    return workflow.currentState == WorkflowState.RunSimulation;
+
                 case WorkflowCommand.CompleteRunSimulation:
                     workflow.CompleteRunSimulation();
                     return workflow.currentState == WorkflowState.SimulationSuccess;
+
+                case WorkflowCommand.StartFurnitureRePlacement:
+                    workflow.StartFurnitureRePlacement();
+                    return workflow.currentState == WorkflowState.FurnitureRePlacement;
 
                 default:
                     return Reject(command);
@@ -381,9 +396,17 @@ public partial class RoomBuildWorkflowManager
         {
             switch (command)
             {
+                case WorkflowCommand.StartRunSimulation:
+                    workflow.StartRunSimulation();
+                    return workflow.currentState == WorkflowState.RunSimulation;
+
+                case WorkflowCommand.StartFurnitureRePlacement:
+                    workflow.StartFurnitureRePlacement();
+                    return workflow.currentState == WorkflowState.FurnitureRePlacement;
+
                 case WorkflowCommand.CompleteFurnitureRePlacement:
                     workflow.CompleteFurnitureRePlacement();
-                    return workflow.currentState == WorkflowState.FurniturePlacement;
+                    return workflow.currentState == WorkflowState.SimulationSuccess;
 
                 default:
                     return Reject(command);

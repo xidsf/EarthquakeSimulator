@@ -179,12 +179,20 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
             return;
         }
 
+        if (HasServerFurnitureRequestFailed())
+        {
+            ClearServerFurnitureRequestLock("server request failed");
+            RefreshServerFurnitureListView();
+            return;
+        }
+
         if (HasServerFurnitureRequestTimedOut())
         {
             if (serverPlacementPipeline != null && serverPlacementPipeline.IsRunning)
                 serverPlacementPipeline.StopRunningFlow();
 
             ClearServerFurnitureRequestLock("request timed out");
+            uiManager?.ShowNotification("가구 생성 요청 시간이 초과되었습니다. 네트워크 상태를 확인한 뒤 다시 시도하세요.");
             RefreshServerFurnitureListView();
         }
     }
@@ -331,6 +339,11 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
         {
             ClearServerFurnitureRequestLock("server response received");
             uiManager?.HideLoading(); // 데이터 수신 완료 시 로딩창 끄기
+        }
+        else if (HasServerFurnitureRequestFailed())
+        {
+            ClearServerFurnitureRequestLock("server request failed");
+            uiManager?.HideLoading();
         }
         RefreshServerFurnitureListView();
     }
@@ -606,8 +619,9 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
 
     // --- Server Request & Preview Logic ---
 
-    private bool IsServerFurnitureRequestLocked() => serverFurnitureRequestLocked && !HasServerFurnitureResponse() && !HasServerFurnitureRequestTimedOut();
+    private bool IsServerFurnitureRequestLocked() => serverFurnitureRequestLocked && !HasServerFurnitureResponse() && !HasServerFurnitureRequestFailed() && !HasServerFurnitureRequestTimedOut();
     private bool HasServerFurnitureResponse() => serverPlacementPipeline != null && serverPlacementPipeline.LastResult != null;
+    private bool HasServerFurnitureRequestFailed() => serverFurnitureRequestLocked && serverPlacementPipeline != null && string.Equals(serverPlacementPipeline.LastStatus, "failed", System.StringComparison.OrdinalIgnoreCase);
     private bool HasServerFurnitureRequestTimedOut() => serverFurnitureRequestLocked && serverFurnitureRequestStartedRealtime >= 0 && (Time.realtimeSinceStartup - serverFurnitureRequestStartedRealtime >= serverFurnitureRequestTimeoutSeconds);
     private void BeginServerFurnitureRequestLock() { serverFurnitureRequestLocked = true; serverFurnitureRequestStartedRealtime = Time.realtimeSinceStartup; }
     private void ClearServerFurnitureRequestLock(string reason) { serverFurnitureRequestLocked = false; serverFurnitureRequestStartedRealtime = -1f; uiManager?.HideLoading(); }
@@ -679,6 +693,7 @@ public class FurniturePlacementPanelController : WorkflowPanelControllerBase
 
         serverPlacementPipeline.StartPlacementFromCurrentScanSession();
         if (serverPlacementPipeline.IsRunning) BeginServerFurnitureRequestLock();
+        else uiManager?.HideLoading();
         RefreshServerFurnitureListView();
     }
 

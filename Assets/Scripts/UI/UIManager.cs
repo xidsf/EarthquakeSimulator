@@ -121,6 +121,7 @@ public class UIManager : MonoBehaviour
     private GameObject currentMainPanel;
     private RectTransform notificationRectTransform;
     private Coroutine notificationCoroutine;
+    private bool openingPanelVisible;
 
     // 로딩 전용 제어 변수들
     private Coroutine loadingCoroutine;
@@ -165,8 +166,7 @@ public class UIManager : MonoBehaviour
 
             if (showOpeningPanelOnStart && panel_Opening != null)
             {
-                ShowMainPanel(panel_Opening);
-                UpdateWorkflowStatus(workflowManager);
+                ShowOpeningPanel();
                 return;
             }
 
@@ -175,7 +175,14 @@ public class UIManager : MonoBehaviour
             return;
         }
 
-        ShowMainPanel(panel_Opening != null ? panel_Opening : panel_RoomInfoInput);
+        if (panel_Opening != null)
+        {
+            ShowOpeningPanel();
+        }
+        else
+        {
+            ShowMainPanel(panel_RoomInfoInput);
+        }
     }
 
     // ==========================================
@@ -295,6 +302,14 @@ public class UIManager : MonoBehaviour
     public void ShowWorkflowState(RoomBuildWorkflowManager.WorkflowState state)
     {
         if (!useWorkflowDrivenPanels) return;
+
+        if (openingPanelVisible && state == RoomBuildWorkflowManager.WorkflowState.RoomInfoInput)
+        {
+            UpdateWorkflowStatus(workflowManager);
+            return;
+        }
+
+        openingPanelVisible = false;
         WorkflowStateUiConfig config = GetWorkflowStateUiConfig(state);
         GameObject targetPanel = GetPanelForWorkflowState(state, config);
         ShowMainPanel(targetPanel);
@@ -374,6 +389,33 @@ public class UIManager : MonoBehaviour
 
     public void CompleteRoomInfoInput() => RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteRoomInfoInput);
 
+    public void ShowOpeningPanel()
+    {
+        if (panel_Opening == null)
+        {
+            ShowWarningMessage("Opening panel is not assigned.");
+            return;
+        }
+
+        openingPanelVisible = true;
+        if (panel_MainPlate != null) panel_MainPlate.SetActive(true);
+        ShowMainPanel(panel_Opening);
+        UpdateWorkflowStatus(workflowManager);
+    }
+
+    public void ReturnToOpeningPanel()
+    {
+        openingPanelVisible = true;
+        EnsureWorkflowManagerReference();
+
+        if (workflowManager != null)
+        {
+            workflowManager.ResetToRoomInfoInputForOpening();
+        }
+
+        ShowOpeningPanel();
+    }
+
     public void OpenRoomInfoInputFromOpening()
     {
         EnsureWorkflowManagerReference();
@@ -382,6 +424,7 @@ public class UIManager : MonoBehaviour
             ShowWarningMessage("현재 상태에서는 RoomInfoInput 패널로 돌아갈 수 없습니다.");
             return;
         }
+        openingPanelVisible = false;
         ShowWorkflowState(RoomBuildWorkflowManager.WorkflowState.RoomInfoInput);
     }
 

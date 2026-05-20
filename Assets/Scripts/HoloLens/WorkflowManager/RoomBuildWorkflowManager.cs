@@ -670,7 +670,7 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
 
     public void CompleteFurnitureRePlacement()
     {
-        RequestWorkflowState(WorkflowState.FurniturePlacement, "Furniture replacement completed. Furniture placement ready.");
+        RequestWorkflowState(WorkflowState.SimulationSuccess, "Furniture replacement completed. Simulation success state ready.");
     }
 
     public void ReturnToRoomCapture()
@@ -760,6 +760,35 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
         }
 
         UpdateStatusText();
+    }
+
+    public void ResetToRoomInfoInputForOpening()
+    {
+        ClearSessionRuntimeState();
+        InitializeRoomInfoInputStartupState("ReturnToOpening");
+    }
+
+    private void ClearSessionRuntimeState()
+    {
+        FindFirst<SimulationClientPlaybackController>()?.StopPlayback();
+        FindFirst<SimulationProcessManager>()?.ClearSimulationState();
+
+        ClientBuildingInfo.Clear();
+
+        manualWallBuilder?.ClearManualWalls();
+        manualWallBuilder?.ClearSelectableSurfaces();
+
+        ClearConfirmedRoomVisualization();
+        furnitureCaptureManager?.ClearRoomObjectBindings();
+        furnitureCaptureManager?.ClearScanSession();
+
+        FindFirst<FurniturePlacementManager>()?.ClearPlacedFurniture();
+        FindFirst<FurnitureMoveModeController>()?.ClearSelection();
+        FindFirst<FurnitureServerPlacementPipeline>()?.ClearState();
+        FindFirst<ConfirmedRoomGeometryProvider>()?.ClearState();
+
+        scanner?.ResetRoomScanState(restartScanning: false);
+        scanner?.StopScanning();
     }
 
     private bool IsConfirmedRoomOrLaterState(WorkflowState state)
@@ -1105,18 +1134,21 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
     {
         return currentState == WorkflowState.SimulationProcess ||
                currentState == WorkflowState.RunSimulation ||
+               currentState == WorkflowState.FurnitureRePlacement ||
                currentState == WorkflowState.SimulationSuccess;
     }
 
     public bool CanEnterRunSimulation()
     {
         return currentState == WorkflowState.SimulationSuccess ||
+               currentState == WorkflowState.FurnitureRePlacement ||
                currentState == WorkflowState.RunSimulation;
     }
 
     public bool CanEnterFurnitureRePlacement()
     {
         return currentState == WorkflowState.SimulationSuccess ||
+               currentState == WorkflowState.RunSimulation ||
                currentState == WorkflowState.FurnitureRePlacement;
     }
 
@@ -1187,17 +1219,35 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
         SetStatus("Simulation process ready. Review furniture placement before starting simulation.");
     }
     private void OnExitSimulationProcessState() { }
-    private void OnEnterSimulationSuccessState() { }
+    private void OnEnterSimulationSuccessState()
+    {
+        SimulationProcessManager simulationProcessManager = FindFirst<SimulationProcessManager>();
+        SimulationResultResponse result = simulationProcessManager != null && simulationProcessManager.LastResult != null
+            ? simulationProcessManager.LastResult
+            : SimulationProcessManager.LastCompletedResult;
+
+        if (uiManager != null && uiManager.panel_SimulationSuccess != null && result != null)
+        {
+            SimulationResultUI.ShowResultOnPanel(uiManager.panel_SimulationSuccess, result);
+        }
+    }
     private void OnExitSimulationSuccessState() { }
     private void OnEnterRunSimulationState() { }
-    private void OnExitRunSimulationState() { }
+    private void OnExitRunSimulationState()
+    {
+        FindFirst<SimulationClientPlaybackController>()?.StopPlayback();
+    }
     private void OnEnterFurnitureRePlacementState()
     {
         DisableNonConfirmedRoomBuildGeometry();
         confirmRoomManager?.SetEntranceMarkerVisible(false);
         PrepareFurniturePlacementEditingState();
+        FindFirst<ReplacementManager>()?.BeginReplacementMode();
     }
-    private void OnExitFurnitureRePlacementState() { }
+    private void OnExitFurnitureRePlacementState()
+    {
+        FindFirst<ReplacementManager>()?.EndReplacementMode();
+    }
 
     private void PrepareFurniturePlacementEditingState()
     {
@@ -1212,5 +1262,10 @@ public partial class RoomBuildWorkflowManager : MonoBehaviour
         managers[0].PrepareAllForPlacementEditing();
     }
 
+    private static T FindFirst<T>() where T : UnityEngine.Object
+    {
+        T[] objects = FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        return objects != null && objects.Length > 0 ? objects[0] : null;
+    }
 
 }

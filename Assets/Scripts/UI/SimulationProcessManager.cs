@@ -87,7 +87,7 @@ public class SimulationProcessManager : MonoBehaviour
             (furniturePlacementManager == null || !furniturePlacementManager.HasAnyFurniture))
         {
             Debug.LogWarning("[SimulationProcessManager] Cannot start simulation. No furniture registered.");
-            uiManager?.ShowNotification("No furniture is available for simulation.");
+            uiManager?.ShowNotification("시뮬레이션을 실행할 가구가 없습니다.");
             return false;
         }
 
@@ -98,6 +98,19 @@ public class SimulationProcessManager : MonoBehaviour
 
         runningCoroutine = StartCoroutine(StartSimulationRoutine());
         return true;
+    }
+
+    public void ClearSimulationState()
+    {
+        if (runningCoroutine != null)
+        {
+            StopCoroutine(runningCoroutine);
+            runningCoroutine = null;
+        }
+
+        LastResult = null;
+        LastCompletedResult = null;
+        debugOverrideSessionId = string.Empty;
     }
 
     private IEnumerator StartSimulationRoutine()
@@ -415,7 +428,7 @@ public class SimulationProcessManager : MonoBehaviour
             return true;
         }
 
-        string message = $"Cannot start simulation. Invalid furniture count: {invalidFurnitures.Count}.";
+        string message = $"배치 조건에 맞지 않는 가구가 {invalidFurnitures.Count}개 있습니다. 표시된 가구를 다시 배치한 뒤 시뮬레이션을 시작하세요.";
         Debug.LogWarning($"[SimulationProcessManager] {message}");
         uiManager?.ShowNotification(message);
         return false;
@@ -697,6 +710,7 @@ public class SimulationProcessManager : MonoBehaviour
     {
         Debug.LogWarning($"[SimulationProcessManager] {message}");
         uiManager?.HideLoading();
+        uiManager?.ShowNotification("시뮬레이션 요청에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 시도하세요.");
         SimulationFailed?.Invoke(message);
         runningCoroutine = null;
     }
@@ -717,7 +731,7 @@ public class SimulationProcessManager : MonoBehaviour
             return;
         }
 
-        SimulationResultPanelController.ShowResultOnPanel(resultPanel, LastResult);
+        SimulationResultUI.ShowResultOnPanel(resultPanel, LastResult);
         resultPanel.SetActive(true);
     }
 
@@ -801,93 +815,5 @@ public class SimulationProcessManager : MonoBehaviour
     {
         T[] objects = FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         return objects != null && objects.Length > 0 ? objects[0] : null;
-    }
-}
-
-// =========================================================================
-// ����� ���� UI ���������� ���ۼ��� SimulationResultPanelController
-// =========================================================================
-public class SimulationResultPanelController : MonoBehaviour
-{
-    [Header("UI Component References")]
-    public TMP_Text aiAdviceText;             // AIAdviceText ����
-    public TMP_Text riskResultText;           // RiskResultText ����
-    public TMP_Text roomLevelText;            // RoomLevelText ����
-    public TMP_Text fallHazardFurnituresList; // FallHazardFurnituresList ����
-
-    private SimulationResultResponse currentResult;
-
-    private void OnEnable()
-    {
-        if (currentResult == null)
-        {
-            currentResult = SimulationProcessManager.LastCompletedResult;
-        }
-
-        if (currentResult != null)
-        {
-            SetResult(currentResult);
-        }
-    }
-
-    public void SetResult(SimulationResultResponse result)
-    {
-        currentResult = result;
-        if (result == null) return;
-
-        AutoBindTextFields();
-
-        if (aiAdviceText != null) aiAdviceText.text = SimulationResultDisplayFormatter.BuildAdviceText(result);
-        if (riskResultText != null) riskResultText.text = SimulationResultDisplayFormatter.BuildRiskScoreText(result);
-        if (roomLevelText != null) roomLevelText.text = SimulationResultDisplayFormatter.BuildRiskLevelText(result);
-        if (fallHazardFurnituresList != null) fallHazardFurnituresList.text = SimulationResultDisplayFormatter.BuildFallHazardText(result);
-    }
-
-    private void AutoBindTextFields()
-    {
-        if (aiAdviceText == null) aiAdviceText = FindChildText("AIAdviceText", "Advice", "Summary");
-        if (riskResultText == null) riskResultText = FindChildText("RiskResultText", "RiskScore", "RiskResult");
-        if (roomLevelText == null) roomLevelText = FindChildText("RoomLevelText", "RiskLevel", "RoomLevel");
-        if (fallHazardFurnituresList == null) fallHazardFurnituresList = FindChildText("FallHazardFurnituresList", "FallHazard", "FallenList");
-    }
-
-    private TMP_Text FindChildText(params string[] nameHints)
-    {
-        TMP_Text[] texts = GetComponentsInChildren<TMP_Text>(true);
-        for (int i = 0; i < nameHints.Length; i++)
-        {
-            for (int j = 0; j < texts.Length; j++)
-            {
-                if (texts[j] != null && texts[j].name.IndexOf(nameHints[i], StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    return texts[j];
-                }
-            }
-        }
-
-        return null;
-    }
-
-    public static void ShowResultOnPanel(GameObject panel, SimulationResultResponse result)
-    {
-        if (panel == null)
-        {
-            Debug.LogWarning("[SimulationResultPanelController] Simulation success panel is missing.");
-            return;
-        }
-
-        SimulationResultUI resultUi = panel.GetComponent<SimulationResultUI>();
-        if (resultUi != null)
-        {
-            resultUi.UpdateUI(result);
-        }
-
-        SimulationResultPanelController controller = panel.GetComponent<SimulationResultPanelController>();
-        if (controller == null)
-        {
-            controller = panel.AddComponent<SimulationResultPanelController>();
-        }
-
-        controller.SetResult(result);
     }
 }

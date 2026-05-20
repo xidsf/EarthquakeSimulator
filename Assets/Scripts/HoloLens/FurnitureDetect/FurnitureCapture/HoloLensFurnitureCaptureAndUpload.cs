@@ -99,6 +99,10 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
     [SerializeField] private ConfirmRoomManager confirmRoomManager;
     [SerializeField] private RoomGeometrySnapshotProvider roomSnapshotProvider;
 
+    [Header("UI")]
+    [SerializeField] private UIManager uiManager;
+    [SerializeField] private bool autoFindUiManager = true;
+
     [Header("Editor / Remote Test Capture")]
     [Tooltip("Unity Editor / Holographic Remoting / Standalone 테스트에서 GameView 스크린샷을 JPG로 저장/업로드합니다. 실제 HoloLens PV 카메라 사진이 아닙니다.")]
     [SerializeField] private bool enableEditorOrRemoteTestCapture = true;
@@ -233,6 +237,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
                     $"error: {request.error}\n" +
                     $"body: {request.downloadHandler.text}"
                 );
+                NotifyUser("서버 세션 생성에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 시도하세요.");
                 isStartingScanSession = false;
                 yield break;
             }
@@ -247,6 +252,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
             catch (Exception e)
             {
                 Debug.LogError($"[FurnitureCapture] scan session 응답 파싱 실패: {e.Message}\nbody: {responseText}");
+                NotifyUser("서버 세션 응답을 읽지 못했습니다. 잠시 후 다시 시도하세요.");
                 isStartingScanSession = false;
                 yield break;
             }
@@ -254,6 +260,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
             if (response == null || string.IsNullOrEmpty(response.scan_session_id))
             {
                 Debug.LogError($"[FurnitureCapture] scan_session_id가 없는 응답입니다. body: {responseText}");
+                NotifyUser("서버 세션 ID를 받지 못했습니다. 잠시 후 다시 시도하세요.");
                 isStartingScanSession = false;
                 yield break;
             }
@@ -345,6 +352,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         else
         {
             Debug.LogError("[FurnitureCapture] scan session 자동 생성에 실패하여 사진 촬영 + 업로드를 중단했습니다.");
+            NotifyUser("서버 세션 생성에 실패해 사진을 전송할 수 없습니다. 네트워크 상태를 확인한 뒤 다시 시도하세요.");
         }
 
         isAutoStartingSessionAndCapturing = false;
@@ -1039,6 +1047,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         if (!File.Exists(package.imagePath))
         {
             Debug.LogError($"[FurnitureCapture] 이미지 파일이 없습니다: {package.imagePath}");
+            NotifyUser("전송할 촬영 이미지 파일을 찾지 못했습니다. 다시 촬영한 뒤 전송하세요.");
             if (!keepUploadingFlag) isUploading = false;
             yield break;
         }
@@ -1046,6 +1055,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         if (!File.Exists(package.metadataPath))
         {
             Debug.LogError($"[FurnitureCapture] 메타데이터 파일이 없습니다: {package.metadataPath}");
+            NotifyUser("촬영 메타데이터 파일을 찾지 못했습니다. 다시 촬영한 뒤 전송하세요.");
             if (!keepUploadingFlag) isUploading = false;
             yield break;
         }
@@ -1063,6 +1073,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
         catch (Exception e)
         {
             Debug.LogError($"[FurnitureCapture] 업로드 파일 읽기 실패\n{e.Message}");
+            NotifyUser("촬영 파일을 읽지 못해 이미지 전송에 실패했습니다.");
             if (!keepUploadingFlag) isUploading = false;
             yield break;
         }
@@ -1073,6 +1084,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
                 "[FurnitureCapture] metadata에 scan_session_id 또는 frame_id가 없습니다. " +
                 "새 서버 API에서는 metadata 필드 안에 두 값이 반드시 필요합니다."
             );
+            NotifyUser("촬영 정보에 세션 ID가 없어 이미지 전송에 실패했습니다.");
             if (!keepUploadingFlag) isUploading = false;
             yield break;
         }
@@ -1083,6 +1095,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
                 "[FurnitureCapture] local_scan_ 세션은 서버에 생성된 scan_session_id가 아니므로 /scan-frame 업로드를 중단합니다. " +
                 "StartScanSession()으로 서버 세션을 먼저 생성하세요."
             );
+            NotifyUser("서버 세션 ID가 없어 이미지 전송에 실패했습니다. 먼저 서버 세션을 생성하세요.");
             if (!keepUploadingFlag) isUploading = false;
             yield break;
         }
@@ -1119,6 +1132,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
                     $"error: {request.error}\n" +
                     $"body: {request.downloadHandler.text}"
                 );
+                NotifyUser("촬영 이미지 전송에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 시도하세요.");
 
                 if (!keepUploadingFlag) isUploading = false;
                 yield break;
@@ -1258,6 +1272,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
                     $"error: {request.error}\n" +
                     $"body: {request.downloadHandler.text}"
                 );
+                NotifyUser("서버 요청에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 시도하세요.");
             }
             else
             {
@@ -1297,6 +1312,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
                     $"error: {request.error}\n" +
                     $"body: {request.downloadHandler.text}"
                 );
+                NotifyUser("서버 응답을 가져오지 못했습니다. 네트워크 상태를 확인한 뒤 다시 시도하세요.");
             }
             else
             {
@@ -1324,6 +1340,7 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
             return true;
 
         Debug.LogError($"[FurnitureCapture] {actionName}을 수행하려면 먼저 StartScanSession()으로 scan_session_id를 받아야 합니다.");
+        NotifyUser("서버 세션 ID가 없습니다. 먼저 촬영 세션을 생성하세요.");
         return false;
     }
 
@@ -1337,7 +1354,28 @@ public class HoloLensFurnitureCaptureAndUpload : MonoBehaviour
             $"현재 scan_session_id: {(string.IsNullOrEmpty(currentScanSessionId) ? "null" : currentScanSessionId)}, " +
             $"created_by_server: {currentScanSessionCreatedByServer}"
         );
+        NotifyUser("서버 세션 ID가 없어 요청을 보낼 수 없습니다. 먼저 서버 세션을 생성하세요.");
         return false;
+    }
+
+    private void NotifyUser(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return;
+
+        EnsureUiManagerReference();
+        if (uiManager != null)
+            uiManager.ShowNotification(message);
+    }
+
+    private void EnsureUiManagerReference()
+    {
+        if (uiManager != null || !autoFindUiManager)
+            return;
+
+        UIManager[] managers = FindObjectsByType<UIManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        if (managers != null && managers.Length > 0)
+            uiManager = managers[0];
     }
 
     // ----------------------------------------------------------------------

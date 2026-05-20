@@ -146,6 +146,20 @@ public class ConfirmedRoomGeometryProvider : MonoBehaviour
     public void RegisterPlacedFurniture(PlacedFurniture furniture) { if (furniture != null && !placedFurnitures.Contains(furniture)) placedFurnitures.Add(furniture); }
     public void UnregisterPlacedFurniture(PlacedFurniture furniture) { if (furniture != null) placedFurnitures.Remove(furniture); }
 
+    public void ClearState()
+    {
+        initialized = false;
+        wallColliderCount = 0;
+        floorObject = null;
+        ceilingObject = null;
+        wallColliders.Clear();
+        wallColliderSet.Clear();
+        placedFurnitures.Clear();
+        floorCollider = null;
+        ceilingCollider = null;
+        roomBounds = default(Bounds);
+    }
+
     public bool ValidateAndCorrectFurniturePose(PlacedFurniture furniture, out string reason)
     {
         reason = string.Empty;

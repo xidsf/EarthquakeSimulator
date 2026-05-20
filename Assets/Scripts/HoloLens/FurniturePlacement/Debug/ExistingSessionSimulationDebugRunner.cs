@@ -14,6 +14,7 @@ public class ExistingSessionSimulationDebugRunner : MonoBehaviour
     public FurnitureServerApiClient apiClient;
     public FurnitureServerPlacementPipeline serverPlacementPipeline;
     public FurnitureServerResultPlacer resultPlacer;
+    public ConfirmRoomManager confirmRoomManager;
     public ConfirmedRoomGeometryProvider roomGeometryProvider;
     public SimulationProcessManager simulationProcessManager;
     public SimulationResultUI simulationResultUI;
@@ -22,6 +23,7 @@ public class ExistingSessionSimulationDebugRunner : MonoBehaviour
 
     [Header("Room Geometry")]
     public Transform debugRoomRoot;
+    public bool useCurrentConfirmedRoomGeometry = true;
     public bool loadRoomGeometryBeforeFurniture = true;
     public bool loadRoomGeometryBeforeSimulation = true;
     public bool clearPreviousDebugRoomGeometry = true;
@@ -84,7 +86,7 @@ public class ExistingSessionSimulationDebugRunner : MonoBehaviour
 
         if (loadRoomGeometryBeforeSimulation)
         {
-            yield return FetchAndBuildRoomGeometryRoutine();
+            yield return PrepareRoomGeometryRoutine();
         }
 
         if (simulationProcessManager == null)
@@ -130,7 +132,7 @@ public class ExistingSessionSimulationDebugRunner : MonoBehaviour
 
         if (loadRoomGeometryBeforeFurniture)
         {
-            yield return FetchAndBuildRoomGeometryRoutine();
+            yield return PrepareRoomGeometryRoutine();
         }
 
         string sessionId = ResolveDebugSessionId();
@@ -223,6 +225,26 @@ public class ExistingSessionSimulationDebugRunner : MonoBehaviour
 
         BuildDebugRoomGeometry(response.room);
         Debug.Log($"[ExistingSessionSimulationDebugRunner] Room geometry loaded. session:{sessionId}, walls:{(response.room.walls != null ? response.room.walls.Count : 0)}, floor:{response.room.floor != null}, ceiling:{response.room.ceiling != null}");
+    }
+
+    private IEnumerator PrepareRoomGeometryRoutine()
+    {
+        EnsureReferences();
+
+        if (useCurrentConfirmedRoomGeometry)
+        {
+            if (roomGeometryProvider == null || confirmRoomManager == null)
+            {
+                Debug.LogWarning("[ExistingSessionSimulationDebugRunner] Cannot bind current confirmed room. References are missing.");
+                yield break;
+            }
+
+            bool bound = roomGeometryProvider.BindFromConfirmRoomManager(confirmRoomManager);
+            Debug.Log($"[ExistingSessionSimulationDebugRunner] Current confirmed room bound to provider:{bound}");
+            yield break;
+        }
+
+        yield return FetchAndBuildRoomGeometryRoutine();
     }
 
     private void BuildDebugRoomGeometry(SimulationRoomGeometry room)
@@ -465,6 +487,7 @@ public class ExistingSessionSimulationDebugRunner : MonoBehaviour
         if (apiClient == null) apiClient = FindFirst<FurnitureServerApiClient>();
         if (serverPlacementPipeline == null) serverPlacementPipeline = FindFirst<FurnitureServerPlacementPipeline>();
         if (resultPlacer == null) resultPlacer = FindFirst<FurnitureServerResultPlacer>();
+        if (confirmRoomManager == null) confirmRoomManager = FindFirst<ConfirmRoomManager>();
         if (roomGeometryProvider == null) roomGeometryProvider = FindFirst<ConfirmedRoomGeometryProvider>();
         if (simulationProcessManager == null) simulationProcessManager = FindFirst<SimulationProcessManager>();
         if (simulationResultUI == null) simulationResultUI = FindFirst<SimulationResultUI>();

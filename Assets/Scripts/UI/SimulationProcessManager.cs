@@ -355,6 +355,8 @@ public class SimulationProcessManager : MonoBehaviour
         PlacedSceneRequest request = new PlacedSceneRequest
         {
             scan_session_id = sessionId,
+            room_source = "client_confirmed_room",
+            room = BuildCurrentRoomGeometryForPlacedScene(),
             objects = objects.ToArray()
         };
 
@@ -371,6 +373,102 @@ public class SimulationProcessManager : MonoBehaviour
         }
 
         return JsonUtility.ToJson(request);
+    }
+
+    private SimulationRoomGeometry BuildCurrentRoomGeometryForPlacedScene()
+    {
+        if (confirmRoomManager == null)
+        {
+            return null;
+        }
+
+        SimulationRoomGeometry room = new SimulationRoomGeometry();
+
+        if (confirmRoomManager.ConfirmedRoomWallObjects != null)
+        {
+            foreach (GameObject wall in confirmRoomManager.ConfirmedRoomWallObjects)
+            {
+                if (TryBuildWorldBox(wall, out SimulationBox box))
+                {
+                    room.walls.Add(box);
+                }
+            }
+        }
+
+        if (TryBuildWorldBox(confirmRoomManager.ConfirmedRoomFloorObject, out SimulationBox floorBox))
+        {
+            room.floor = floorBox;
+        }
+
+        if (TryBuildWorldBox(confirmRoomManager.ConfirmedRoomCeilingObject, out SimulationBox ceilingBox))
+        {
+            room.ceiling = ceilingBox;
+        }
+
+        if (confirmRoomManager.hasEntrance && TryGetEntranceWorldPosition(out Vector3 entrancePosition))
+        {
+            room.entrance = new SimulationEntrance
+            {
+                position = ToArray(entrancePosition),
+                radius = confirmRoomManager.entranceRadiusMeters > 0f ? confirmRoomManager.entranceRadiusMeters : 1.5f
+            };
+        }
+
+        if (room.floor == null || room.walls == null || room.walls.Count == 0)
+        {
+            Debug.LogWarning("[SimulationProcessManager] Current confirmed room is not ready. Server will fall back to session metadata room if available.");
+            return null;
+        }
+
+        return room;
+    }
+
+    private bool TryBuildWorldBox(GameObject source, out SimulationBox box)
+    {
+        box = null;
+        if (source == null)
+        {
+            return false;
+        }
+
+        BoxCollider boxCollider = source.GetComponent<BoxCollider>();
+        if (boxCollider == null)
+        {
+            boxCollider = source.GetComponentInChildren<BoxCollider>(true);
+        }
+
+        Vector3 worldCenter;
+        Vector3 worldSize;
+        Quaternion worldRotation;
+
+        if (boxCollider != null)
+        {
+            Transform t = boxCollider.transform;
+            worldCenter = t.TransformPoint(boxCollider.center);
+            worldSize = Vector3.Scale(boxCollider.size, AbsScale(t.lossyScale));
+            worldRotation = t.rotation;
+        }
+        else
+        {
+            Collider anyCollider = source.GetComponentInChildren<Collider>(true);
+            if (anyCollider == null)
+            {
+                return false;
+            }
+
+            Bounds bounds = anyCollider.bounds;
+            worldCenter = bounds.center;
+            worldSize = bounds.size;
+            worldRotation = Quaternion.identity;
+        }
+
+        box = new SimulationBox
+        {
+            center = ToArray(worldCenter),
+            size = ToArray(worldSize),
+            euler = ToArray(worldRotation.eulerAngles)
+        };
+        return true;
     }
 
     private bool TryGetEntranceWorldPosition(out Vector3 worldPosition)
@@ -829,6 +927,11 @@ public class SimulationProcessManager : MonoBehaviour
     private static float[] ToArray(Vector3 value)
     {
         return new[] { value.x, value.y, value.z };
+    }
+
+    private static Vector3 AbsScale(Vector3 scale)
+    {
+        return new Vector3(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z));
     }
 
     private static T FindFirst<T>() where T : UnityEngine.Object

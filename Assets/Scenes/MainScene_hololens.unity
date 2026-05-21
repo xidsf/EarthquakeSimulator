@@ -1328,10 +1328,7 @@ PrefabInstance:
     m_RemovedGameObjects:
     - {fileID: 5719829374270691469, guid: 5e1e5c2fb89ded5469dd37ccbed1a896, type: 3}
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 1220126735637944177, guid: 5e1e5c2fb89ded5469dd37ccbed1a896, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 5e1e5c2fb89ded5469dd37ccbed1a896, type: 3}
 --- !u!4 &46994442 stripped
 Transform:
@@ -8470,6 +8467,7 @@ MonoBehaviour:
   evaluationText: {fileID: 2064130566}
   replacementManager: {fileID: 471180863}
   autoFindReplacementManager: 1
+  hideCycleSelectionButtons: 1
 --- !u!1001 &443477073
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -11557,7 +11555,7 @@ MonoBehaviour:
   resultPlacer: {fileID: 701234952}
   uiManager: {fileID: 0}
   autoFindReferences: 1
-  debugOverrideScanSessionId: room_scan_70630b05-6ef2-4b5a-8741-54d20a5d9365
+  debugOverrideScanSessionId: 
   callFinishScanBeforePolling: 1
   finishScanRequestJson: 
   callDetectSessionBeforeProcess: 1
@@ -16763,16 +16761,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8dea9532918445a48000794f103de598, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  debugSessionId: room_scan_70630b05-6ef2-4b5a-8741-54d20a5d9365
+  debugSessionId: room_scan_1a28ae5f-fc6f-476d-95b6-258cd466c2cf.json
   apiClient: {fileID: 0}
   serverPlacementPipeline: {fileID: 0}
   resultPlacer: {fileID: 0}
+  confirmRoomManager: {fileID: 0}
   roomGeometryProvider: {fileID: 0}
   simulationProcessManager: {fileID: 0}
   simulationResultUI: {fileID: 0}
   playbackController: {fileID: 0}
   autoFindReferences: 1
   debugRoomRoot: {fileID: 0}
+  useCurrentConfirmedRoomGeometry: 1
   loadRoomGeometryBeforeFurniture: 1
   loadRoomGeometryBeforeSimulation: 1
   clearPreviousDebugRoomGeometry: 1
@@ -17908,10 +17908,7 @@ PrefabInstance:
     m_RemovedGameObjects:
     - {fileID: 5719829374270691469, guid: 5e1e5c2fb89ded5469dd37ccbed1a896, type: 3}
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 1220126735637944177, guid: 5e1e5c2fb89ded5469dd37ccbed1a896, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 5e1e5c2fb89ded5469dd37ccbed1a896, type: 3}
 --- !u!4 &1109063623 stripped
 Transform:
@@ -26363,10 +26360,7 @@ PrefabInstance:
     m_RemovedGameObjects:
     - {fileID: 5719829374270691469, guid: 5e1e5c2fb89ded5469dd37ccbed1a896, type: 3}
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 1220126735637944177, guid: 5e1e5c2fb89ded5469dd37ccbed1a896, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 0}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 5e1e5c2fb89ded5469dd37ccbed1a896, type: 3}
 --- !u!4 &1653405968 stripped
 Transform:

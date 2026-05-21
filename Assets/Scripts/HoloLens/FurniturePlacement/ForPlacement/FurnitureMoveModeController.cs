@@ -22,6 +22,7 @@ public class FurnitureMoveModeController : MonoBehaviour
     [Header("Move Mode")]
     [SerializeField] private bool isMoveModeEnabled;
     [SerializeField] private FurnitureManipulationMode currentMode = FurnitureManipulationMode.None;
+    [SerializeField] private bool selectionOnlyMode;
 
     [Tooltip("true면 Move Mode ON일 때 모든 가구가 직접 터치/이동 가능합니다. false면 선택된 가구 1개만 이동 가능합니다.")]
     public bool allowAllFurnitureMovableInMoveMode = true;
@@ -48,6 +49,7 @@ public class FurnitureMoveModeController : MonoBehaviour
     public bool IsMoveModeEnabled => isMoveModeEnabled;
     public bool IsRotateModeEnabled => currentMode == FurnitureManipulationMode.Rotate;
     public bool IsScaleModeEnabled => currentMode == FurnitureManipulationMode.Scale;
+    public bool IsSelectionOnlyMode => selectionOnlyMode;
     public FurnitureManipulationMode CurrentMode => currentMode;
     public PlacedFurniture SelectedFurniture => IsValidIndex(selectedIndex) ? furnitures[selectedIndex] : null;
     public IReadOnlyList<PlacedFurniture> RegisteredFurnitures => furnitures;
@@ -150,6 +152,19 @@ public class FurnitureMoveModeController : MonoBehaviour
         ApplyMovableState();
         MoveModeChanged?.Invoke(isMoveModeEnabled);
         Debug.Log($"[FurnitureMoveModeController] Manipulation mode:{currentMode}, allowAll:{allowAllFurnitureMovableInMoveMode}");
+    }
+
+    public void SetSelectionOnlyMode(bool enabled)
+    {
+        if (selectionOnlyMode == enabled)
+        {
+            ApplyMovableState();
+            return;
+        }
+
+        selectionOnlyMode = enabled;
+        ApplyMovableState();
+        Debug.Log($"[FurnitureMoveModeController] Selection-only mode:{selectionOnlyMode}");
     }
 
     public void SelectNext()
@@ -260,6 +275,13 @@ public class FurnitureMoveModeController : MonoBehaviour
             FurnitureManipulationMode mode = FurnitureManipulationMode.None;
             if (isMoveModeEnabled)
             {
+                if (selectionOnlyMode)
+                {
+                    furniture.SetManipulationMode(FurnitureManipulationMode.None, true);
+                    UpdateBoxVisual(i);
+                    continue;
+                }
+
                 bool active = allowAllFurnitureMovableInMoveMode || i == selectedIndex;
                 mode = active ? currentMode : FurnitureManipulationMode.None;
             }

@@ -91,6 +91,7 @@ public class PlacedFurniture : MonoBehaviour
     private float lastTransformChangeTime;
     private bool initialized;
     private bool isMovable;
+    private bool interactionOnlyMode;
     private bool isMoving;
     private GameObject selectionBoxObject;
     private FurnitureManipulationMode manipulationMode = FurnitureManipulationMode.None;
@@ -107,6 +108,7 @@ public class PlacedFurniture : MonoBehaviour
     public string DisplayName => !string.IsNullOrWhiteSpace(displayName) ? displayName : gameObject.name;
     public string Source => source;
     public bool IsMovable => isMovable;
+    public bool IsInteractionOnly => interactionOnlyMode;
     public bool IsMoving => isMoving;
     public FurnitureManipulationMode ManipulationMode => manipulationMode;
     public bool IsFixed => isFixed;
@@ -210,6 +212,11 @@ public class PlacedFurniture : MonoBehaviour
 
     public void SetManipulationMode(FurnitureManipulationMode mode)
     {
+        SetManipulationMode(mode, false);
+    }
+
+    public void SetManipulationMode(FurnitureManipulationMode mode, bool enableInteractionOnly)
+    {
         bool fixedInteractionOnly = disableManipulationWhenFixed && isFixed && mode != FurnitureManipulationMode.None;
         if (fixedInteractionOnly)
         {
@@ -220,6 +227,7 @@ public class PlacedFurniture : MonoBehaviour
 
         manipulationMode = mode;
         isMovable = mode != FurnitureManipulationMode.None;
+        interactionOnlyMode = enableInteractionOnly && mode == FurnitureManipulationMode.None;
         TransformFlags allowedManipulations = ToTransformFlags(mode);
 
         if (moveBehaviours != null)
@@ -231,7 +239,7 @@ public class PlacedFurniture : MonoBehaviour
                     if (behaviour is ObjectManipulator manipulator)
                     {
                         manipulator.AllowedManipulations = allowedManipulations;
-                        behaviour.enabled = isMovable || fixedInteractionOnly;
+                        behaviour.enabled = isMovable || fixedInteractionOnly || interactionOnlyMode;
                     }
                     else
                     {
@@ -269,7 +277,7 @@ public class PlacedFurniture : MonoBehaviour
         ownerManager?.HandleFurnitureSelected(this, inputSource);
     }
 
-    public void NotifyMoveStarted() { if (initialized) BeginMove("ExternalEvent", saveCurrentAsValid: true); }
+    public void NotifyMoveStarted() { if (initialized && isMovable) BeginMove("ExternalEvent", saveCurrentAsValid: true); }
     public void NotifyMoveEnded() { if (initialized) EndMove("ExternalEvent"); }
 
     public void SetFixed(bool fixedState)
@@ -324,6 +332,11 @@ public class PlacedFurniture : MonoBehaviour
     // 踰꾪듉??洹좎씪 ?ㅼ??? 鍮꾩쑉???좎???梨?factor瑜?怨깊븯怨??쒓퀎濡??대옩????利됱떆 ?ш?利?蹂댁젙?쒕떎.
     public FurnitureScaleStepResult ApplyUniformScaleStep(float factor)
     {
+        if (interactionOnlyMode)
+        {
+            return FurnitureScaleStepResult.Ignored;
+        }
+
         if (isFixed)
         {
             return FurnitureScaleStepResult.BlockedByFixed;
@@ -369,6 +382,11 @@ public class PlacedFurniture : MonoBehaviour
     // ??異뺣쭔 誘몄꽭 議곗젙?쒕떎. 踰꾪듉??異뺣퀎 議곗젙?⑹씠誘濡??섎룄?곸쑝濡?鍮꾩쑉??源④퀬 ?대떦 異뺣쭔 [min,max]濡??대옩?꾪븳??
     public FurnitureScaleStepResult ApplyAxisScaleStep(int axis, float factor)
     {
+        if (interactionOnlyMode)
+        {
+            return FurnitureScaleStepResult.Ignored;
+        }
+
         if (isFixed)
         {
             return FurnitureScaleStepResult.BlockedByFixed;

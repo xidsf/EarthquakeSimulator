@@ -11,7 +11,9 @@ public class ReplacementManager : MonoBehaviour
     public event Action<PlacedFurniture, string> SelectionEvaluationChanged;
 
     private bool previousAllowAllMovable;
+    private bool previousSelectionOnlyMode;
     private bool hasPreviousAllowAllMovable;
+    private bool hasPreviousSelectionOnlyMode;
     private bool replacementModeActive;
 
     private void Awake()
@@ -41,12 +43,15 @@ public class ReplacementManager : MonoBehaviour
         if (!replacementModeActive)
         {
             previousAllowAllMovable = moveModeController.allowAllFurnitureMovableInMoveMode;
+            previousSelectionOnlyMode = moveModeController.IsSelectionOnlyMode;
             hasPreviousAllowAllMovable = true;
+            hasPreviousSelectionOnlyMode = true;
             moveModeController.SelectionChanged += HandleSelectionChanged;
         }
 
         replacementModeActive = true;
         moveModeController.allowAllFurnitureMovableInMoveMode = true;
+        moveModeController.SetSelectionOnlyMode(true);
         moveModeController.SetMoveMode(true);
         moveModeController.ClearSelection();
 
@@ -68,6 +73,11 @@ public class ReplacementManager : MonoBehaviour
         {
             moveModeController.SelectionChanged -= HandleSelectionChanged;
             moveModeController.SetManipulationMode(FurnitureManipulationMode.None);
+            if (hasPreviousSelectionOnlyMode)
+            {
+                moveModeController.SetSelectionOnlyMode(previousSelectionOnlyMode);
+            }
+
             moveModeController.ClearSelection();
             if (hasPreviousAllowAllMovable)
             {
@@ -76,6 +86,7 @@ public class ReplacementManager : MonoBehaviour
         }
 
         hasPreviousAllowAllMovable = false;
+        hasPreviousSelectionOnlyMode = false;
     }
 
     public void SelectNextFurniture()

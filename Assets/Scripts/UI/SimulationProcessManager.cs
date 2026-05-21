@@ -355,6 +355,7 @@ public class SimulationProcessManager : MonoBehaviour
         PlacedSceneRequest request = new PlacedSceneRequest
         {
             scan_session_id = sessionId,
+            building = ClientBuildingInfo.HasValue ? ClientBuildingInfo.ToContract() : new SimulationBuildingInfo(),
             room_source = "client_confirmed_room",
             room = BuildCurrentRoomGeometryForPlacedScene(),
             objects = objects.ToArray()

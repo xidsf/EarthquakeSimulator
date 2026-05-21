@@ -307,6 +307,7 @@ public class FurnitureServerPlacementItem
 public class PlacedSceneRequest
 {
     public string scan_session_id;
+    public SimulationBuildingInfo building;
     public string room_source;
     public SimulationRoomGeometry room;
     public float[] entrance_position;

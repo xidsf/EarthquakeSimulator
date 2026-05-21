@@ -461,7 +461,7 @@ public class BuildingInfoController : WorkflowPanelControllerBase
         }
 
         // [유효성 검사 4] 전체 건물 층수 확인.
-        // 입력 단계에서는 미입력을 기본값 0으로 유지하고, 단계 완료 시 0이면 현재 층수로 확정한다.
+        // 미입력/0은 서버 시뮬레이터의 자동 기본값으로 전달한다.
         int totalFloors = 0;
         bool hasExplicitTotalFloors = TryGetTotalFloors(out int parsedTotal);
         if (hasExplicitTotalFloors)
@@ -469,13 +469,15 @@ public class BuildingInfoController : WorkflowPanelControllerBase
             totalFloors = parsedTotal;
         }
 
-        if (!hasExplicitTotalFloors && totalFloors == 0)
+        if (totalFloors < 0)
         {
-            totalFloors = floorNumber;
+            if (uiManager != null)
+                uiManager.ShowNotification("전체 건물 층수는 0 이상이어야 합니다.");
+            return;
         }
 
-        // 전체 건물 층수가 현재 층수보다 낮으면 진행 불가.
-        if (totalFloors < floorNumber)
+        // 전체 건물 층수가 0이 아니면서 현재 층수보다 낮으면 진행 불가.
+        if (totalFloors != 0 && totalFloors < floorNumber)
         {
             if (uiManager != null)
                 uiManager.ShowNotification("전체 건물 층수는 현재 층수보다 낮을 수 없습니다.");
@@ -483,15 +485,13 @@ public class BuildingInfoController : WorkflowPanelControllerBase
         }
 
         // 전체 층수 표기를 정돈된 값으로 갱신.
-        if (text_TotalFloors != null) text_TotalFloors.text = $"{totalFloors}층";
+        if (text_TotalFloors != null && hasExplicitTotalFloors) text_TotalFloors.text = $"{totalFloors}층";
 
-        // 입력한 건물 정보를 클라이언트 전역 상태에 저장. 이후 가구 배치 완료 시
-        // SimulationInputBuilder가 읽어 서버로 전송한다.
-        //ClientBuildingInfo.Set(
-        //    MapBuildingTypeToContract(text_BuildingType != null ? text_BuildingType.text : null),
-        //    floorNumber,
-        //    totalFloors,
-        //    PilotiToContractString());
+        ClientBuildingInfo.Set(
+            MapBuildingTypeToContract(text_BuildingType != null ? text_BuildingType.text : null),
+            floorNumber,
+            totalFloors,
+            PilotiToContractString());
 
         // 모든 검사를 통과하면 다음 워크플로우 단계로 진행
         RequestWorkflowCommand(RoomBuildWorkflowManager.WorkflowCommand.CompleteRoomInfoInput);
